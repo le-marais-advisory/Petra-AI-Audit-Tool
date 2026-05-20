@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -130,6 +132,9 @@ def pipeline_results(request) -> dict[str, dict]:
         return {}
 
     service = ValidationService()
+    total = len(cases)
+    completed_count = 0
+    counter_lock = threading.Lock()
 
     def _run_case(case: dict) -> tuple[str, dict]:
         case_id = case["id"]
@@ -145,18 +150,27 @@ def pipeline_results(request) -> dict[str, dict]:
         if unknown:
             return case_id, {"__error__": f"Unknown rule IDs in cases.yaml: {unknown}"}
         selected_rules = [all_rules[rid] for rid in rule_ids]
-        return case_id, service.validate_document(
+        t0 = time.monotonic()
+        result = service.validate_document(
             pdf_path=str(doc_path),
             source_filename=doc_path.name,
             rules_json_str=json.dumps({"rules": selected_rules}),
         )
+        elapsed = time.monotonic() - t0
+        return case_id, result, elapsed
 
     workers = request.config.getoption("workers")
     results: dict[str, dict] = {}
+    print(f"\npipeline: running {total} case(s) with {workers} worker(s)")
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(_run_case, case): case for case in cases}
         for future in as_completed(futures):
-            case_id, result = future.result()
+            case_id, result, elapsed = future.result()
             results[case_id] = result
+            with counter_lock:
+                completed_count += 1
+                n = completed_count
+            status = "error" if "__error__" in result else "done"
+            print(f"  [{n}/{total}] {case_id} — {status} ({elapsed:.1f}s)")
 
     return results
