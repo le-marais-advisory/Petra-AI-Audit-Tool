@@ -93,7 +93,9 @@ class ValidationJobService:
                 job.progress_total = total_steps
 
             pages = service.pipeline.extractor.extract(pdf_path=pdf_path)
-            text_total_steps = len(text_rules) * max(1, len(pages))
+            page_scope_text_rules = [r for r in text_rules if r.get("scope", "page") == "page"]
+            broad_scope_text_rules = [r for r in text_rules if r.get("scope", "page") in ("multi_page", "document")]
+            text_total_steps = len(page_scope_text_rules) * max(1, len(pages)) + len(broad_scope_text_rules)
             vision_total_steps = service.pipeline.vision_rule_analyzer.estimate_step_count(len(pages), selected_rules)
             total_steps = max(1, text_total_steps + vision_total_steps)
             with job.lock:

@@ -57,7 +57,22 @@ Integration tests run fixed documents through the live validation pipeline (real
 # Run all integration tests
 pytest tests/integration -m integration
 
-# Run a specific case or rule (substring match on the node ID)
+# Critical-severity rules only (~29% of full cost)
+pytest tests/integration -m integration --severity critical
+
+# One specific rule across all cases
+pytest tests/integration -m integration --rule GRAM-SPELL
+
+# Multiple rules
+pytest tests/integration -m integration --rule DATE-INTEGRITY-FULL --rule CVR-DATE-CHECK
+
+# Combined: severity + rule filter
+pytest tests/integration -m integration --severity critical --rule GRAM-SPELL
+
+# One specific case
+pytest tests/integration -m integration --case my_fund
+
+# Filter by node ID substring (case or rule name)
 pytest tests/integration -m integration -k "my_fund"
 pytest tests/integration -m integration -k "my_fund/BS-FMT"
 

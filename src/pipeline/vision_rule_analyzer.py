@@ -160,6 +160,16 @@ class VisionRuleAnalyzer:
         if not vision_rules:
             return {"rule_results": {}, "page_results": []}
 
+        unsupported_scope_results: dict[str, dict] = {}
+        for rule in vision_rules:
+            if rule.get("scope", "page") != "page":
+                unsupported_scope_results[rule.get("id", "")] = _build_not_applicable_rule_result(
+                    rule, "Multi-page scope is not yet supported for vision rules."
+                )
+        vision_rules = [r for r in vision_rules if r.get("scope", "page") == "page"]
+        if not vision_rules:
+            return {"rule_results": unsupported_scope_results, "page_results": []}
+
         try:
             provider = build_vision_provider(self.app_config, self.settings)
         except ValueError as exc:
@@ -185,7 +195,7 @@ class VisionRuleAnalyzer:
                 "page_results": [],
             }
 
-        results: dict[str, dict] = {}
+        results: dict[str, dict] = dict(unsupported_scope_results)
         page_results: list[dict] = []
         per_rule_page_results: dict[str, list[dict]] = {rule.get("id", ""): [] for rule in vision_rules}
         lock = threading.Lock()
