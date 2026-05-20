@@ -1,0 +1,1668 @@
+(.venv) ➜  petra-data-file git:(add/ground-truth-test-fixtures) pytest tests/integration -m integration -v -s
+========================================================================= test session starts ==========================================================================
+platform darwin -- Python 3.14.0, pytest-9.0.3, pluggy-1.6.0 -- /Users/caiodias/Developer/Projects/petra-data-file/.venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/caiodias/Developer/Projects/petra-data-file
+configfile: pytest.ini
+plugins: anyio-4.13.0
+collected 226 items
+
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-REFOOT]
+pipeline: running 14 case(s) with 4 worker(s)
+  [1/14] number_split_formatting — done (80.5s)
+  [2/14] text_underline_validation — done (97.7s)
+  [3/14] fund_02_error — done (384.3s)
+  [4/14] fund_01_error — done (542.5s)
+  [5/14] fund_03_error — done (502.4s)
+  [6/14] fund_05_error — done (368.1s)
+  [7/14] fund_04_error — done (713.2s)
+  [8/14] fund_07_error — done (672.9s)
+  [9/14] fund_06_error — done (829.1s)
+  [10/14] fund_08_error — done (628.5s)
+  [11/14] schedule_of_investments_rules — done (70.8s)
+  [12/14] multi_page_rules — done (119.3s)
+  [13/14] fund_09_error — done (1768.8s)
+  [14/14] fund_10_error — done (1694.6s)
+PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-CROSSFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[text_underline_validation/FMT-DOUBLE-UNDERLINE[p7,9,11]] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[text_underline_validation/FMT-DOUBLE-UNDERLINE[p1,2,3,4,5,6,8,10,12]] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-DOLLAR-SIGNS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-DOUBLE-UNDERLINE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/NUM-REFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/NUM-CROSSFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/CVR-DATE-CHECK] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/ARITH-ASSETS=LIABS+CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SOI-FOOTNOTE-XREF] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/OPS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SCF-RECONCILE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-DOLLAR-SIGNS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-DOUBLE-UNDERLINE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/NUM-REFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/NUM-CROSSFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/CVR-PERIOD-PHRASING] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/CVR-DATE-CHECK] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/ARITH-ASSETS=LIABS+CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SOI-FOOTNOTE-XREF] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/OPS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SCF-SIGNAGE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SCF-RECONCILE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-DOLLAR-SIGNS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-DOUBLE-UNDERLINE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/NUM-REFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/NUM-CROSSFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/SIG-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/CVR-DATE-CHECK] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/BS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/ARITH-ASSETS=LIABS+CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/SOI-FOOTNOTE-XREF] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/OPS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/SCF-SIGNAGE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/SCF-RECONCILE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-DOLLAR-SIGNS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-DOUBLE-UNDERLINE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/NUM-REFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/NUM-CROSSFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SIG-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/CVR-DATE-CHECK] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/ARITH-ASSETS=LIABS+CAP] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SOI-FOOTNOTE-XREF] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/OPS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SCF-RECONCILE-CASH] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-DOLLAR-SIGNS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-DOUBLE-UNDERLINE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/NUM-REFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/NUM-CROSSFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SIG-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/CVR-PERIOD-PHRASING] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/CVR-DATE-CHECK] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/ARITH-ASSETS=LIABS+CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SOI-FOOTNOTE-XREF] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/OPS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SCF-SIGNAGE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SCF-RECONCILE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-DOLLAR-SIGNS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-DOUBLE-UNDERLINE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/NUM-REFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/NUM-CROSSFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/CVR-DATE-CHECK] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/BS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/ARITH-ASSETS=LIABS+CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SOI-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SOI-FOOTNOTE-XREF] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/OPS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SCF-RECONCILE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-VISUAL-INTEGRITY] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-DOLLAR-SIGNS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-DOUBLE-UNDERLINE] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/NUM-REFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/NUM-CROSSFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/CVR-DATE-CHECK] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/ARITH-ASSETS=LIABS+CAP] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SOI-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SOI-FOOTNOTE-XREF] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/OPS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SCF-RECONCILE-CASH] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-DOLLAR-SIGNS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-DOUBLE-UNDERLINE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/NUM-REFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/NUM-CROSSFOOT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/DATE-INTEGRITY-FULL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/DATE-LOGIC-ORDER] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/CVR-DATE-CHECK] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/ARITH-ASSETS=LIABS+CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SOI-FOOTNOTE-XREF] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/OPS-FMT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SCF-RECONCILE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-DOLLAR-SIGNS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-DOUBLE-UNDERLINE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/RND-GLOBAL] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/NUM-REFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/NUM-CROSSFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/DATE-INTEGRITY-FULL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/DATE-LOGIC-ORDER] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/CVR-DATE-CHECK] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/ARITH-ASSETS=LIABS+CAP] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SOI-FOOTNOTE-XREF] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/OPS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SCF-RECONCILE-CASH] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-HEADINGS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-VISUAL-INTEGRITY] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-DOLLAR-SIGNS] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-DOUBLE-UNDERLINE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/RND-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/NUM-REFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/NUM-CROSSFOOT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SIG-GLOBAL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/GRAM-SPELL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/DATE-INTEGRITY-FULL] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/DATE-LOGIC-ORDER] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/CVR-PERIOD-PHRASING] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/CVR-DATE-CHECK] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/BS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/ARITH-ASSETS=LIABS+CAP] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SOI-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SOI-FOOTNOTE-XREF] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/OPS-FMT] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SCF-SIGNAGE] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SCF-RECONCILE-CASH] FAILED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/SCP-SECTIONS-PRESENT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/TOC-PAGE-NUMBERS-MATCH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/TOC-COMPLETENESS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/DATE-CONSISTENCY-PACK] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/DUP-TOTALS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/TIE-CASH] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/TIE-PARTNERS-CAP] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[multi_page_rules/TIE-NET-GAIN] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[schedule_of_investments_rules/SCP-SECTIONS-PRESENT] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[schedule_of_investments_rules/TIE-SOI-BS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[schedule_of_investments_rules/BS-TIE-OUTS] PASSED
+tests/integration/test_pipeline.py::test_rule_verdict[schedule_of_investments_rules/SOI-PERCENTAGE-TIE] PASSED
+
+=============================================================================== FAILURES ===============================================================================
+____________________________________________________________ test_rule_verdict[fund_01_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 2: pass | Page 1: needs_review | Page 3: pass | Page 5: pass | Page 4: needs_review | Page 7: pass
+E
+E   Findings: ["The heading area appears to be missing the entity or fund name that would normally appear above '(A Delaware Limited Partnership)'. This subtitle line is the first captured heading line, but it reads as a descriptor that should follow a proper title/name. The entity name line may have been cut off or not extracted from the top of this page.", "All heading lines that are present — '(A Delaware Limited Partnership)', 'Financial Statements (Unaudited)', 'For the six months ended June 30, 2025' — are well-centered and consistent with each other. No alignment issues are detected among the visible lines.", "The title line 'Schedule of Investments (Unaudited)' appears centered on the page, while the subtitle 'June 30, 2025' appears left-aligned. If these are meant to be a paired heading, they are not consistently aligned. Verify whether 'June 30, 2025' should also be centered to match the title above it.", 'No truncation, corrupted text, or missing content was found in the heading lines — both lines are fully readable and complete.']
+________________________________________________________ test_rule_verdict[fund_01_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: The Table of Contents page is generally well-structured and visually clean, with properly aligned headings, TOC entries, and page numbers. The one notable visual concern is a solid black rectangle at the top of the page where a logo or firm name would normally appear. This could be an intentional redaction or a rendering defect — if the latter, the logo or header text is not displaying correctly and should be reviewed. | The page layout is generally clean and well-aligned. The only notable issue is a solid black rectangle at the top of the title block where the entity name or logo would normally appear. This is likely an intentional redaction, but if it is supposed to display readable content, it is not visible. All other text elements are properly centered, complete, and free of defects. | The page is generally well-laid-out with properly aligned financial statement data. However, the top header area contains a large black filled rectangle that obscures what should be a visible company name or logo, making the page header visually incomplete. All other elements — headings, line items, numbers, dollar signs, and totals — appear properly aligned and formatted. | The page is largely well-formatted with a clean table and readable headings. However, there are two notable visual issues: (1) a large solid black rectangle in the header area that appears to be a deformed or redacted logo/header element rather than a properly rendered graphic, and (2) a minor spacing inconsistency in the Par Value column where a dollar sign is separated from its number by a space. The black rectangle is the more significant concern as it suggests a rendering or redaction issue in the page header. | The page has two notable visual issues: (1) the company header/logo area is entirely blacked out, hiding what should be readable identifying information; and (2) the dollar sign ($) symbols used on certain rows appear slightly misaligned relative to the number column, creating minor visual inconsistency. The financial table content itself is otherwise clean and well-structured. | The page is largely clean and well-structured, but there is a notable visual issue: a solid black rectangle in the top-left header area appears to cover what should be a visible company logo or name. This is the primary layout concern. The table data, headings, and column alignment are otherwise consistent and readable.
+E
+E   Findings: ['A solid black rectangle appears at the top of the page where a logo or firm name would typically be displayed. This may be an intentional redaction, but visually it renders as a filled black block rather than a properly displayed logo or heading text. If this is a rendering error, the logo or firm name should appear as readable text or a proper image.', 'A solid black rectangle appears where the entity or fund name would typically be displayed at the top of the title block. This may be an intentional redaction, but if it is meant to display a name or logo, the content is not visible. The expected form would be a clearly readable entity name or a properly rendered logo.', 'A large black filled rectangle appears at the top of the page where a company logo or fund name header would normally be displayed. This element is either redacted or improperly rendered, making the page header visually incomplete. The expected appearance would be a readable company name, logo, or identifying header text in that space.', 'The header area contains a large solid black filled rectangle where a logo or identifying header element would normally appear. This renders as a black box rather than a readable or visually complete element, suggesting either a rendering defect or an improperly redacted/masked logo. The expected appearance would be a legible company name, logo, or properly formatted header graphic.']
+__________________________________________________________ test_rule_verdict[fund_01_error/FMT-DOLLAR-SIGNS] ___________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'FMT-DOLLAR-SIGNS'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 4: pass | Page 5: pass | Page 6: pass | Page 3: needs_review
+E
+E   Findings: ["Both the first monetary row ('Interest income') and the last monetary row ('Net increase (decrease) in partners' capital from operations') correctly include a dollar sign ($). No violations found.", "The first monetary row ('Partners' capital as of January 1, 2025') correctly includes dollar signs for all three columns.", "The last monetary row ('Partners' capital as of June 30, 2025') correctly includes dollar signs for all three columns.", "The Assets section first monetary row ('Investment at fair value... $2,273,064') correctly shows a dollar sign, and the last monetary row ('Total assets $2,315,355') also correctly shows a dollar sign — this section passes."]
+_____________________________________________________________ test_rule_verdict[fund_01_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: needs_review | Page 2: pass | Page 3: fail | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ["The line 'For the six months ended June 30, 2025' uses sentence case (only first word capitalized), while the adjacent cover-page lines 'Financial Statements (Unaudited)' and '(A Delaware Limited Partnership)' use title case. For full consistency, the period description line could also use title case: 'For the Six Months Ended June 30, 2025'.", "Inconsistent capitalization in section headers: 'Liabilities and Partners' Capital' capitalizes 'Capital', but the parallel section label 'Partners' capital:' uses lowercase 'capital'. Both are section-level headers and should use the same capitalization pattern for the word 'Capital/capital'."]
+____________________________________________________________ test_rule_verdict[fund_01_error/NUM-CROSSFOOT] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'NUM-CROSSFOOT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 3: pass | Page 4: pass | Page 5: pass | Page 7: pass
+E
+E   Findings: ['All arithmetic checks pass: Loan interest expense ($30,379) + Professional expenses ($20,878) + Other expenses ($2,854) = $54,111 (Total operating expenses). ✓', 'Total income ($130,824) minus Total operating expenses ($54,111) correctly equals Net investment income of $76,713. ✓', 'All cross-foot relationships verified: Total adjustments of (939,214) correctly sums all eight adjustment line items.', 'Net cash used in operating activities of (862,501) correctly equals net income of 76,713 plus total adjustments of (939,214).']
+_____________________________________________________________ test_rule_verdict[fund_01_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 4: pass | Page 3: pass | Page 5: pass | Page 6: needs_review
+E
+E   Findings: ['All expense line items (Loan interest expense and fees, Professional expenses, Other expenses, and Total operating expenses) are presented as positive numbers rather than negative (parentheses or minus sign). While this deviates from the preferred convention, the presentation is internally consistent — no mixed signage exists within the expense section.', "Net investment income and Net increase in partners' capital from operations are both shown as positive ($76,713), which is arithmetically correct given income exceeds expenses. No negative totals or assets are present.", "The 'Net increase (decrease) in partners' capital from operations' row appears garbled in the extraction ('17276,54176,713'), making it difficult to confirm exact values and signage for all three columns. If this line contains mixed signage (some columns positive, some negative), that would be a violation. A manual review of the original document is recommended for this line.", 'All other line items show consistent signage: syndication costs are uniformly shown in parentheses (negative) across all three columns, and capital balances and contributions are uniformly positive — no inconsistency detected.']
+_____________________________________________________________ test_rule_verdict[fund_01_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'GRAM-SPELL'
+E     expected: fail
+E     got:      pass
+E
+E   Summary: Page 1: pass | Page 2: pass | Page 3: pass | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_01_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: fail
+E
+E   Findings: ["The cover page uses the phrase 'For the six months ended June 30, 2025', which does not match any of the four accepted phrasings. The allowed options are: 'As of {date}', 'For the Period Ended {date}', 'As of and for the Period Ended {date}', or 'For the Year Ended {date}'. The phrase should be updated to one of these forms, such as 'For the Period Ended June 30, 2025'."]
+_______________________________________________________________ test_rule_verdict[fund_01_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 2: not_applicable | Page 4: not_applicable | Page 5: not_applicable | Page 6: not_applicable | Page 7: not_applicable | Page 3: fail
+E
+E   Findings: ["Capitalization inconsistency: The sub-header 'Partners' capital:' uses a lowercase 'c' in 'capital', while the main section heading 'Liabilities and Partners' Capital' uses an uppercase 'C' in 'Capital'. These should be capitalized consistently throughout the document.", "All totals foot correctly: Assets (2,273,064 + 31,713 + 8,645 + 1,933 = 2,315,355 ✓), Liabilities (558,082 + 4,302 + 77,858 = 640,242 ✓), Partners' capital (1,681,284 − 3,560 − 2,611 = 1,675,113 ✓), and Total liabilities and partners' capital (640,242 + 1,675,113 = 2,315,355 ✓)."]
+_______________________________________________________________ test_rule_verdict[fund_01_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 2: not_applicable | Page 4: fail
+E
+E   Findings: ["The Cost column total for 'Total Investments' is incorrect. The subtotals are $2,285,514 (Senior Secured Loans) and $311,770 (Equity Investments), which should sum to $2,597,284, but the table shows $2,285,514 — matching only the Senior Secured Loans subtotal and omitting the Equity Investments cost entirely.", "The Fair Value column total ($2,273,064) and Percent of Partners' Capital total (135.70%) both foot correctly: $1,973,744 + $299,320 = $2,273,064 and 117.83% + 17.87% = 135.70%."]
+_____________________________________________________________ test_rule_verdict[fund_01_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_01_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 2: not_applicable | Page 7: fail
+E
+E   Findings: ['Loan facility proceeds of (442,121) is shown as a negative number (in parentheses), but loan proceeds are a cash inflow and should be positive. This is a sign inversion — an inflow is being presented as if it were an outflow.', 'The net cash provided by financing activities total of 795,254 is arithmetically consistent with the (442,121) sign as entered, but this means the total is understated relative to what it would be if loan proceeds were correctly signed as a positive inflow. The total appears to reflect the incorrect sign.']
+____________________________________________________________ test_rule_verdict[fund_02_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'FMT-HEADINGS'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: needs_review | Page 3: pass | Page 4: needs_review | Page 5: pass
+E
+E   Findings: ["The line '(A Delaware Limited Partnership)' appears in the heading area but is not covered by the available positional metadata, so it is not possible to confirm whether it is aligned consistently with the other heading lines ('STATEMENT OF OPERATIONS' and the subtitle lines below it). The other heading lines all start at a left margin of 90 points, but this line's position cannot be verified from the extracted data.", "The entity name line '(A Delaware Limited Partnership)' appears in the heading area but is not included in the positional metadata, so its alignment relative to the other heading lines ('STATEMENT OF NET ASSETS' and 'AS OF SEPTEMBER 30, 2025') cannot be fully confirmed. The text itself appears complete and readable, but a manual check is recommended to verify it is properly aligned with the other heading lines.", "All three heading lines ('STATEMENT OF CHANGES IN PARTNERS' CAPITAL', 'FOR THE PERIOD FROM MARCH 5, 2025 (COMMENCEMENT OF', 'OPERATIONS) THROUGH SEPTEMBER 30, 2025') are consistently left-aligned at the same starting position, and the multi-line subtitle is a natural wrap of a long phrase — no issues found.", "The line '(A Delaware Limited Partnership)' appears in the plain extracted text above the heading but is not captured in the positional metadata, so its alignment relative to the other heading lines cannot be fully verified from the available data."]
+________________________________________________________ test_rule_verdict[fund_02_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: The page is generally well-formatted and aligned, but the entity/fund name at the top of the header is replaced by a solid black rectangle, making it unreadable. All other elements — subheadings, financial line items, columns, and amounts — are properly aligned and visually complete. | The page layout is generally clean and well-structured, with one notable issue: the entity name at the top of the page is obscured by a solid black redaction bar, leaving the header visually incomplete. All other elements — headings, table columns, row labels, and numeric data — are properly aligned and fully readable. | The page layout is visually clean and consistent. All table columns, headings, and data rows are properly aligned. No text is cut off, misprinted, or misaligned. The redacted bars appear intentional. The page passes the visual layout integrity check. | The page layout is generally clean and well-aligned. The only notable issue is that the entity name at the top of the page is covered by a solid black redaction block, leaving the heading visually incomplete. All table columns, numbers, and other text elements appear properly aligned and formatted. | The page layout is generally clean and well-aligned. The only notable visual issue is a blacked-out (redacted) entity name at the top of the page, which makes the header visually incomplete. All other elements — headings, line items, numeric columns, and page number — are properly aligned and fully readable.
+E
+E   Findings: ["A solid black rectangle appears at the top of the header section where the entity or fund name is expected. The name is completely obscured and unreadable. The expected visual form would be a clearly legible entity name (e.g., the fund's full legal name) displayed as text or a logo in that space.", "The entity name at the top of the page is covered by a solid black rectangle (redaction bar), making the header visually incomplete. The expected form would show the full entity/fund name as readable text above the '(A Delaware Limited Partnership)' line.", 'No layout integrity issues detected. The table columns, headings, numerical data, and overall page structure are properly aligned and visually complete. The redacted bars appear intentional and do not constitute a layout defect.', "The entity name at the top of the page is replaced by a solid black rectangle (redaction block), making the heading visually incomplete. The expected form would show the full entity/fund name as readable text above '(A Delaware Limited Partnership)'."]
+__________________________________________________________ test_rule_verdict[fund_02_error/FMT-DOLLAR-SIGNS] ___________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'FMT-DOLLAR-SIGNS'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 2: pass | Page 1: fail | Page 4: pass | Page 3: pass | Page 5: pass
+E
+E   Findings: ["The first monetary row ('Professional fees') correctly shows dollar signs for both columns.", "The last monetary row ('NET DECREASE IN NET ASSETS RESULTING FROM OPERATIONS') correctly shows dollar signs for both columns.", "In the ASSETS section, the last monetary row ('Total assets 255,765,787') does not include a dollar sign. The last monetary row in each section should display a dollar sign, so it should read 'Total assets $ 255,765,787'.", "In the LIABILITIES section, the first monetary row ('Due to affiliate 10,334') does not include a dollar sign. The first monetary row in each section should display a dollar sign, so it should read 'Due to affiliate $ 10,334'."]
+_____________________________________________________________ test_rule_verdict[fund_02_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: fail | Page 2: pass | Page 4: pass | Page 3: fail | Page 5: fail
+E
+E   Findings: ["Inconsistent capitalization among total/subtotal lines: 'Total assets' and 'Total liabilities' are written in title case (only first letter capitalized), while 'TOTAL PARTNERS' CAPITAL' is written in all capitals. All three lines serve the same role as totals and should use the same capitalization style throughout.", "The section/category header 'Enterprise technology & services' uses sentence case (only first word capitalized), while peer headers 'Private' and 'United Kingdom' use Title Case. All category headers of the same level should use the same capitalization style.", "The total line 'Total Investments, at fair value' capitalizes 'Investments' mid-phrase, while comparable total lines such as 'Total enterprise technology & services' and 'Total private sector securities' do not capitalize common nouns. Capitalization of common nouns within total lines should be consistent.", "'CASH - Beginning of quarter' and 'CASH - End of quarter' use mixed capitalization (word 'CASH' is all-caps but 'Beginning of quarter' and 'End of quarter' are not), while the comparable summary line 'NET CHANGE IN CASH' is fully capitalized. All three lines appear to be at the same summary/total level and should use the same capitalization style — either all-caps or sentence case throughout."]
+________________________________________________________ test_rule_verdict[fund_02_error/FMT-DOUBLE-UNDERLINE] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Both final section totals on this page — NET ASSETS and TOTAL PARTNERS' CAPITAL — are confirmed to have double underlines based on authoritative vector data extracted from the PDF. The formatting meets the required standard. | The Statement of Operations on this page has one final section total — 'NET DECREASE IN NET ASSETS RESULTING FROM OPERATIONS' — which is confirmed by vector data to carry a double underline. The rule is satisfied. | The vector data authoritatively confirms that all final section totals on this Schedule of Portfolio Investments page are double-underlined at the correct positions. The rule is satisfied. | The Statement of Changes in Partners' Capital on this page has one final section total: 'BALANCE - September 30, 2025.' The vector data authoritatively confirms a double underline is present beneath this total row, satisfying the rule requirement. | The Statement of Cash Flows on this page has one final section total: 'CASH - End of quarter' at $235,845. This row does not appear to carry a double underline — only a single line is visible beneath it, and the vector data does not confirm a double underline at that position. The confirmed double underline (per vector data) is located under an intermediate subtotal row instead. The final total should display two distinct parallel underlines to comply with the rule.
+E
+E   Findings: ['NET ASSETS ($255,747,428) has a confirmed double underline at approximately 44% of page height, as verified by vector data. This is correct formatting for a final section total.', "TOTAL PARTNERS' CAPITAL ($255,747,428) has a confirmed double underline at approximately 54.6% of page height, as verified by vector data. This is correct formatting for a final section total.", "The final section total 'NET DECREASE IN NET ASSETS RESULTING FROM OPERATIONS' has a confirmed double underline beneath its figures, as verified by the vector data at page position ~0.396. This meets the requirement for a final section total to be double-underlined.", "The vector data confirms double underlines are present at y-positions 0.504, 0.545, 0.586, 0.627, and 0.668 on the page, corresponding to the final section total rows including 'Total United Kingdom', 'Total private sector securities', and 'Total Investments, at fair value'. All final section totals are properly double-underlined as required."]
+_____________________________________________________________ test_rule_verdict[fund_02_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: pass | Page 2: pass | Page 3: needs_review | Page 4: pass | Page 5: pass
+E
+E   Findings: ["The 'Percent of partners' capital' line displays the reference amount as ($255,747,428) in parentheses. If this represents the partners' capital balance being negative, it would be unusual for an asset/equity total. If it is simply a reference formatting convention, no issue exists — this should be confirmed to ensure it does not indicate a deficit partners' capital that conflicts with the positive investment values shown."]
+_____________________________________________________________ test_rule_verdict[fund_02_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_02_error' / Rule 'GRAM-SPELL': expected matched_pages [5], got [1, 2, 3, 4, 5]
+E   assert [1, 2, 3, 4, 5] == [5]
+E
+E     At index 0 diff: 1 != 5
+E     Left contains 4 more items, first extra item: 2
+E
+E     Full diff:
+E       [
+E     +     1,...
+E
+E     ...Full output truncated (5 lines hidden), use '-vv' to show
+_______________________________________________________________ test_rule_verdict[fund_02_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 3: not_applicable | Page 4: not_applicable | Page 1: fail
+E
+E   Findings: ["Capitalization inconsistency among total/subtotal line items: 'Total assets' and 'Total liabilities' appear in sentence case (only first letter capitalized), while 'NET ASSETS' and 'TOTAL PARTNERS' CAPITAL' appear in all caps. All totals on the same statement should use consistent capitalization.", "All arithmetic totals foot correctly: Total assets (255,529,942 + 235,845 = 255,765,787), Total liabilities (10,334 + 8,025 = 18,359), Net Assets (255,765,787 − 18,359 = 255,747,428), and Total Partners' Capital (255,779,942 − 32,514 = 255,747,428) are all accurate."]
+_______________________________________________________________ test_rule_verdict[fund_02_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      not_applicable
+E
+E   Summary: No pages matched this rule's section.
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_02_error/SOI-FOOTNOTE-XREF] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_02_error' / Rule 'SOI-FOOTNOTE-XREF'
+E     expected: pass
+E     got:      not_applicable
+E
+E   Summary: No pages matched this rule's section.
+E
+E   Findings: []
+____________________________________________________________ test_rule_verdict[fund_03_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: needs_review | Page 3: pass | Page 4: pass | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: ["The entity name line '(Delaware Limited Partnerships)' appears in the plain extracted text above the statement title but is not included in the positional metadata for the top heading lines, so its alignment relative to the other heading lines cannot be confirmed from the available data. A manual review is recommended to verify it is properly aligned with the statement title and date lines below it.", 'The two captured heading lines — the statement title and the date — are both left-aligned consistently with each other (both starting at the same left margin), and both appear complete and readable with no signs of truncation or corruption.', "The metadata reports the dominant alignment as 'left', and the first two heading lines ('Combined Unaudited Financial Statements' and 'Report Thereon') are classified as left-aligned, but the third heading line ('For the period ended June 30, 2025') is classified as 'center' aligned. All three lines actually start at approximately the same left margin (~108px), suggesting they should all share the same alignment classification. This inconsistency in how the lines are classified makes it difficult to confirm whether the heading block is consistently formatted, and the source document should be checked to confirm that all heading lines are intentionally left-aligned.", 'The alignment reference metadata contains a center_reference value of -101.5, which is a negative number and does not correspond to any meaningful horizontal position on a 612-point-wide page. This unusual value may indicate a metadata computation issue that affects the alignment classification of the heading lines, and the document layout should be verified directly.']
+________________________________________________________ test_rule_verdict[fund_03_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: The cover page is generally clean and well-structured. One minor alignment inconsistency is visible: the date line 'For the period ended June 30, 2025' appears to have a slightly larger left indent than the subtitle lines directly above it, which breaks the uniform left-margin alignment expected on a title page. | The page layout is generally clean and well-structured for the financial statement body. However, the header area contains a large black redacted block that obscures the entity name or logo, making the header visually incomplete. The rest of the statement — including section headings, line items, dollar signs, and totals — is properly aligned and formatted. | The page layout is generally clean and well-aligned. The main concern is the large black filled banner at the top of the page, which obscures what appears to be a logo or entity name. All other elements — headings, financial line items, numeric columns, and page number — are properly aligned and visually complete. The black banner should be reviewed to confirm it is an intentional redaction and not a rendering issue. | The page is generally well-formatted with consistent column alignment and clean headings. One layout issue is visible: the investment label 'Series A-2 Preferred Stock' appears below its corresponding financial data row rather than on the same line, making it harder to match the name to its numbers. All other rows appear properly structured. | The page is generally well-laid-out with clean text, proper alignment, and consistent number formatting. However, the top header area contains a large black rectangle that blocks what should be a company name or logo, making the header visually incomplete. This may be an intentional redaction or a rendering issue, but it represents a visual layout concern that warrants review. | The page layout is mostly clean and the financial table is well-formatted. However, the header area at the top of the page displays as a large solid black rectangle rather than a properly rendered logo or company name. This appears to be a rendering issue or redaction that prevents the header content from being visible. The rest of the page — headings, table columns, numbers, and page number — are properly aligned and complete.
+E
+E   Findings: ["The line 'For the period ended June 30, 2025' appears to have a slight extra left indent compared to the two lines above it ('Combined Unaudited Financial Statements' and 'Report Thereon'). These lines should share a consistent left margin for a clean, uniform layout.", 'The header area contains a large solid black rectangle that obscures what appears to be the entity name or logo. This makes the header visually incomplete — the expected appearance would be a clearly readable entity name or logo, not a blacked-out block.', "The title line begins with '(Delaware Limited Partnerships)' in parentheses, suggesting the primary entity name above it has been redacted or is missing, leaving the header context incomplete for a reader.", 'The top header area contains a large solid black filled/redacted banner. If this is intended to be a logo or entity name, it is not visible to the reader. The expected form would be a readable company name or logo. This may be an intentional redaction, but it warrants review to confirm it is not a rendering defect.']
+__________________________________________________________ test_rule_verdict[fund_03_error/FMT-DOLLAR-SIGNS] ___________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_03_error' / Rule 'FMT-DOLLAR-SIGNS': expected matched_pages [5], got [2, 3, 4, 5, 6]
+E   assert [2, 3, 4, 5, 6] == [5]
+E
+E     At index 0 diff: 2 != 5
+E     Left contains 4 more items, first extra item: 3
+E
+E     Full diff:
+E       [
+E     +     2,...
+E
+E     ...Full output truncated (5 lines hidden), use '-vv' to show
+_____________________________________________________________ test_rule_verdict[fund_03_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: fail | Page 3: pass | Page 2: fail | Page 5: pass | Page 4: fail | Page 6: pass
+E
+E   Findings: ["The cover page lines 'Combined Unaudited Financial Statements' and 'Report Thereon' both use title case, but 'For the period ended June 30, 2025' uses sentence case. Since all three appear to be the same class of cover page header/subtitle text at the same font size (11.98), the capitalization pattern should be consistent — either all title case or all sentence case.", "The line item 'Line of Credit payable' capitalizes 'Credit' inconsistently with other line items such as 'Accounts payable and accrued expenses', 'Capital contributions', and 'Accumulated earnings', which follow sentence case (only the first word capitalized). 'Line of Credit payable' should either be 'Line of credit payable' to match the sentence-case pattern, or all similar line items should adopt Title Case consistently.", "In the subtotal/summary lines, 'Net Investment loss' capitalizes the word 'Investment' in the middle of the phrase. All other subtotal lines (such as 'Net realized and unrealized gain (loss) on investments' and 'Net increase in partner's capital resulting from operations') only capitalize the first word. 'Investment' should be lowercase to match the consistent pattern: 'Net investment loss'.", "The title line appears in the extracted text as 'C ombined Statement of Operations - Unaudited' with an apparent space after the initial 'C'. If this reflects the actual document (not just an extraction artifact), the capitalization or formatting of the title is irregular compared to a cleanly formatted heading."]
+_____________________________________________________________ test_rule_verdict[fund_03_error/NUM-REFOOT] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'NUM-REFOOT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: pass | Page 3: pass | Page 4: pass | Page 5: fail | Page 6: pass
+E
+E   Findings: ['No mismatches found. The Cost column total of $96,622,940 equals the sum of all individual line items ($96,622,940).', 'No mismatches found. The Fair Value column total of $118,581,431 equals the sum of all individual line items ($118,581,431).', 'All expense line items (Management fee $940,636 + Professional fees $103,580 + Interest expense $80,181) correctly sum to Total expenses of $1,124,397.', 'Net Investment loss of ($1,124,397) correctly equals the negative of Total expenses given zero investment income, which is consistent.']
+____________________________________________________________ test_rule_verdict[fund_03_error/NUM-CROSSFOOT] ____________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_03_error' / Rule 'NUM-CROSSFOOT': expected matched_pages [5], got [2, 3, 4, 5, 6]
+E   assert [2, 3, 4, 5, 6] == [5]
+E
+E     At index 0 diff: 2 != 5
+E     Left contains 4 more items, first extra item: 3
+E
+E     Full diff:
+E       [
+E     +     2,...
+E
+E     ...Full output truncated (5 lines hidden), use '-vv' to show
+_____________________________________________________________ test_rule_verdict[fund_03_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_03_error' / Rule 'GRAM-SPELL': expected matched_pages [5, 7], got [1, 2, 3, 4, 5, 6]
+E   assert [1, 2, 3, 4, 5, 6] == [5, 7]
+E
+E     At index 0 diff: 1 != 5
+E     Left contains 4 more items, first extra item: 3
+E
+E     Full diff:
+E       [
+E     +     1,...
+E
+E     ...Full output truncated (9 lines hidden), use '-vv' to show
+_________________________________________________________ test_rule_verdict[fund_03_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: not_applicable
+E     got:      pass
+E
+E   Summary: Page 3: not_applicable | Page 1: pass
+E
+E   Findings: ["The cover page uses 'For the period ended June 30, 2025' where the accepted phrasing is 'For the Period Ended {date}' — the words 'period' and 'ended' are lowercase rather than title case. If the rule requires exact capitalization, this would be a fail; if case-insensitive, this passes."]
+___________________________________________________________ test_rule_verdict[fund_03_error/CVR-DATE-CHECK] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'CVR-DATE-CHECK'
+E     expected: not_applicable
+E     got:      pass
+E
+E   Summary: Page 1: pass | Page 3: not_applicable
+E
+E   Findings: ["The cover page clearly states 'For the period ended June 30, 2025,' which is a valid calendar date. No issues found."]
+_______________________________________________________________ test_rule_verdict[fund_03_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 3: fail
+E
+E   Findings: ["The security name 'Series A-2 Preferred Stock' for the last investment entry (company 4, Footwear) appears on the line AFTER the data row (shares, cost, fair value, % capital), whereas for all other investments the security name appears before or alongside the data. The security label should appear on the same line or above the corresponding data row, consistent with all other entries.", "Two different companies are labeled with industry sector '2)' (Food and Beverage), which creates an ambiguous or duplicate footnote reference. Each company should have a unique sector reference number."]
+_______________________________________________________________ test_rule_verdict[fund_03_error/OPS-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_03_error' / Rule 'OPS-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 3: not_applicable | Page 4: fail
+E
+E   Findings: ["The label 'Net Investment loss' capitalizes 'Investment' inconsistently — other subtotal labels on the same statement use sentence case (e.g., 'Net realized and unrealized gain (loss) on investments', 'Total expenses'). It should read 'Net investment loss' to match the consistent sentence-case style used elsewhere."]
+____________________________________________________________ test_rule_verdict[fund_04_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'FMT-HEADINGS'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: pass | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 7: pass
+E
+E   Findings: ["The main title line 'Consolidated Financial Statements' appears in the page text above 'June 30, 2025' but has no positional metadata available, so its alignment relative to the other heading lines (June 30, 2025 and Unaudited, which are left-aligned) cannot be confirmed from the extracted data alone.", "All other heading lines with positional data — 'June 30, 2025', '(Unaudited)', and 'Table of Contents' — are consistently left-aligned, and the three table-of-contents entries are also consistently aligned with each other. No truncation or corruption is visible in any of these lines.", "The main title line 'Consolidated Statement of Assets and Liabilities' does not appear in the captured positional metadata, so its alignment relative to the subtitle lines 'as of June 30, 2025' and '(Unaudited)' cannot be confirmed. A manual check is recommended to verify that the title is consistently aligned with its subtitle lines.", "The title line 'Consolidated Statement of Operations' is present and readable in the plain text but is not included in the extracted positional metadata (top_lines), so its alignment relative to the subtitle lines below it cannot be fully confirmed. A manual review of the original PDF is recommended to verify it is consistently aligned with the subtitle lines."]
+________________________________________________________ test_rule_verdict[fund_04_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: The cover page layout is visually clean and consistent. All visible text elements are complete and properly aligned. The dark horizontal rule, heading, and supporting text are well-rendered. The black rectangular blocks appear to be intentional redactions rather than rendering errors. No cut-off text, misalignment, or deformation is observed. | Page 2 appears to be almost entirely blank, with no visible content such as text, headings, tables, or logos. This may be an intentional blank page, or it could indicate a rendering problem. A faint mark at the bottom edge is not clearly identifiable. This page requires review to confirm whether it is meant to be blank or if content is missing. | The page layout is generally clean and well-aligned, with one distinct issue: the company logo or name in the upper-left corner is replaced by a solid black filled rectangle. This may be a rendering defect or an unintended redaction. All other elements — headings, table rows, dot leaders, numeric columns, and footer — appear properly aligned and visually complete. | The page layout is generally clean and well-structured. The Table of Contents entries are properly aligned with consistent formatting and correct page number placement. The only notable visual issue is a solid black rectangle in the top-left header area, which appears to be a redacted logo or company name. If this is intentional redaction, it is acceptable; if it is meant to display a logo or text, it should be corrected to show the actual content. | The page layout is largely clean and well-structured, with properly aligned financial statement rows, consistent dot leaders, and right-aligned numbers. However, the company logo or name in the top-left header is replaced by a solid black rectangle, making it visually incomplete. This is the one distinct layout integrity issue on this page. | The page layout is generally clean and well-structured, with properly aligned table columns and consistent formatting. However, there is one notable visual issue: a solid black rectangle in the upper-left corner appears to obscure a logo or company name, making that element visually incomplete. This may be an intentional redaction, but it is flagged as a layout anomaly for review.
+E
+E   Findings: ['No layout integrity issues detected. The cover page heading, subheadings, horizontal rule, and text elements are all visually complete, properly aligned, and free of cut-off words or deformation. The black blocks appear to be intentional redactions of logos/identifiers rather than rendering defects.', 'The page appears almost entirely blank with no visible text, headings, tables, or other content. If this page is intended to contain content, it has not rendered correctly and should be investigated. An expected page would show readable text and/or structured layout elements.', 'There is a faint, barely visible element at the very bottom of the page that cannot be clearly identified. If this is content, it may be cut off or improperly positioned. Expected content should be fully visible and legible within the page margins.', 'A solid black filled rectangle appears in the upper-left area where the company logo or name is expected. Instead of a visible logo or firm name, the area is completely blacked out, which may indicate a rendering failure or an unintended redaction. The expected appearance would be a clearly visible company logo or name.']
+________________________________________________________ test_rule_verdict[fund_04_error/FMT-DOUBLE-UNDERLINE] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: This is a cover page with no financial totals or section data. The double-underline rule does not apply to this page. | This page contains no visible financial content, sections, or totals. The double underline rule does not apply here as there are no final section totals to evaluate. | This page is a Table of Contents with no financial section totals. The double underline rule does not apply to this page. | The page contains one final section total — 'Net income' of 18,752 on the Consolidated Statement of Operations. The vector data authoritatively confirms a double underline at the position of this row (approximately 45% from the top of the page). The rule is satisfied. | The page shows a Consolidated Statement of Assets and Liabilities. The only true final section total — 'Net assets' of 291,036 — is confirmed by vector data to have a double underline at page position 0.376. The other totals (Total assets and Total liabilities) are intermediate subtotals that feed into Net assets and are not required to be double-underlined. The rule is satisfied. | The vector data confirms a double underline only at the position of the Members' committed capital row (an intermediate figure), but does not confirm a double underline at the final section total row showing $291,036. Since the vector data is treated as authoritative and does not list the final total row as double-underlined, this requires review to determine whether the final total is properly formatted.
+E
+E   Findings: ['The page appears to be blank with no visible financial content, section headings, or total rows. There are no final section totals present that would require double underlining.', 'This page is a Table of Contents and contains no financial section totals. The double underline rule is not applicable to this page content.', "The final section total 'Net income' of 18,752 has a confirmed double underline, as verified by the vector data indicating two parallel lines at approximately 45% from the top of the page.", "The 'Net assets' figure of 291,036 is the final and most comprehensive total on this statement page, and the vector data confirms it has a double underline at page position 0.376 — this is correct and compliant."]
+_____________________________________________________________ test_rule_verdict[fund_04_error/NUM-REFOOT] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'NUM-REFOOT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ['No numeric data is present on this page — it appears to be a cover/title page only. There are no column totals to verify.', 'No tabular or numeric data was extracted from this page, so column totals cannot be recalculated or verified.', 'No numeric tables with column totals are present on this page. The page contains only a table of contents with page number references, so there is nothing to recalculate.', 'All column totals and cross-foot calculations match exactly. No discrepancies were found.']
+_____________________________________________________________ test_rule_verdict[fund_04_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_04_error' / Rule 'GRAM-SPELL': expected matched_pages [3, 8], got [1, 3, 4, 5, 6, 7, 8, 9, 10]
+E   assert [1, 3, 4, 5, 6, 7, ...] == [3, 8]
+E
+E     At index 0 diff: 1 != 3
+E     Left contains 7 more items, first extra item: 4
+E
+E     Full diff:
+E       [
+E     +     1,...
+E
+E     ...Full output truncated (9 lines hidden), use '-vv' to show
+_________________________________________________________ test_rule_verdict[fund_04_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_04_error' / Rule 'CVR-PERIOD-PHRASING': expected matched_pages [1], got [1, 3]
+E   assert [1, 3] == [1]
+E
+E     Left contains one more item: 3
+E
+E     Full diff:
+E       [
+E           1,
+E     +     3,
+E       ]
+___________________________________________________________ test_rule_verdict[fund_04_error/CVR-DATE-CHECK] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'CVR-DATE-CHECK'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: pass | Page 2: needs_review | Page 3: pass | Page 8: not_applicable | Page 10: not_applicable
+E
+E   Findings: ['No text or table content was extracted from this page, so it is not possible to determine whether a Period End date is present or valid.', "Period End date 'June 30, 2025' is present on the cover page and is a valid calendar date. June has 30 days, so this date is real and correct."]
+_______________________________________________________________ test_rule_verdict[fund_04_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 6: not_applicable | Page 8: not_applicable | Page 9: not_applicable
+E
+E   Findings: ['No content was extracted from this page, so it is not possible to determine whether this is a Balance Sheet or to evaluate any formatting criteria.']
+_______________________________________________________ test_rule_verdict[fund_04_error/ARITH-ASSETS=LIABS+CAP] ________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: not_applicable | Page 3: not_applicable | Page 6: not_applicable | Page 4: pass | Page 8: not_applicable
+E
+E   Findings: ['No text or table data was extracted from this page, so the Balance Sheet equation cannot be evaluated.', 'No violations found. Total Assets (291,666) equals Total Liabilities (630) plus Net Assets (291,036), which sums to 291,666. The balance sheet equation holds exactly.']
+_______________________________________________________________ test_rule_verdict[fund_04_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 8: not_applicable | Page 10: not_applicable
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_04_error/OPS-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'OPS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 7: not_applicable | Page 8: not_applicable | Page 10: not_applicable
+E
+E   Findings: ['All expense line items (Organizational costs $400, Professional fees $157, Management fees $73) sum to $630, matching the labeled Total expenses of $630 — total foots correctly.', 'Net income of $18,752 equals Net investment loss of ($630) plus Net unrealized appreciation of $19,382 ($19,382 - $630 = $18,752) — total foots correctly.']
+_____________________________________________________________ test_rule_verdict[fund_04_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 8: not_applicable | Page 10: not_applicable | Page 7: pass
+E
+E   Findings: ['No text or table content was extracted from this page, so the rule cannot be evaluated.']
+_________________________________________________________ test_rule_verdict[fund_04_error/SCF-RECONCILE-CASH] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_04_error' / Rule 'SCF-RECONCILE-CASH'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 8: not_applicable | Page 7: pass | Page 10: not_applicable
+E
+E   Findings: ['No content was extracted from this page — neither plain text nor tables are available. It is not possible to determine whether this is a Statement of Cash Flows or to verify any cash reconciliation.', 'The cash reconciliation equation holds exactly: beginning cash ($0) + net change in cash ($927 thousand) = ending cash ($927 thousand). No discrepancy found.']
+____________________________________________________________ test_rule_verdict[fund_05_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: pass | Page 4: needs_review | Page 5: pass
+E
+E   Findings: ["The line '(A Delaware Limited Partnership)' appears in the heading area above 'STATEMENT OF NET ASSETS' and 'AS OF SEPTEMBER 30, 2025', but it is not included in the positional metadata. Its alignment relative to the other heading lines cannot be confirmed from the available data.", "The subtitle line '(A Delaware Limited Partnership)' appears in the extracted text above the main headings but is not included in the positional metadata, so its alignment relative to 'STATEMENT OF OPERATIONS' and 'FOR THE PERIOD ENDED SEPTEMBER 30, 2025' cannot be confirmed from the available data. A manual check is recommended to verify it aligns consistently with those lines.", "No content-integrity issues were found. All heading lines appear complete and readable, with 'SCHEDULE OF PORTFOLIO INVESTMENTS' and 'AS OF SEPTEMBER 30, 2025' both consistently left-aligned at the same margin. The '(A Delaware Limited Partnership)' line also appears intact in the plain text, though positional metadata for it is not available.", "The heading line '(A Delaware Limited Partnership)' is visible in the plain extracted text but is not captured in the positional metadata (top_lines). Its alignment relative to the other heading lines cannot be confirmed from the available data. A manual check of the original PDF should confirm this line is present and aligned with the rest of the heading."]
+________________________________________________________ test_rule_verdict[fund_05_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: The page layout is generally clean and well-aligned, but there is one notable issue: a large black rectangle at the top of the page obscures what should be the entity name or logo. All other elements — headings, table columns, numbers, and alignment — appear visually correct and complete. | The page layout is generally clean and well-structured, with properly aligned headings, labels, and numeric columns. However, the entity name at the top of the document is obscured by a solid black redaction bar, leaving the header visually incomplete. All other elements — text, numbers, spacing, and alignment — appear correct and consistent. | The page is generally well-structured with properly aligned columns, headers, and numerical data. However, two solid black redaction bars are present: one covering the fund name in the page header and one covering a company name in the investment table. These make those elements visually incomplete. All other layout elements — column alignment, spacing, text rendering, and page numbering — appear clean and consistent. | The page layout is generally clean and well-structured, with properly aligned headings, table columns, and financial data. The one notable issue is a solid black rectangle at the top of the page that obscures the entity/fund name. This may be an intentional redaction, but it results in an incomplete header. All other elements — column headers, row labels, figures, and the page number — appear properly aligned and visually complete. | The page layout is generally clean and well-structured, with one notable issue: the entity name at the top of the page is obscured by a solid black redaction rectangle. All other elements — headings, line items, numeric columns, indentation, underlines, and page number — appear properly aligned and visually complete.
+E
+E   Findings: ['A large black filled rectangle appears at the top of the page where the entity name or logo is expected. This element is visually incomplete — the underlying text or logo is fully obscured, and the expected content (a readable entity name or logo) should be visible in its place.', "The entity name at the top of the page is covered by a solid black redaction bar, making the header visually incomplete. The expected form would show the full name of the fund or entity in readable text above '(A Delaware Limited Partnership)'.", "The entity/fund name in the page header is covered by a solid black redaction bar, making the heading visually incomplete. The expected form would show the full fund name above '(A Delaware Limited Partnership)'.", "A company name row within the 'Enterprise technology & services' section of the table is covered by a solid black redaction bar, leaving that row's label blank. The expected form would show the investee company name in the 'Company Name' column."]
+_____________________________________________________________ test_rule_verdict[fund_05_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: fail | Page 2: fail | Page 3: fail | Page 4: fail | Page 5: fail
+E
+E   Findings: ["Inconsistent capitalization among total/subtotal lines: 'Total assets' and 'Total liabilities' use Title Case (e.g., 'Total assets'), but 'TOTAL PARTNERS' CAPITAL' uses ALL CAPS. All three are the same type of line (totals/subtotals) and should use the same capitalization style throughout.", "The line item 'Total expenses' uses mixed/sentence case capitalization, while other summary and section-level lines on the same page ('EXPENSES:', 'NET INVESTMENT LOSS', 'NET DECREASE IN NET ASSETS RESULTING FROM OPERATIONS') are all in ALL CAPS. For consistency, 'Total expenses' should be rendered as 'TOTAL EXPENSES' to match the capitalization pattern used for all other section headers and summary lines.", "Among the 'Total' lines, capitalization is inconsistent: 'Total Investments, at fair value' capitalizes 'Investments', while parallel total lines such as 'Total private sector securities' and 'Total payments & transaction processing' use all lowercase for the descriptor after 'Total'. All total lines should follow the same capitalization pattern (either all use Title Case or all use lowercase for the descriptor).", "The line items 'BALANCE - July 1, 2025' and 'BALANCE - September 30, 2025' use partial all-caps for the word 'BALANCE', while the line item 'Net investment loss' uses sentence case (only the first letter capitalized). All three are body line items in the same financial statement, so they should follow a consistent capitalization pattern — either all use all-caps labels or all use sentence/title case."]
+_____________________________________________________________ test_rule_verdict[fund_05_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'GRAM-SPELL'
+E     expected: fail
+E     got:      pass
+E
+E   Summary: Page 1: pass | Page 2: pass | Page 4: pass | Page 3: pass | Page 5: pass
+E
+E   Findings: ["The subtotal label 'Total payments & transaction processing' does not match the section header directly above it, which reads 'Enterprise technology & services'. While this may be a content or labeling error rather than a strict spelling/grammar issue, it is worth flagging as an inconsistency. The subtotal label should match or clearly correspond to its section header."]
+_______________________________________________________________ test_rule_verdict[fund_05_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 3: not_applicable | Page 4: not_applicable | Page 1: fail
+E
+E   Findings: ["Capitalization is inconsistent among total/subtotal line items: 'Total assets' and 'Total liabilities' appear in mixed case (only the first letter capitalized), while 'TOTAL PARTNERS' CAPITAL' appears in ALL CAPS. All subtotal and total labels should follow the same capitalization style throughout the statement.", "All arithmetic totals foot correctly: Total assets ($301,591,494), Total liabilities ($21,207 = $10,700 + $10,507), Net Assets ($301,570,287 = $301,591,494 - $21,207), and Total Partners' Capital ($301,570,287 = $301,612,745 - $42,458) all verify."]
+_______________________________________________________________ test_rule_verdict[fund_05_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'SOI-FMT'
+E     expected: fail
+E     got:      not_applicable
+E
+E   Summary: No pages matched this rule's section.
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_05_error/SOI-FOOTNOTE-XREF] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_05_error' / Rule 'SOI-FOOTNOTE-XREF'
+E     expected: pass
+E     got:      not_applicable
+E
+E   Summary: No pages matched this rule's section.
+E
+E   Findings: []
+____________________________________________________________ test_rule_verdict[fund_06_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'FMT-HEADINGS'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: pass | Page 4: pass | Page 3: needs_review | Page 5: pass | Page 6: pass
+E
+E   Findings: ["The subtitle line '(a Delaware Limited Partnership)' does not appear in the positional metadata (top_lines), so its alignment relative to the other heading lines cannot be confirmed from available data. All other heading lines appear left-aligned and complete.", "No heading alignment or integrity issues were found on this page. The subtitle '(a Delaware Limited Partnership)' is centered, the 'Page' column header is right-aligned, and the table of contents entries are consistently left-aligned — all of which are appropriate for their respective roles on this page.", "The heading begins with '(a Delaware Limited Partnership)' but no entity or fund name appears above it on this page. It is unclear whether the fund name was intentionally omitted (as a continuation page) or is missing. If this page is intended to be a standalone financial statement page, the fund name should appear above the partnership designation line.", "All three heading lines — '(a Delaware Limited Partnership)', 'Statement of Assets, Liabilities, and Partners' Capital (Unaudited)', and 'September 30, 2025' — are consistently centered, which is correct and expected."]
+________________________________________________________ test_rule_verdict[fund_06_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_06_error' / Rule 'FMT-VISUAL-INTEGRITY': expected matched_pages [5, 6], got [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+E   assert [1, 2, 3, 4, 5, 6, ...] == [5, 6]
+E
+E     At index 0 diff: 1 != 5
+E     Left contains 11 more items, first extra item: 3
+E
+E     Full diff:
+E       [
+E     +     1,...
+E
+E     ...Full output truncated (13 lines hidden), use '-vv' to show
+_____________________________________________________________ test_rule_verdict[fund_06_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: pass | Page 3: pass | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ["The entity descriptor '(a Delaware Limited Partnership)' begins with a lowercase 'a', while the heading 'Financial Statements' uses title case. If these are part of the same header block, the 'a' should either be capitalized ('A Delaware Limited Partnership') or the styling should be intentionally consistent with a defined convention.", "The heading 'Financial Statements' has a font size of approximately 12.46, while the date line 'As of and for the nine months ended September 30, 2025 (Unaudited)' has a font size of approximately 11.02. This size difference is a normal heading hierarchy and not a violation, but should be confirmed as intentional.", 'No capitalization inconsistencies found — all section headers, line items, subtotals, and summary lines consistently use Title Case throughout the page.', 'No font size inconsistencies found within the same class of content — section headers and line items all share the same font size (~11.45), the page title and date subtitle share ~11.02, and the entity descriptor is appropriately smaller at ~9.94.']
+_____________________________________________________________ test_rule_verdict[fund_06_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 3: pass | Page 5: pass | Page 4: fail | Page 7: pass
+E
+E   Findings: ['Expenses (Professional Fees: $40,876; Other Expenses: $956; Total Expenses: $41,832) are all shown as positive numbers. Per policy, expenses should carry a negative sign (parentheses or minus). They should be presented as ($40,876), ($956), and ($41,832), or with minus signs.', "The 'Net Investment Loss' is correctly shown as (41,832) with parentheses, indicating negative — but this is inconsistent in presentation style with the expense lines above it, which feed into this total but are shown as positive. If expenses were shown as negatives, the net loss would be derived differently, creating a potential presentation inconsistency.", "The 'Realized Gain on Investment' is shown as $(192,775) (negative/parentheses), while 'Change in Unrealized Appreciation on Investment' is shown as $192,775 (positive) in the same adjustments section. Both relate to investment gains/appreciation, yet they carry opposite signs within the same block of adjustments. If both represent gains that need to be removed from operating cash flows under the indirect method, they should carry the same sign (both negative). The positive sign on the unrealized appreciation line appears inconsistent with the negative sign on the realized gain line."]
+_____________________________________________________________ test_rule_verdict[fund_06_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'GRAM-SPELL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: pass | Page 3: pass | Page 2: needs_review | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ["'Schedule of Investment' appears to use the singular form, whereas standard financial document conventions use the plural 'Schedule of Investments'. This should be reviewed to confirm whether it is intentional (e.g., the fund holds only one investment) or a typographical error.", "The page title reads 'Schedule of Investment' but should read 'Schedule of Investments' (plural), as a schedule listing investment holdings standardly uses the plural form. The singular 'Investment' is a grammar/number agreement error.", 'In section 1 (Organization and Purpose), the sentence \'The financial statements herein consist of (the "CIV Fund").\' is grammatically incomplete. The phrase \'consist of\' requires an object describing what the statements consist of, but only a parenthetical nickname is provided. The sentence likely should include the full legal name of the entity before introducing the shorthand label, for example: \'The financial statements herein consist of [Full Legal Name of Fund] (the "CIV Fund").\'', "The phrase 'sustained upon examination processes' appears to contain a superfluous or incorrect word. The standard tax accounting language is 'more likely than not to be sustained upon examination' — the word 'processes' is not standard here and makes the sentence grammatically awkward. It should read 'sustained upon examination' without 'processes'."]
+_________________________________________________________ test_rule_verdict[fund_06_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: not_applicable
+E     got:      fail
+E
+E   Summary: Page 1: fail | Page 12: not_applicable
+E
+E   Findings: ["The cover phrasing 'As of and for the nine months ended September 30, 2025 (Unaudited)' does not match any of the four accepted phrasings. The closest accepted form would be 'As of and for the Period Ended September 30, 2025', which does not include the qualifier 'nine months' or use lowercase 'ended' without 'Period'."]
+___________________________________________________________ test_rule_verdict[fund_06_error/CVR-DATE-CHECK] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'CVR-DATE-CHECK'
+E     expected: not_applicable
+E     got:      pass
+E
+E   Summary: Page 1: pass | Page 12: not_applicable
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_06_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_06_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 12: not_applicable | Page 6: fail
+E
+E   Findings: ["'Change in Unrealized Appreciation on Investment' is shown as a positive $192,775, but unrealized appreciation is a non-cash gain that should be subtracted (shown as negative/in parentheses) when reconciling net income to operating cash flows under the indirect method. A positive sign here implies it is being added back, which is the treatment for a non-cash loss or depreciation, not appreciation. This appears to be a sign inversion — it should be $(192,775)."]
+____________________________________________________________ test_rule_verdict[fund_07_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: pass | Page 3: needs_review | Page 4: pass | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: ["All heading lines ('Financial Statements', 'June 30, 2025', and '(Unaudited)') share the same left edge, confirming consistent left-alignment across the heading area — no alignment issues detected.", "The second extracted line combines 'June 30, 2025' and 'Confidential' into a single text run spanning nearly the full page width. This appears to be a PDF extraction artifact where a left-aligned date and a right-aligned 'Confidential' label on the same row were merged. This does not indicate a heading integrity problem in the document itself.", "The main heading line 'Financial Statements' (appearing near the top of the page, above 'June 30, 2025') is not included in the extracted positional metadata, so its alignment relative to the other heading lines cannot be confirmed from available data.", "All other heading lines ('June 30, 2025', '(Unaudited)', 'Table of Contents') appear left-aligned and consistent with each other based on positional metadata."]
+_____________________________________________________________ test_rule_verdict[fund_07_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 2: not_applicable | Page 1: pass | Page 3: pass | Page 4: pass | Page 5: fail | Page 6: pass
+E
+E   Findings: ["'Interest Expense' is capitalized in title case (both words capitalized), while all other expense line items use sentence case (only the first word capitalized). For example, 'Investment management fees', 'Professional fees', 'Credit facility fees', 'Transaction costs', and 'Organizational costs' all use sentence case. 'Interest Expense' should be changed to 'Interest expense' to match the pattern of the other line items.", "No font or capitalization inconsistencies were detected. The section header 'Note 1 – Organization:' uses a larger font size (~13.5pt) appropriate for a header, while all body text consistently uses ~10pt font. Capitalization is consistent: title case for headers, sentence case for body paragraphs."]
+____________________________________________________________ test_rule_verdict[fund_07_error/NUM-CROSSFOOT] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'NUM-CROSSFOOT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: not_applicable | Page 3: not_applicable | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ['No numeric data was extracted from this page, so no cross-foot relationships can be verified. This may indicate the page contains only images, charts, or non-extractable content.', 'No numeric data is present on this page. The page appears to be a cover/title page with no financial figures, subtotals, or totals to cross-foot.', 'Total assets ($178,217) correctly equals the sum of Investment in limited partnership ($178,213) and Cash and cash equivalents ($4). No discrepancy found.', 'Total liabilities ($4) correctly equals the single component, Due to affiliate ($4). No discrepancy found.']
+_____________________________________________________________ test_rule_verdict[fund_07_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 3: not_applicable | Page 4: pass | Page 6: pass | Page 5: needs_review
+E
+E   Findings: ['All expense line items (Investment management fees, Professional fees, Other, Credit facility fees, Transaction costs, Organizational costs, Interest Expense) are shown as positive numbers without any negative sign or parentheses. While this is a common convention in a dedicated expenses section, the policy states losses/expenses should carry a negative sign (parentheses or minus). If the document policy requires expenses to be shown as negative, these should appear in parentheses or with a minus sign.', 'No mixed signage detected within the same class of items on this Statement of Cash Flows.', 'Negative values (parentheses) are used appropriately for cash outflows such as contributions to the fund, income distributions, and the net unrealized change.']
+_____________________________________________________________ test_rule_verdict[fund_07_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_07_error' / Rule 'GRAM-SPELL': expected matched_pages [3], got [1, 3, 4, 5, 6, 7, 8, 9]
+E   assert [1, 3, 4, 5, 6, 7, ...] == [3]
+E
+E     At index 0 diff: 1 != 3
+E     Left contains 7 more items, first extra item: 3
+E
+E     Full diff:
+E       [
+E     +     1,...
+E
+E     ...Full output truncated (8 lines hidden), use '-vv' to show
+_________________________________________________________ test_rule_verdict[fund_07_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: not_applicable
+E     got:      fail
+E
+E   Summary: Page 2: not_applicable | Page 1: fail | Page 8: not_applicable | Page 3: fail | Page 9: not_applicable
+E
+E   Findings: ["The date 'June 30, 2025' appears on the cover page without any required introductory phrasing. It should be preceded by one of the accepted phrasings, such as 'As of June 30, 2025' or 'For the Period Ended June 30, 2025'.", "The cover page shows the date as 'June 30, 2025' without any of the required phrasing. It should use one of the accepted forms such as 'As of June 30, 2025', 'For the Period Ended June 30, 2025', 'As of and for the Period Ended June 30, 2025', or 'For the Year Ended June 30, 2025'."]
+___________________________________________________________ test_rule_verdict[fund_07_error/CVR-DATE-CHECK] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'CVR-DATE-CHECK'
+E     expected: not_applicable
+E     got:      needs_review
+E
+E   Summary: Page 1: pass | Page 2: needs_review | Page 3: pass | Page 8: not_applicable | Page 9: not_applicable
+E
+E   Findings: ['No text or tables were extracted from this page, so it cannot be confirmed as a cover page and no Period End date can be found or validated.']
+_______________________________________________________________ test_rule_verdict[fund_07_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 5: not_applicable | Page 6: not_applicable | Page 7: not_applicable
+E
+E   Findings: ['No content was extracted from this page, so it is not possible to verify whether this is a Balance Sheet or to check capitalization, totals, or indentation.']
+_______________________________________________________ test_rule_verdict[fund_07_error/ARITH-ASSETS=LIABS+CAP] ________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 5: not_applicable | Page 4: pass | Page 6: not_applicable
+E
+E   Findings: ['No text or table data was extracted from this page, so the balance sheet equation cannot be evaluated.', 'Total Assets (178,217) equals Total Liabilities (4) plus Net Assets (178,213), confirming the balance sheet equation holds with no discrepancy.']
+__________________________________________________________ test_rule_verdict[fund_07_error/SOI-FOOTNOTE-XREF] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'SOI-FOOTNOTE-XREF'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 8: not_applicable | Page 9: not_applicable
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_07_error/OPS-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'OPS-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 7: not_applicable | Page 8: not_applicable | Page 9: not_applicable
+E
+E   Findings: ['No content was extracted from this page, so it is impossible to determine whether this is a Statement of Operations or to verify totals, rounding, or formatting consistency.', "'Interest Expense' uses title case (capital 'E' on 'Expense'), which is inconsistent with other expense line items that use sentence case (e.g., 'Investment management fees', 'Professional fees', 'Credit facility fees', 'Transaction costs', 'Organizational costs'). It should read 'Interest expense' to match the capitalization style of the other line items.", "All totals foot correctly: Total income (1), Total expenses (1,243), Net investment loss (1,242), Net income allocated (1,403), and Net increase in partners' capital (1,971) all mathematically reconcile."]
+_____________________________________________________________ test_rule_verdict[fund_07_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 8: not_applicable | Page 9: not_applicable | Page 7: pass
+E
+E   Findings: ['No text or table content was extracted from this page, so it is not possible to determine whether this page contains a Statement of Cash Flows or to evaluate cash flow sign conventions.']
+_________________________________________________________ test_rule_verdict[fund_07_error/SCF-RECONCILE-CASH] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_07_error' / Rule 'SCF-RECONCILE-CASH'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: needs_review | Page 3: not_applicable | Page 7: pass | Page 8: not_applicable | Page 9: not_applicable
+E
+E   Findings: ['No content was extracted from this page, so it cannot be determined whether a Statement of Cash Flows is present or whether the cash reconciliation equation holds.', 'The cash reconciliation equation holds exactly: beginning cash of $0 plus net change in cash of $4 thousand equals ending cash of $4 thousand.']
+____________________________________________________________ test_rule_verdict[fund_08_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: fail | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 6: pass | Page 5: pass
+E
+E   Findings: ["The heading begins with the word 'and' on its own line, which is incomplete — 'and' is a conjunction that should connect two named entities. The text that should appear before 'and' (likely a fund or partnership name) is missing from the extracted content, suggesting the first line of the heading has been cut off or was not extracted. The expected form would be something like '[Entity Name A] and [Entity Name B]' with '(a Delaware limited partnership)' following as a descriptor.", "The line '(a Delaware limited partnership)' appears immediately after the isolated 'and', which reinforces that these two lines together are the tail end of a multi-entity heading where the opening entity name is absent. A complete heading would show the full names of both parties joined by 'and' before this descriptor.", "The heading area begins with the word 'and' as the first line, without any preceding entity name on this page. This appears to be the continuation of a multi-entity fund name that started on the previous page. While this may be intentional page-break formatting, the heading on this page reads as incomplete on its own — it is unclear without the prior page what name 'and' is joining. This warrants review to confirm the heading is not unintentionally split or truncated.", "All other heading lines — '(a Delaware limited partnership)', 'Nine Months Ended September 30, 2025', and 'Table of Contents' — are consistently centered and appear complete and correctly formatted. No alignment or integrity issues are found in these lines."]
+________________________________________________________ test_rule_verdict[fund_08_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: The page is largely clean and well-formatted, but the header contains two solid black bars that obscure the entity names. These appear to be redacted or improperly rendered text fields. All other elements — subheadings, the Table of Contents entries, and page numbers — are properly aligned and visually complete. | The cover page title block contains redacted (blacked-out) entity names that make the heading visually incomplete and fragmented. The two-line title arrangement — with two black bars and the word 'and' on the first line, and a single black bar on the second — appears unbalanced and not consistently centered. The subtitle and document description text below are clean and properly centered. The primary issues are the visual incompleteness and asymmetric alignment of the redacted title heading. | The page layout is generally clean and well-aligned. The only notable visual issue is the redaction of entity names in the header (shown as black bars), which makes the document header incomplete. All financial line items, figures, column alignment, totals, and underlines appear properly formatted and visually consistent. | The page is generally well-laid-out with properly aligned financial data. One visual concern is noted in the header: the two redacted (blacked-out) entity name blocks flanking the word 'and' are unequal in width, creating an asymmetric appearance. All other elements — headings, line items, numbers, and totals — appear properly aligned and complete. | The page layout is generally clean and well-structured. The table columns, row labels, and numeric values are properly aligned and complete. The only notable visual issue is the presence of two large black redacted boxes in the header that obscure the entity names. This appears to be an intentional redaction rather than a layout defect, but it does result in an incomplete document header. | The page is generally well-structured with consistent alignment of labels and numbers. Two visual concerns are noted: the header contains two redacted bars of unequal size flanking 'and,' creating an asymmetric appearance, and a mid-sentence redacted block in the Supplemental Disclosure section interrupts the text flow. These appear to be intentional privacy redactions rather than formatting errors, but they do affect visual completeness. The financial data layout, indentation, underlines, and number alignment are all clean and consistent.
+E
+E   Findings: ["The header area contains two large solid black rectangles flanking the word 'and', which appear to be redacted or improperly rendered entity names. These should display readable text identifying the fund names, not opaque black bars. This may indicate a redaction or rendering issue that obscures important identifying information.", 'The rest of the page layout — headings, TOC entries, and page numbers — appears visually clean, properly aligned, and complete with no other visible issues.', "The first heading line contains two black redacted bars with the word 'and' between them, but the overall arrangement appears left-of-center and visually unbalanced rather than centered on the page. A properly formatted title heading should be symmetrically centered.", 'The second heading line contains a single black redacted bar that does not visually align or correspond symmetrically with the two-part first line above it, creating a fragmented and inconsistent title block. The two lines together should form a cohesive, centered heading.']
+_____________________________________________________________ test_rule_verdict[fund_08_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: pass | Page 2: pass | Page 3: pass | Page 4: pass | Page 5: pass | Page 6: fail
+E
+E   Findings: ['No font inconsistencies detected — the title/header lines all use font size 10.54 and the financial statement body lines all use font size 8.74, with each class internally consistent.', "Capitalization is consistent across all content classes: section headers ('Assets', 'Partners' capital'), line items ('Investments at fair value...', 'Cash and cash equivalents', 'Due from partners', 'Other assets', 'Partners' capital'), and totals ('Total assets', 'Total partners' capital') all follow sentence-case patterns uniformly.", "Inconsistent capitalization among summary/total lines: 'Net cash provided by operating activities' and 'Net cash used in financing activities' use sentence case (only first word capitalized), but 'Net Decrease in Cash and Cash Equivalents' uses Title Case (most words capitalized). All three are net summary lines at the same structural level and should follow the same capitalization pattern.", "'Cash and Cash Equivalents:' is formatted in Title Case as a sub-category header, which is consistent with section-level headers but differs from sub-labels like 'Changes in assets and liabilities:' (sentence case). These two sub-headers at similar levels use different capitalization patterns."]
+________________________________________________________ test_rule_verdict[fund_08_error/FMT-DOUBLE-UNDERLINE] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: This is a cover page with no financial totals or sections. The double underline rule is not applicable to this page. | This page contains only a Table of Contents with no financial totals. The double-underline rule does not apply here, as there are no final section totals to evaluate. | This page has two final section totals — 'Total assets' and 'Total partners' capital' — neither of which is double-underlined. The vector data confirms no double underline pairs exist anywhere on this page. Both totals should display two distinct parallel lines beneath the figures, but only a single underline is present in each case. | The grand final total of the Statement of Operations — 'Net increase in partners' capital resulting from operations' of $35,386,766 — is missing the required double underline. The authoritative vector data confirms no double underline pairs exist anywhere on this page. This figure should display two distinct parallel lines beneath it to indicate it is the final, most comprehensive total of the statement. | The final section total ('Partners' capital as of September 30, 2025') on this statement of changes in partners' capital is missing the required double underline. The PDF's vector drawing commands confirm that no double underline pairs exist on this page, meaning the total row does not display the two distinct parallel lines required by accounting presentation standards. | The 'Total investments' line is the final section total on this Schedule of Investments page and must be double-underlined. The authoritative vector data confirms that no double underline exists on this page, meaning the required two distinct parallel lines beneath the final total are absent. This is a formatting violation.
+E
+E   Findings: ['This page is a title/cover page with no financial data, sections, or totals present. The double underline rule does not apply to this page.', 'This page is a Table of Contents with no financial totals or section totals present. The double-underline rule is not applicable to this page content.', "'Total assets' (244,277,882) appears with only a single underline beneath the figure. It should have two distinct parallel lines with a visible gap between them.", "'Total partners' capital' (244,277,882) appears with only a single underline beneath the figure. It should have two distinct parallel lines with a visible gap between them."]
+_____________________________________________________________ test_rule_verdict[fund_08_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 3: pass | Page 4: fail | Page 5: pass | Page 7: pass
+E
+E   Findings: ['All asset line items and totals are shown as positive values, which is correct and consistent.', "Partners' capital figures are shown as positive and are consistent with each other.", 'All expense line items (Management fees $3,243,733; Professional fees $356,224; Other expenses $113,626; Total expenses $3,713,583) are presented as positive numbers without parentheses or a minus sign. Per the stated policy, expenses should be shown as negative values (using parentheses or a minus sign).', 'The expense section uses uniform positive signage, so there is no mixed signage within the expense class, but the presentation contradicts the rule requirement that expenses carry a negative sign. The expected presentation would be, for example, Management fees (3,243,733) or -3,243,733.']
+_____________________________________________________________ test_rule_verdict[fund_08_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:210: in test_rule_verdict
+    assert sorted(actual.get("matched_pages") or []) == sorted(expected_pages), (
+E   AssertionError: Case 'fund_08_error' / Rule 'GRAM-SPELL': expected matched_pages [1], got [1, 2, 3, 4, 5, 6, 7]
+E   assert [1, 2, 3, 4, 5, 6, ...] == [1]
+E
+E     Left contains 6 more items, first extra item: 2
+E
+E     Full diff:
+E       [
+E           1,
+E     +     2,...
+E
+E     ...Full output truncated (6 lines hidden), use '-vv' to show
+_________________________________________________________ test_rule_verdict[fund_08_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: fail
+E
+E   Findings: ["The cover page uses the phrasing 'Nine Months Ended September 30, 2025', which does not match any of the accepted phrasings. It should instead read one of: 'As of September 30, 2025', 'For the Period Ended September 30, 2025', 'As of and for the Period Ended September 30, 2025', or 'For the Year Ended September 30, 2025'."]
+_______________________________________________________________ test_rule_verdict[fund_08_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 4: not_applicable | Page 5: not_applicable | Page 6: not_applicable | Page 3: fail
+E
+E   Findings: ["Capitalization inconsistency in section headers: 'Assets' capitalizes the noun, but 'Partners' capital' uses lowercase 'c' in 'capital'. Both are top-level section headers and should follow the same capitalization style (e.g., both 'Assets' and 'Partners' Capital').", "Indentation hierarchy is inverted for totals: The 'Total assets' and 'Total partners' capital' lines are indented further right (x0 ≈ 70) than the detail line items above them (x0 ≈ 62.5). Totals should be at the same indentation level as — or less indented than — the detail lines they summarize, not more indented."]
+_______________________________________________________________ test_rule_verdict[fund_08_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 7: fail
+E
+E   Findings: ["All subtotals and grand totals foot correctly across Cost, Fair Value, Unrealized Appreciation/(Depreciation), and % of Partners' Capital columns.", "Pluralization is correct: the title uses 'Investments' (plural), which matches the multiple investments listed across all categories."]
+_____________________________________________________________ test_rule_verdict[fund_08_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_08_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 6: needs_review
+E
+E   Findings: ["The 'Net change in unrealized appreciation on investments' is shown as a positive $267,362,877 in the operating activities reconciliation. Under the indirect method, an increase in unrealized appreciation is a non-cash gain and would normally be subtracted (shown negative). If this is truly net appreciation (an increase), it should be negative. However, if it represents a net decrease in unrealized appreciation, the label is misleading. This line should be reviewed to confirm the sign matches the actual change in unrealized value during the period.", 'All other signs appear logically consistent: proceeds from investments are positive (inflow), realized gains are negative (non-cash adjustment removed), increases in other assets are negative (use of cash), decreases in receivables are positive (source of cash), contributions are positive (inflow), and distributions are negative (outflow). The statement totals foot correctly throughout.']
+____________________________________________________________ test_rule_verdict[fund_09_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 2: needs_review | Page 1: needs_review | Page 3: fail | Page 4: fail | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: ["The first heading line on the page reads ', L.P.,' with nothing before the comma. Compared to the other entity lines ('A, L.P.', 'B, L.P.', etc.), this line appears to be missing its name prefix. If this is the wrapped continuation of an entity name from the previous page, it may be acceptable, but if it is meant to be a standalone heading line, the entity label before the comma is missing and the line is incomplete.", "The first entity name line in the heading area extracts as ', L.P.,' — this begins with a comma and no preceding name, suggesting the full partnership name was not captured. A complete heading line should start with the full entity name before the comma.", "The entity name lines (', L.P.,', 'A, L.P.,', 'B, L.P.,', 'C, L.P.,', 'D, L.P.') appear to show only suffix fragments of fund names rather than complete names, which may indicate truncation or incomplete text extraction in this part of the heading area. The positional metadata does not cover most of these lines, making it impossible to confirm their layout from available data alone.", "The first entity name line in the heading reads ', L.P.,' — it begins with a comma and 'L.P.' without any name preceding it. This suggests the entity name (the part before 'L.P.') was cut off or not extracted, leaving only the suffix. The other entity lines each begin with a letter or short name (e.g., 'A L.P.,' 'B, L.P.,'), so the first line is likely missing its name. The heading should start with a complete entity name rather than just ', L.P.,'"]
+________________________________________________________ test_rule_verdict[fund_09_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed.
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_09_error/FMT-DOLLAR-SIGNS] ___________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'FMT-DOLLAR-SIGNS'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 3: needs_review | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ["The overall balance sheet table has dollar signs on its first monetary row ('Investments, at fair value') and its last monetary row ('Total liabilities and partners' capital'), so the table-level rule is satisfied.", "The 'Total liabilities' row (1,363,269 / 1,360,744) does not include dollar signs. While this is an interior row of the overall table, it is the closing subtotal of the liabilities sub-section. If sub-sections are considered separate tables, this would be a violation.", 'The first monetary row (Investment in, July 2023) contains a dollar sign before the Cost value ($11,895,970), satisfying the requirement for the first monetary row.', 'The last monetary row (Total Investments) contains a dollar sign before the total Cost value ($35,023,674), satisfying the requirement for the last monetary row.']
+_____________________________________________________________ test_rule_verdict[fund_09_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: pass | Page 2: pass | Page 4: fail | Page 3: fail | Page 5: fail | Page 6: pass
+E
+E   Findings: ["Column header capitalization is inconsistent: 'Fair Value' capitalizes both words, while other multi-word column headers such as 'Investee's industry', 'Acquisition date', and 'Investment and type' capitalize only the first word. All column headers of the same class should follow the same capitalization pattern — either all title case (e.g., 'Fair Value', 'Acquisition Date', 'Investee's Industry') or all sentence case (e.g., 'Fair value', 'Acquisition date', 'Investee's industry').", "The sub-header 'Partners' capital:' uses a lowercase 'c' in 'capital', while the statement title uses 'Partners' Capital' with an uppercase 'C'. The same term should be capitalized consistently throughout the page.", "Line items under the Assets section use sentence case (only first word capitalized): 'Escrow receivable', 'Other assets', 'Prepaid management fees'. However, line items under Partners' capital use title case for multiple words: 'General Partner', 'Inverness Limited Partners', 'Limited Partners'. All line items of the same type should follow the same capitalization pattern.", "Column header capitalization is inconsistent: 'Fair Value', 'Investments', 'Partners' Capital' use title case (each significant word capitalized), while 'Investee's industry', 'Acquisition date', and 'Investment and type' use sentence case (only the first word capitalized). All column headers should follow the same capitalization pattern."]
+________________________________________________________ test_rule_verdict[fund_09_error/FMT-DOUBLE-UNDERLINE] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed.
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_09_error/NUM-REFOOT] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'NUM-REFOOT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+____________________________________________________________ test_rule_verdict[fund_09_error/NUM-CROSSFOOT] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'NUM-CROSSFOOT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_09_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_09_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'GRAM-SPELL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_09_error/DATE-INTEGRITY-FULL] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'DATE-INTEGRITY-FULL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_09_error/DATE-LOGIC-ORDER] ___________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'DATE-LOGIC-ORDER'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_09_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: not_applicable
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 9: needs_review | Page 10: needs_review | Page 11: needs_review | Page 13: needs_review | Page 16: needs_review
+E
+E   Findings: []
+___________________________________________________________ test_rule_verdict[fund_09_error/CVR-DATE-CHECK] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'CVR-DATE-CHECK'
+E     expected: not_applicable
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 9: needs_review | Page 10: needs_review | Page 11: needs_review | Page 13: needs_review | Page 16: needs_review
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_09_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 6: needs_review | Page 7: needs_review | Page 8: needs_review
+E
+E   Findings: []
+_______________________________________________________ test_rule_verdict[fund_09_error/ARITH-ASSETS=LIABS+CAP] ________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 6: needs_review | Page 7: needs_review | Page 8: needs_review
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_09_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 4: needs_review | Page 5: needs_review | Page 9: needs_review | Page 10: needs_review
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_09_error/SOI-FOOTNOTE-XREF] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'SOI-FOOTNOTE-XREF'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 4: needs_review | Page 5: needs_review | Page 9: needs_review | Page 10: needs_review
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_09_error/OPS-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'OPS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 6: needs_review | Page 7: needs_review | Page 8: needs_review | Page 9: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_09_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 8: needs_review | Page 9: needs_review | Page 10: needs_review | Page 11: needs_review
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_09_error/SCF-RECONCILE-CASH] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_09_error' / Rule 'SCF-RECONCILE-CASH'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 8: needs_review | Page 9: needs_review | Page 10: needs_review | Page 11: needs_review
+E
+E   Findings: []
+____________________________________________________________ test_rule_verdict[fund_10_error/FMT-HEADINGS] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'FMT-HEADINGS'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: fail
+E
+E   Findings: ["The lines above 'Combined Financial Statements' — which should contain the names of the entities whose financials are being presented — appear to have failed to extract correctly. Only commas and whitespace are visible where entity names would be expected, indicating corrupted or missing heading text. The correct form should show the full legal names of the reporting entities.", "A line reading only 'and' appears between two lines that should each contain an entity name, but both entity name lines are blank except for commas. This pattern strongly suggests two organization names were listed but neither extracted successfully. The expected form would be something like '[Entity Name 1] and [Entity Name 2]' across those lines.", "The lines at the very top of the page — consisting only of commas and the word 'and' without any accompanying text — appear to be incomplete or corrupted extractions of what should be entity names or a multi-line document title above the 'Table of Contents' heading. Positional metadata does not cover these lines, so it is unclear whether this is a genuine truncation issue or a PDF extraction artifact. These lines should be reviewed to confirm the full heading text is present and readable in the original document.", "The 'Table of Contents' title line itself is well-centered and appears complete — no issue here."]
+________________________________________________________ test_rule_verdict[fund_10_error/FMT-VISUAL-INTEGRITY] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'FMT-VISUAL-INTEGRITY'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed.
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_10_error/FMT-DOLLAR-SIGNS] ___________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'FMT-DOLLAR-SIGNS'
+E     expected: pass
+E     got:      fail
+E
+E   Summary: Page 1: not_applicable | Page 2: not_applicable | Page 3: pass | Page 4: pass | Page 5: pass | Page 6: pass
+E
+E   Findings: ["No violations detected. The first monetary row in the Assets section ('Investments, at fair value') correctly shows dollar signs for both 2025 and 2024 columns. The last monetary row in the Assets section ('Total assets') also correctly shows dollar signs. In the Liabilities and Partners' Capital section, the first monetary row ('Line of credit') correctly shows dollar signs, and the last monetary row ('Total liabilities and partners' capital') also correctly shows dollar signs. Interior rows without dollar signs are acceptable under this rule.", "The first monetary row ('Investment in 180,447 Manufacturer of cleaning products and agents May 2020') correctly shows dollar signs before both the Cost ($18,044,706) and Fair Value ($39,102,653) figures.", "The last monetary row ('Total Investments') correctly shows dollar signs before both the Cost ($341,199,166) and Fair Value ($491,176,223) figures.", "The first monetary row ('Investment in 180,447 Manufacturer of cleaning products and agents, May 2020') correctly shows dollar signs before both Cost ($18,044,706) and Fair Value ($43,175,072)."]
+_____________________________________________________________ test_rule_verdict[fund_10_error/FMT-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'FMT-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+________________________________________________________ test_rule_verdict[fund_10_error/FMT-DOUBLE-UNDERLINE] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed. | Vision analysis failed.
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_10_error/RND-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'RND-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_10_error/NUM-REFOOT] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'NUM-REFOOT'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 3: needs_review | Page 2: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+____________________________________________________________ test_rule_verdict[fund_10_error/NUM-CROSSFOOT] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'NUM-CROSSFOOT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_10_error/SIG-GLOBAL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'SIG-GLOBAL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_10_error/GRAM-SPELL] ______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'GRAM-SPELL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_10_error/DATE-INTEGRITY-FULL] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'DATE-INTEGRITY-FULL'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_10_error/DATE-LOGIC-ORDER] ___________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'DATE-LOGIC-ORDER'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 4: needs_review | Page 5: needs_review | Page 6: needs_review
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_10_error/CVR-PERIOD-PHRASING] _________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'CVR-PERIOD-PHRASING'
+E     expected: not_applicable
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 9: needs_review | Page 10: needs_review | Page 12: needs_review | Page 13: needs_review | Page 15: needs_review
+E
+E   Findings: []
+___________________________________________________________ test_rule_verdict[fund_10_error/CVR-DATE-CHECK] ____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'CVR-DATE-CHECK'
+E     expected: not_applicable
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 9: needs_review | Page 10: needs_review | Page 12: needs_review | Page 13: needs_review | Page 15: needs_review
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_10_error/BS-FMT] ________________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'BS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 3: needs_review | Page 6: needs_review | Page 7: needs_review | Page 8: needs_review
+E
+E   Findings: []
+_______________________________________________________ test_rule_verdict[fund_10_error/ARITH-ASSETS=LIABS+CAP] ________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 2: needs_review | Page 1: needs_review | Page 3: needs_review | Page 6: needs_review | Page 7: needs_review | Page 8: needs_review
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_10_error/SOI-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'SOI-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 4: needs_review | Page 5: needs_review | Page 9: needs_review | Page 10: needs_review
+E
+E   Findings: []
+__________________________________________________________ test_rule_verdict[fund_10_error/SOI-FOOTNOTE-XREF] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'SOI-FOOTNOTE-XREF'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 4: needs_review | Page 5: needs_review | Page 9: needs_review | Page 10: needs_review
+E
+E   Findings: []
+_______________________________________________________________ test_rule_verdict[fund_10_error/OPS-FMT] _______________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'OPS-FMT'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 6: needs_review | Page 7: needs_review | Page 8: needs_review | Page 9: needs_review
+E
+E   Findings: []
+_____________________________________________________________ test_rule_verdict[fund_10_error/SCF-SIGNAGE] _____________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'SCF-SIGNAGE'
+E     expected: pass
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 8: needs_review | Page 10: needs_review | Page 9: needs_review | Page 12: needs_review
+E
+E   Findings: []
+_________________________________________________________ test_rule_verdict[fund_10_error/SCF-RECONCILE-CASH] __________________________________________________________
+tests/integration/test_pipeline.py:201: in test_rule_verdict
+    pytest.fail(
+E   Failed: Case 'fund_10_error' / Rule 'SCF-RECONCILE-CASH'
+E     expected: fail
+E     got:      needs_review
+E
+E   Summary: Page 1: needs_review | Page 2: needs_review | Page 8: needs_review | Page 9: needs_review | Page 10: needs_review | Page 12: needs_review
+E
+E   Findings: []
+=========================================================================== warnings summary ===========================================================================
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-REFOOT]
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-REFOOT]
+  <frozen importlib._bootstrap>:491: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-REFOOT]
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-REFOOT]
+  <frozen importlib._bootstrap>:491: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+tests/integration/test_pipeline.py::test_rule_verdict[number_split_formatting/NUM-REFOOT]
+  <frozen importlib._bootstrap>:491: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================================================= short test summary info ========================================================================
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-HEADINGS] - Failed: Case 'fund_01_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_01_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-DOLLAR-SIGNS] - Failed: Case 'fund_01_error' / Rule 'FMT-DOLLAR-SIGNS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/FMT-GLOBAL] - Failed: Case 'fund_01_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/NUM-CROSSFOOT] - Failed: Case 'fund_01_error' / Rule 'NUM-CROSSFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SIG-GLOBAL] - Failed: Case 'fund_01_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/GRAM-SPELL] - Failed: Case 'fund_01_error' / Rule 'GRAM-SPELL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_01_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/BS-FMT] - Failed: Case 'fund_01_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SOI-FMT] - Failed: Case 'fund_01_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_01_error/SCF-SIGNAGE] - Failed: Case 'fund_01_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-HEADINGS] - Failed: Case 'fund_02_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_02_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-DOLLAR-SIGNS] - Failed: Case 'fund_02_error' / Rule 'FMT-DOLLAR-SIGNS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-GLOBAL] - Failed: Case 'fund_02_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/FMT-DOUBLE-UNDERLINE] - Failed: Case 'fund_02_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SIG-GLOBAL] - Failed: Case 'fund_02_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/GRAM-SPELL] - AssertionError: Case 'fund_02_error' / Rule 'GRAM-SPELL': expected matched_pages [5], got [1, 2, 3, 4, 5]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/BS-FMT] - Failed: Case 'fund_02_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SOI-FMT] - Failed: Case 'fund_02_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_02_error/SOI-FOOTNOTE-XREF] - Failed: Case 'fund_02_error' / Rule 'SOI-FOOTNOTE-XREF'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-HEADINGS] - Failed: Case 'fund_03_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_03_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-DOLLAR-SIGNS] - AssertionError: Case 'fund_03_error' / Rule 'FMT-DOLLAR-SIGNS': expected matched_pages [5], got [2, 3, 4, 5, 6]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/FMT-GLOBAL] - Failed: Case 'fund_03_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/NUM-REFOOT] - Failed: Case 'fund_03_error' / Rule 'NUM-REFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/NUM-CROSSFOOT] - AssertionError: Case 'fund_03_error' / Rule 'NUM-CROSSFOOT': expected matched_pages [5], got [2, 3, 4, 5, 6]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/GRAM-SPELL] - AssertionError: Case 'fund_03_error' / Rule 'GRAM-SPELL': expected matched_pages [5, 7], got [1, 2, 3, 4, 5, 6]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_03_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/CVR-DATE-CHECK] - Failed: Case 'fund_03_error' / Rule 'CVR-DATE-CHECK'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/SOI-FMT] - Failed: Case 'fund_03_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_03_error/OPS-FMT] - Failed: Case 'fund_03_error' / Rule 'OPS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-HEADINGS] - Failed: Case 'fund_04_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_04_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/FMT-DOUBLE-UNDERLINE] - Failed: Case 'fund_04_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/NUM-REFOOT] - Failed: Case 'fund_04_error' / Rule 'NUM-REFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/GRAM-SPELL] - AssertionError: Case 'fund_04_error' / Rule 'GRAM-SPELL': expected matched_pages [3, 8], got [1, 3, 4, 5, 6, 7, 8, 9, 10]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/CVR-PERIOD-PHRASING] - AssertionError: Case 'fund_04_error' / Rule 'CVR-PERIOD-PHRASING': expected matched_pages [1], got [1, 3]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/CVR-DATE-CHECK] - Failed: Case 'fund_04_error' / Rule 'CVR-DATE-CHECK'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/BS-FMT] - Failed: Case 'fund_04_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/ARITH-ASSETS=LIABS+CAP] - Failed: Case 'fund_04_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SOI-FMT] - Failed: Case 'fund_04_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/OPS-FMT] - Failed: Case 'fund_04_error' / Rule 'OPS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SCF-SIGNAGE] - Failed: Case 'fund_04_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_04_error/SCF-RECONCILE-CASH] - Failed: Case 'fund_04_error' / Rule 'SCF-RECONCILE-CASH'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-HEADINGS] - Failed: Case 'fund_05_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_05_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/FMT-GLOBAL] - Failed: Case 'fund_05_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/GRAM-SPELL] - Failed: Case 'fund_05_error' / Rule 'GRAM-SPELL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/BS-FMT] - Failed: Case 'fund_05_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SOI-FMT] - Failed: Case 'fund_05_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_05_error/SOI-FOOTNOTE-XREF] - Failed: Case 'fund_05_error' / Rule 'SOI-FOOTNOTE-XREF'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-HEADINGS] - Failed: Case 'fund_06_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-VISUAL-INTEGRITY] - AssertionError: Case 'fund_06_error' / Rule 'FMT-VISUAL-INTEGRITY': expected matched_pages [5, 6], got [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/FMT-GLOBAL] - Failed: Case 'fund_06_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SIG-GLOBAL] - Failed: Case 'fund_06_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/GRAM-SPELL] - Failed: Case 'fund_06_error' / Rule 'GRAM-SPELL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_06_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/CVR-DATE-CHECK] - Failed: Case 'fund_06_error' / Rule 'CVR-DATE-CHECK'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_06_error/SCF-SIGNAGE] - Failed: Case 'fund_06_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-HEADINGS] - Failed: Case 'fund_07_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/FMT-GLOBAL] - Failed: Case 'fund_07_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/NUM-CROSSFOOT] - Failed: Case 'fund_07_error' / Rule 'NUM-CROSSFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SIG-GLOBAL] - Failed: Case 'fund_07_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/GRAM-SPELL] - AssertionError: Case 'fund_07_error' / Rule 'GRAM-SPELL': expected matched_pages [3], got [1, 3, 4, 5, 6, 7, 8, 9]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_07_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/CVR-DATE-CHECK] - Failed: Case 'fund_07_error' / Rule 'CVR-DATE-CHECK'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/BS-FMT] - Failed: Case 'fund_07_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/ARITH-ASSETS=LIABS+CAP] - Failed: Case 'fund_07_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SOI-FOOTNOTE-XREF] - Failed: Case 'fund_07_error' / Rule 'SOI-FOOTNOTE-XREF'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/OPS-FMT] - Failed: Case 'fund_07_error' / Rule 'OPS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SCF-SIGNAGE] - Failed: Case 'fund_07_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_07_error/SCF-RECONCILE-CASH] - Failed: Case 'fund_07_error' / Rule 'SCF-RECONCILE-CASH'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-HEADINGS] - Failed: Case 'fund_08_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_08_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-GLOBAL] - Failed: Case 'fund_08_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/FMT-DOUBLE-UNDERLINE] - Failed: Case 'fund_08_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SIG-GLOBAL] - Failed: Case 'fund_08_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/GRAM-SPELL] - AssertionError: Case 'fund_08_error' / Rule 'GRAM-SPELL': expected matched_pages [1], got [1, 2, 3, 4, 5, 6, 7]
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_08_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/BS-FMT] - Failed: Case 'fund_08_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SOI-FMT] - Failed: Case 'fund_08_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_08_error/SCF-SIGNAGE] - Failed: Case 'fund_08_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-HEADINGS] - Failed: Case 'fund_09_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_09_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-DOLLAR-SIGNS] - Failed: Case 'fund_09_error' / Rule 'FMT-DOLLAR-SIGNS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-GLOBAL] - Failed: Case 'fund_09_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/FMT-DOUBLE-UNDERLINE] - Failed: Case 'fund_09_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/NUM-REFOOT] - Failed: Case 'fund_09_error' / Rule 'NUM-REFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/NUM-CROSSFOOT] - Failed: Case 'fund_09_error' / Rule 'NUM-CROSSFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SIG-GLOBAL] - Failed: Case 'fund_09_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/GRAM-SPELL] - Failed: Case 'fund_09_error' / Rule 'GRAM-SPELL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/DATE-INTEGRITY-FULL] - Failed: Case 'fund_09_error' / Rule 'DATE-INTEGRITY-FULL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/DATE-LOGIC-ORDER] - Failed: Case 'fund_09_error' / Rule 'DATE-LOGIC-ORDER'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_09_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/CVR-DATE-CHECK] - Failed: Case 'fund_09_error' / Rule 'CVR-DATE-CHECK'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/BS-FMT] - Failed: Case 'fund_09_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/ARITH-ASSETS=LIABS+CAP] - Failed: Case 'fund_09_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SOI-FMT] - Failed: Case 'fund_09_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SOI-FOOTNOTE-XREF] - Failed: Case 'fund_09_error' / Rule 'SOI-FOOTNOTE-XREF'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/OPS-FMT] - Failed: Case 'fund_09_error' / Rule 'OPS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SCF-SIGNAGE] - Failed: Case 'fund_09_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_09_error/SCF-RECONCILE-CASH] - Failed: Case 'fund_09_error' / Rule 'SCF-RECONCILE-CASH'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-HEADINGS] - Failed: Case 'fund_10_error' / Rule 'FMT-HEADINGS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-VISUAL-INTEGRITY] - Failed: Case 'fund_10_error' / Rule 'FMT-VISUAL-INTEGRITY'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-DOLLAR-SIGNS] - Failed: Case 'fund_10_error' / Rule 'FMT-DOLLAR-SIGNS'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-GLOBAL] - Failed: Case 'fund_10_error' / Rule 'FMT-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/FMT-DOUBLE-UNDERLINE] - Failed: Case 'fund_10_error' / Rule 'FMT-DOUBLE-UNDERLINE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/RND-GLOBAL] - Failed: Case 'fund_10_error' / Rule 'RND-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/NUM-REFOOT] - Failed: Case 'fund_10_error' / Rule 'NUM-REFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/NUM-CROSSFOOT] - Failed: Case 'fund_10_error' / Rule 'NUM-CROSSFOOT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SIG-GLOBAL] - Failed: Case 'fund_10_error' / Rule 'SIG-GLOBAL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/GRAM-SPELL] - Failed: Case 'fund_10_error' / Rule 'GRAM-SPELL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/DATE-INTEGRITY-FULL] - Failed: Case 'fund_10_error' / Rule 'DATE-INTEGRITY-FULL'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/DATE-LOGIC-ORDER] - Failed: Case 'fund_10_error' / Rule 'DATE-LOGIC-ORDER'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/CVR-PERIOD-PHRASING] - Failed: Case 'fund_10_error' / Rule 'CVR-PERIOD-PHRASING'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/CVR-DATE-CHECK] - Failed: Case 'fund_10_error' / Rule 'CVR-DATE-CHECK'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/BS-FMT] - Failed: Case 'fund_10_error' / Rule 'BS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/ARITH-ASSETS=LIABS+CAP] - Failed: Case 'fund_10_error' / Rule 'ARITH-ASSETS=LIABS+CAP'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SOI-FMT] - Failed: Case 'fund_10_error' / Rule 'SOI-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SOI-FOOTNOTE-XREF] - Failed: Case 'fund_10_error' / Rule 'SOI-FOOTNOTE-XREF'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/OPS-FMT] - Failed: Case 'fund_10_error' / Rule 'OPS-FMT'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SCF-SIGNAGE] - Failed: Case 'fund_10_error' / Rule 'SCF-SIGNAGE'
+FAILED tests/integration/test_pipeline.py::test_rule_verdict[fund_10_error/SCF-RECONCILE-CASH] - Failed: Case 'fund_10_error' / Rule 'SCF-RECONCILE-CASH'
+======================================================= 124 failed, 102 passed, 5 warnings in 2951.58s (0:49:11) =======================================================
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute

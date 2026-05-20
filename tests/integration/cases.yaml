@@ -93,6 +93,917 @@ cases:
       - rule_id: FMT-DOUBLE-UNDERLINE
         verdict: fail
         pages: [1, 2, 3, 4, 5, 6, 8, 10, 12]
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Ground-truth cases from human review of 10 Error/Corrected PDF pairs.
+  # All fund names are anonymised (fund_01 … fund_10).
+  #
+  # COVERAGE GAPS — error categories with no existing rule to catch them:
+  #   LINE-ORDER      : line item ordering within statement sections (fund_01)
+  #   STMT-PERIOD     : statement period header vs actual data date range (fund_02)
+  #   LABEL-ACCURACY  : line item / note label factual accuracy (fund_04, fund_07)
+  #   NOTE-NUMERIC    : note dollar amount vs supporting schedules (fund_10)
+  #   MISSING-CONTENT : missing required rows or entire statement sections (fund_03)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. Fund 01
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   E-5 (p.7): SCF label truncated — missing closing parenthetical → GRAM-SPELL
+  #   E-6 (p.7): SCF label truncated — missing qualifying phrase → GRAM-SPELL
+  #
+  # COVERAGE GAPS (human-caught, no existing rule fires):
+  #   E-1 (p.3): Two liability line items swapped in BS Liabilities → LINE-ORDER gap
+  #   E-3 (p.7): Two SCF operating line items swapped → LINE-ORDER gap
+  #   E-4 (p.7): Two SCF operating line items swapped → LINE-ORDER gap
+  #
+  # NOT AN ERROR:
+  #   E-2 (p.4): Schedule of Investments text-extraction artifact; visual content identical
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_01_error
+    description: >-
+      Fund 01 Q2 2025 financial statements.
+      2 SCF label truncation errors on p.7 (GRAM-SPELL).
+      3 line-item ordering errors on pp.3 and 7 (LINE-ORDER coverage gap — no existing rule).
+    document: tests/fixtures/documents/fund_01_q2_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      # E-2: text-extraction artifact on p.4 — visual layout identical, not a real error
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # E-5 (p.7): SCF label omits closing parenthetical
+      # E-6 (p.7): SCF label omits qualifying phrase
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [7]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: pass
+      - rule_id: CVR-DATE-CHECK
+        verdict: pass
+      # E-1 (p.3): Two liability line items swapped in Liabilities section.
+      # BS-FMT does not check line item ordering within subsections — LINE-ORDER coverage gap.
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      # E-3 (p.7): Two SCF operating line items swapped — LINE-ORDER gap
+      # E-4 (p.7): Two SCF operating line items swapped — LINE-ORDER gap
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. Fund 02
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   F-1 (p.4): Statement of Changes header shows inception-to-date period, data is quarterly → FMT-HEADINGS
+  #   F-2 (p.5): Cash Flows header has same inception-to-date error → FMT-HEADINGS
+  #   F-3 (p.5): SCF label names wrong cash activity — factual error → GRAM-SPELL
+  #
+  # COVERAGE GAPS:
+  #   F-1, F-2: FMT-HEADINGS may detect heading anomaly but does not validate that the
+  #             period description matches the actual data range → STMT-PERIOD gap
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_02_error
+    description: >-
+      Fund 02 Q3 2025 financial statements.
+      2 wrong period headers on pp.4-5 (inception-to-date text on quarterly statements).
+      1 label factual error on p.5 (wrong cash activity description).
+    document: tests/fixtures/documents/fund_02_q3_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      # F-1 (p.4): Statement header shows inception-to-date period; document contains quarterly data only
+      # F-2 (p.5): Same wrong inception-to-date header on Statement of Cash Flows
+      - rule_id: FMT-HEADINGS
+        verdict: fail
+        matched_pages: [4, 5]
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # F-3 (p.5): SCF label names the wrong type of cash activity; changes meaning of the line
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [5]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      # No separate cover page in this document
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Fund 03
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   A-1 (p.5): Erroneous dollar sign on a line item row → FMT-DOLLAR-SIGNS
+  #   A-2 (p.5): Possessive apostrophe error in Operations → GRAM-SPELL
+  #   A-4 (p.5): GP and LP column values swapped → NUM-CROSSFOOT
+  #   A-5, A-6 (p.7): Possessive apostrophe errors in Cash Flows → GRAM-SPELL
+  #
+  # COVERAGE GAPS:
+  #   A-3 (p.5): Extra row present in Error, absent in Corrected →
+  #              MISSING-CONTENT gap; no existing rule detects unexpected/missing expense rows
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_03_error
+    description: >-
+      Fund 03 Q2 2025 combined financial statements.
+      1 dollar sign error p.5 (FMT-DOLLAR-SIGNS); 3 possessive apostrophe typos pp.5,7 (GRAM-SPELL);
+      GP/LP column values swapped p.5 (NUM-CROSSFOOT);
+      extra row p.5 (MISSING-CONTENT coverage gap).
+    document: tests/fixtures/documents/fund_03_q2_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      # A-1 (p.5): Dollar sign appears on a line item row where it should not
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: fail
+        matched_pages: [5]
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      # A-4 (p.5): GP column shows LP value and vice versa; per-column subtotals disagree
+      #             with actual column sums
+      - rule_id: NUM-CROSSFOOT
+        verdict: fail
+        matched_pages: [5]
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # A-2 (p.5): Possessive apostrophe error — singular vs plural form
+      # A-5 (p.7): Same error in Statement of Cash Flows (first instance)
+      # A-6 (p.7): Same error in Statement of Cash Flows (second instance)
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [5, 7]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      # A-3 (p.5): Extra row in Error version not present in Corrected.
+      # No existing rule checks for unexpected expense rows — MISSING-CONTENT coverage gap.
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 4. Fund 04
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   GC-1 (p.1): Cover title has wrong "Consolidated" prefix → FMT-HEADINGS
+  #   GC-2 (p.1): Cover date shows date only, not full period description → CVR-PERIOD-PHRASING
+  #   GC-3 (p.2): TOC entries have wrong "Consolidated" prefix → FMT-HEADINGS
+  #   GC-4 (pp.3-7): All statement headers have wrong "Consolidated" prefix → FMT-HEADINGS
+  #   GC-6 (p.3): Singular vs plural error in liability line item label → GRAM-SPELL
+  #
+  # COVERAGE GAPS:
+  #   GC-5 (p.3): Column header uses wrong member terminology → LABEL-ACCURACY gap
+  #   GC-7 (p.8): Note 1 contains entirely different content → LABEL-ACCURACY gap
+  #   GC-8 (p.8): Role terminology differs from standard → LABEL-ACCURACY gap
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_04_error
+    description: >-
+      Fund 04 Q2 2025 financial statements.
+      "Consolidated" prefix incorrectly added to cover (p.1), TOC (p.2), and all statement
+      headers (pp.3-7) (FMT-HEADINGS). Cover period description truncated (p.1) (CVR-PERIOD-PHRASING).
+      Spelling error on p.3 (GRAM-SPELL).
+      Gaps: column header terminology p.3, Note 1 content p.8, role terminology p.8 (LABEL-ACCURACY).
+    document: tests/fixtures/documents/fund_04_q2_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      # GC-1 (p.1): Cover title reads "Consolidated Financial Statements" — no consolidation occurred
+      # GC-3 (p.2): Every TOC line carries "Consolidated" prefix
+      # GC-4 (pp.3-7): Each statement header reads "Consolidated Statement of ..."
+      - rule_id: FMT-HEADINGS
+        verdict: fail
+        matched_pages: [1, 2, 3, 4, 5, 6, 7]
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # GC-6 (p.3): Singular vs plural error in liability label
+      # GC-8 (p.8): Role terminology differs from standard — GRAM-SPELL partial coverage
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [3, 8]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      # GC-2 (p.1): Cover shows date only instead of full period phrasing
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: fail
+        matched_pages: [1]
+      - rule_id: CVR-DATE-CHECK
+        verdict: pass
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 5. Fund 05
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   W-1 (p.3): Wrong subtotal category label in Schedule of Investments → GRAM-SPELL / SOI-FMT
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_05_error
+    description: >-
+      Fund 05 Q3 2025 financial statements.
+      1 wrong subtotal category label in Schedule of Investments p.3 (GRAM-SPELL / SOI-FMT).
+    document: tests/fixtures/documents/fund_05_q3_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # W-1 (p.3): Subtotal row label names the wrong investment category
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [3]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      # W-1 (p.3): Structural label error in SOI; SOI-FMT may also surface this
+      - rule_id: SOI-FMT
+        verdict: fail
+        matched_pages: [3]
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 6. Fund 06
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   R-1 (p.4): Statement of Operations page header shows wrong statement type → FMT-HEADINGS
+  #   R-2 (p.5): Cash Flows footer page number shows wrong value → FMT-VISUAL-INTEGRITY
+  #   R-3 (p.6): Schedule of Investments footer shows wrong page number → FMT-VISUAL-INTEGRITY
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_06_error
+    description: >-
+      Fund 06 Q3 2025 financial statements.
+      Statement of Operations header shows wrong statement type p.4 (FMT-HEADINGS).
+      Footer page numbers wrong on Cash Flows p.5 and Schedule of Investments p.6 (FMT-VISUAL-INTEGRITY).
+    document: tests/fixtures/documents/fund_06_q3_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      # R-1 (p.4): Statement of Operations header shows a completely different statement type
+      - rule_id: FMT-HEADINGS
+        verdict: fail
+        matched_pages: [4]
+      # R-2 (p.5): Footer page number incorrect
+      # R-3 (p.6): Footer page number incorrect
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: fail
+        matched_pages: [5, 6]
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      - rule_id: GRAM-SPELL
+        verdict: pass
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 7. Fund 07
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   T-1 (p.3): Singular vs plural error in balance sheet line item → GRAM-SPELL
+  #   T-3 (p.6): SCF incorrectly includes non-cash reinvested distributions as
+  #               operating cash — beginning cash reconciles but net is inflated → SCF-RECONCILE-CASH
+  #   T-4 (pp.10-20): Entire 11-page combined financial statements section absent
+  #               from Error file → FMT-VISUAL-INTEGRITY (document structurally incomplete)
+  #
+  # COVERAGE GAPS:
+  #   T-2 (p.5): Expense sub-line reallocation within unchanged total.
+  #              No existing rule validates internal expense line splits → LABEL-ACCURACY gap
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_07_error
+    description: >-
+      Fund 07 Q2 2025 financial statements.
+      Singular vs plural error in balance sheet label p.3 (GRAM-SPELL). Non-cash reinvestment wrongly
+      included as operating cash p.6 (SCF-RECONCILE-CASH). Combined financial
+      statements section (pp.10-20) absent from Error file (FMT-VISUAL-INTEGRITY).
+      Gap: expense sub-line reallocation with unchanged total p.5 (LABEL-ACCURACY).
+    document: tests/fixtures/documents/fund_07_q2_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      # T-4: Combined financial statements section (pp.10-20, 11 pages) entirely absent
+      #       from Error file — document ends at p.9; Corrected version has 20 pages.
+      #       No matched_pages because the missing pages do not exist in the Error file.
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: fail
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # T-1 (p.3): Singular vs plural error — missing trailing "s" on line item label
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [3]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      # T-3 (p.6): Non-cash reinvested distributions included as cash operating activity;
+      #             non-cash items must be excluded from SCF operating section.
+      # T-2 (p.5): Expense sub-line reallocation within unchanged total —
+      #             no existing rule validates sub-line splits → LABEL-ACCURACY coverage gap.
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: fail
+        matched_pages: [6]
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 8. Fund 08
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   P-1 (p.1): Wrong article + singular/plural in entity description on cover → GRAM-SPELL
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_08_error
+    description: >-
+      Fund 08 Q3 2025 financial statements.
+      1 grammatical error on cover p.1: wrong article and singular/plural in entity description (GRAM-SPELL).
+    document: tests/fixtures/documents/fund_08_q3_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      # P-1 (p.1): Cover page entity description uses wrong article and wrong number (singular vs plural)
+      - rule_id: GRAM-SPELL
+        verdict: fail
+        matched_pages: [1]
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: pass
+      - rule_id: CVR-DATE-CHECK
+        verdict: pass
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 9. Fund 09
+  #
+  # NO MEANINGFUL ERRORS.
+  # G-1: Error file and Corrected file are visually identical — difference is PDF rendering
+  #       engine only; all text, values, and layout are visually identical.
+  #       Text-layer pagination differs but content is identical.
+  #       All rules should pass — this document is a clean false-positive control.
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_09_error
+    description: >-
+      Fund 09 Q2 2025 combined financial statements.
+      Error file and Corrected file are visually identical — difference is PDF rendering only.
+      No meaningful errors present. All rules should pass. Use as false-positive control case.
+    document: tests/fixtures/documents/fund_09_q2_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: pass
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      - rule_id: NUM-REFOOT
+        verdict: pass
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      - rule_id: GRAM-SPELL
+        verdict: pass
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 10. Fund 10
+  #
+  # ERRORS CAUGHT BY EXISTING RULES:
+  #   IV-1 (p.7): SCF line item off by $1 vs corresponding BS asset → SCF-RECONCILE-CASH
+  #   IV-2 (p.7): SCF line item off by $1; net change doesn't match BS → SCF-RECONCILE-CASH
+  #   IV-4 (p.15): Note rollforward off by $1; closing balance doesn't tie to BS fair value → NUM-REFOOT
+  #   IV-5 (p.33): Combining SCF footer page number shows wrong value → FMT-VISUAL-INTEGRITY
+  #
+  # COVERAGE GAPS:
+  #   IV-3 (p.13): Note amount inconsistency — note dollar amount doesn't match actual
+  #                portfolio value → NOTE-NUMERIC gap
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: fund_10_error
+    description: >-
+      Fund 10 Q2 2025 combined financial statements.
+      2 off-by-$1 SCF errors p.7 (SCF-RECONCILE-CASH). $1 rounding error in note rollforward
+      p.15 that doesn't tie to balance sheet (NUM-REFOOT). Page number error in footer p.33 (FMT-VISUAL-INTEGRITY).
+      Gap: note amount inconsistency p.13 (NOTE-NUMERIC coverage gap).
+    document: tests/fixtures/documents/fund_10_q2_2025_errors.pdf
+    rules:
+      - FMT-HEADINGS
+      - FMT-VISUAL-INTEGRITY
+      - FMT-DOLLAR-SIGNS
+      - FMT-GLOBAL
+      - FMT-DOUBLE-UNDERLINE
+      - RND-GLOBAL
+      - NUM-REFOOT
+      - NUM-CROSSFOOT
+      - SIG-GLOBAL
+      - GRAM-SPELL
+      - DATE-INTEGRITY-FULL
+      - DATE-LOGIC-ORDER
+      - CVR-PERIOD-PHRASING
+      - CVR-DATE-CHECK
+      - BS-FMT
+      - ARITH-ASSETS=LIABS+CAP
+      - SOI-FMT
+      - SOI-FOOTNOTE-XREF
+      - OPS-FMT
+      - SCF-SIGNAGE
+      - SCF-RECONCILE-CASH
+    expected:
+      - rule_id: FMT-HEADINGS
+        verdict: pass
+      # IV-5 (p.33): Combining SCF footer page number displays wrong value
+      - rule_id: FMT-VISUAL-INTEGRITY
+        verdict: fail
+        matched_pages: [33]
+      - rule_id: FMT-DOLLAR-SIGNS
+        verdict: pass
+      - rule_id: FMT-GLOBAL
+        verdict: pass
+      - rule_id: FMT-DOUBLE-UNDERLINE
+        verdict: pass
+      - rule_id: RND-GLOBAL
+        verdict: pass
+      # IV-4 (p.15): Note rollforward off by $1; closing balance doesn't tie to balance sheet fair value.
+      - rule_id: NUM-REFOOT
+        verdict: fail
+        matched_pages: [15]
+      - rule_id: NUM-CROSSFOOT
+        verdict: pass
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+      - rule_id: GRAM-SPELL
+        verdict: pass
+      - rule_id: DATE-INTEGRITY-FULL
+        verdict: pass
+      - rule_id: DATE-LOGIC-ORDER
+        verdict: pass
+      - rule_id: CVR-PERIOD-PHRASING
+        verdict: not_applicable
+      - rule_id: CVR-DATE-CHECK
+        verdict: not_applicable
+      - rule_id: BS-FMT
+        verdict: pass
+      - rule_id: ARITH-ASSETS=LIABS+CAP
+        verdict: pass
+      - rule_id: SOI-FMT
+        verdict: pass
+      - rule_id: SOI-FOOTNOTE-XREF
+        verdict: pass
+      - rule_id: OPS-FMT
+        verdict: pass
+      - rule_id: SCF-SIGNAGE
+        verdict: pass
+      # IV-1 (p.7): SCF financing item off by $1 vs BS asset
+      # IV-2 (p.7): SCF financing item off by $1; net change doesn't match BS
+      # IV-3 (p.13): Note amount inconsistency — NOTE-NUMERIC coverage gap; no existing rule validates note dollar amounts.
+      - rule_id: SCF-RECONCILE-CASH
+        verdict: fail
+        matched_pages: [7]
+
   - id: multi_page_rules
     description: "Tests multi-page rule application"
     document: tests/fixtures/documents/multi_page_rules_doc.pdf
