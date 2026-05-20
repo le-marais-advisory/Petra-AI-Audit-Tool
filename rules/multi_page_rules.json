@@ -1,0 +1,163 @@
+{
+  "rules": [
+    {
+      "id": "SCP-SECTIONS-PRESENT",
+      "name": "Required Sections Present",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Confirm presence of the standard financial-statement sections: Cover Page, Table of Contents, Balance Sheet (or Statement of Assets and Liabilities), Statement of Operations, Statement of Changes in Partners'/Members' Capital, Statement of Cash Flows, and Schedule of Investments. Notes to Financial Statements must be present only if applicable. Identify sections by their page headings or by labels in the Table of Contents.\n\nPass criteria: All required sections are present in the document.\n\nFail criteria: Any required section is missing.\n\nneeds_review when a section's identity is ambiguous from headings alone.",
+      "description": "Confirms the document contains every required financial-statement section (Cover, TOC, BS, OPS, CHG, SCF, Notes; SOI when applicable).",
+      "acceptance_criteria": "All required sections present.",
+      "severity": "critical",
+      "group": "scope",
+      "bypassable": false
+    },
+    {
+      "id": "TOC-PAGE-NUMBERS-MATCH",
+      "name": "TOC Page Numbers Match Actual Pages",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "For each entry in the Table of Contents, verify that the page number listed in the TOC matches the actual page on which that section starts. Use the printed page number on each section's first page. Normalize: trim whitespace, ignore leading dot leaders, case-insensitive match on section labels.\n\nPass criteria: Every TOC entry's stated page number equals the actual starting page of that section.\n\nFail criteria: Any TOC entry points to the wrong page or the page is missing.\n\nneeds_review when a TOC entry refers to a section that is explicitly stated as being present in an attached external document.",
+      "description": "Verifies every Table of Contents page reference matches the actual starting page of that section in the document.",
+      "acceptance_criteria": "Every TOC page reference matches the actual section start page.",
+      "severity": "critical",
+      "group": "table_of_contents",
+      "bypassable": false
+    },
+    {
+      "id": "TOC-COMPLETENESS",
+      "name": "TOC Completeness (no orphan sections)",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Perform a two-way check between the Table of Contents and the section headings throughout the document:\n  (1) every section heading found in the document appears as a TOC entry, and\n  (2) every TOC entry corresponds to a real section in the document.\n\nMatch labels case-insensitively, ignoring trailing punctuation and dot leaders.\n\nPass criteria: Every section in the document is represented in the TOC and every TOC entry maps to a real section.\n\nFail criteria: A section appears in the document with no TOC coverage, or a TOC entry has no matching section.\n\nneeds_review when the mismatch is related to a TOC entry referring to a section that is explicitly stated as being present in an attached external document.",
+      "description": "Two-way check that every section is listed in the TOC and every TOC entry points to a real section (no orphans on either side).",
+      "acceptance_criteria": "All sections listed in TOC; all TOC entries map to real sections.",
+      "severity": "major",
+      "group": "table_of_contents",
+      "bypassable": false
+    },
+    {
+      "id": "DATE-CONSISTENCY-PACK",
+      "name": "Period-End Date Consistency Across Pack",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Extract every period-end reference across all pages. These typically appear after phrases such as 'Period End', 'As of', 'For the Period Ended', 'For the Year Ended', and as standalone period-end captions on each statement and on the cover. Normalize each into a canonical calendar date: accept formats 'MMMM D, YYYY', 'YYYY-MM-DD', and 'M/D/YYYY'. Strip trailing punctuation; compare case-insensitively. If a reference includes a weekday, validate that the weekday is correct for the stated date.\n\nPass criteria: Every period-end reference across the document resolves to the same calendar date, and any weekday/date pair is internally valid.\n\nFail criteria: Any reference resolves to a different calendar date, or a weekday/date pair is invalid.\n\nneeds_review when a reference is ambiguous (e.g., 'recent quarter') and cannot be normalized to a specific date.",
+      "description": "All period-end references across the full pack must resolve to the same calendar date; phrasing/case/punctuation differences are ignored.",
+      "acceptance_criteria": "All period-end references resolve to the same calendar date.",
+      "severity": "major",
+      "group": "dates",
+      "bypassable": false
+    },
+    {
+      "id": "DUP-TOTALS",
+      "name": "Repeated Totals Without Basis",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Collect the labeled total rows and major subtotal captions from each primary financial statement (Balance Sheet, Statement of Operations, Statement of Changes in Partners' Capital, Statement of Cash Flows, and Schedule of Investments when present). Flag instances where the same numeric total or the same caption text appears on multiple statements WITHOUT a legitimate cross-statement basis.\n\nLegitimate (do NOT flag) cases include the documented tie-outs covered by other rules:\n  - ending cash repeated on BS and SCF;\n  - ending Partners'/Members' Capital repeated on BS and CHG;\n  - net increase from operations repeated on OPS, CHG, and SCF;\n  - SOI total fair value repeated as the BS investments line.\n\nFlag (suspected copy/paste) cases include the same large number appearing on two statements where no tie-out relationship exists, or the same line caption appearing in two statements where it does not belong (e.g., 'Total expenses' duplicated onto the Balance Sheet). Normalize numbers: remove '$', commas; treat parentheses as negative.\n\nPass criteria: All repeated totals/captions across statements are explained by a legitimate tie-out or shared subtotal.\n\nFail criteria: A total or caption repeats across statements with no tie-out basis.\n\nneeds_review when the relationship is plausible but not clearly one of the listed tie-outs.",
+      "description": "Detects totals or line captions that repeat across statements without a legitimate tie-out basis (suspected copy/paste errors).",
+      "acceptance_criteria": "No unjustified duplicate totals or captions across statements.",
+      "severity": "major",
+      "group": "duplicates",
+      "bypassable": false
+    },
+    {
+      "id": "TIE-CASH",
+      "name": "Cash Tie-Out (BS vs SCF)",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Balance Sheet",
+        "Statement of Cash Flows"
+      ],
+      "query": "You have the Balance Sheet and the Statement of Cash Flows in context. Capture two amounts and compare them:\n  (1) the 'Cash and cash equivalents' line on the Balance Sheet (final labeled amount, not a sub-component);\n  (2) the 'Cash and cash equivalents at end of period' line on the Statement of Cash Flows (accept label variants such as 'Cash at end of period' or 'Cash and cash equivalents, end of period').\n\nNormalize number formats: remove '$', commas; treat parentheses as negative. Verify both statements use the same scale (both 'in thousands' or both 'in millions').\n\nPass criteria: BS ending cash equals SCF ending cash, tolerance 0.\n\nFail criteria: Mismatch >= $1 (in the stated scale).\n\nneeds_review when one of the two labels cannot be located unambiguously, or when the two statements use different scales.",
+      "description": "Ending cash on the Balance Sheet must equal ending cash on the Statement of Cash Flows.",
+      "acceptance_criteria": "Exact match within tolerance 0.",
+      "severity": "critical",
+      "group": "cross_tie_outs",
+      "bypassable": false
+    },
+    {
+      "id": "TIE-PARTNERS-CAP",
+      "name": "Partners' Capital Tie-Out (BS vs CHG)",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Balance Sheet",
+        "Statement of Changes in Partners' Capital"
+      ],
+      "query": "You have the Balance Sheet and the Statement of Changes in Partners'/Members' Capital in context. Capture two amounts and compare them:\n  (1) Partners' Capital (or Members' Capital, or 'Net assets' when that is the labeled equity total on the Balance Sheet -- typical for feeder funds);\n  (2) the ending balance on the Statement of Changes, identified by labels such as 'Partners' capital at end of period', 'Members' capital at end of period', or 'Balance at end of period'.\n\nUse the final labeled total only; ignore intermediate subtotals. Normalize number formats: remove '$', commas; treat parentheses as negative.\n\nPass criteria: BS Partners'/Members' Capital equals CHG ending total, tolerance 0.\n\nFail criteria: Mismatch >= $1.\n\nneeds_review when the BS does not present a standalone capital line and the 'Net assets' fallback assumption is uncertain.",
+      "description": "Partners'/Members' Capital on the Balance Sheet must equal the ending total on the Statement of Changes in Partners' Capital.",
+      "acceptance_criteria": "Exact match within tolerance 0.",
+      "severity": "critical",
+      "group": "cross_tie_outs",
+      "bypassable": false
+    },
+    {
+      "id": "TIE-NET-GAIN",
+      "name": "Net Gain/Loss Three-Way Tie-Out (OPS vs CHG vs SCF)",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Statement of Operations",
+        "Statement of Changes in Partners' Capital",
+        "Statement of Cash Flows"
+      ],
+      "query": "You have the Statement of Operations, the Statement of Changes in Partners' Capital, and the Statement of Cash Flows in context. Capture the period's bottom-line performance figure from each statement and three-way compare.\n\nTypical labels:\n  - OPS: 'Net increase (decrease) in partners' capital resulting from operations' (or 'Net income', 'Net investment gain/(loss)');\n  - CHG: the same 'Net increase ... resulting from operations' line in the activity rollforward;\n  - SCF: the same line at the top of the operating-activities reconciliation.\n\nIf surface labels differ across the three statements (e.g., one says 'Net income' and another says 'Net increase in partners' capital resulting from operations and potential incentive allocation'), use the line that represents the same economic figure. Normalize number formats: remove '$', commas; treat parentheses as negative.\n\nPass criteria: The same value appears on all three statements, tolerance 0.\n\nFail criteria: Any pairwise mismatch >= $1.\n\nneeds_review when the corresponding line cannot be unambiguously located on one of the three statements.",
+      "description": "Net increase/(decrease) in partners' capital from operations must match across the Statement of Operations, Statement of Changes, and Statement of Cash Flows.",
+      "acceptance_criteria": "All three statements match, tolerance 0.",
+      "severity": "critical",
+      "group": "cross_tie_outs",
+      "bypassable": false
+    },
+    {
+      "id": "TIE-SOI-BS",
+      "name": "Investments Tie-Out (SOI vs BS)",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Schedule of Investments",
+        "Balance Sheet"
+      ],
+      "query": "You have the Schedule of Investments and the Balance Sheet in context. Capture two amounts and compare them:\n  (1) the SOI total fair value, identified by labels such as 'Total investments at fair value' or 'Total investments' on the bottom-row totals of the SOI;\n  (2) the BS investments line, identified by labels such as 'Investments, at fair value' or 'Investments' (use the line that reflects investments measured at fair value, not amortized cost).\n\nNormalize number formats: remove '$', commas; treat parentheses as negative. Ensure both statements are read in the same scale.\n\nPass criteria: SOI total fair value equals BS investments line, tolerance 0.\n\nFail criteria: Mismatch >= $1.\n\nneeds_review when the BS investments line presentation is ambiguous (e.g., separate fair value and cost columns) or when SOI subtotaling style makes the grand total uncertain.",
+      "description": "Total fair value of investments on the Schedule of Investments must equal the 'Investments, at fair value' line on the Balance Sheet.",
+      "acceptance_criteria": "Exact match within tolerance 0.",
+      "severity": "critical",
+      "group": "cross_tie_outs",
+      "bypassable": false
+    },
+    {
+      "id": "BS-TIE-OUTS",
+      "name": "Balance Sheet Tie-Outs (Rollup)",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Balance Sheet",
+        "Statement of Cash Flows",
+        "Statement of Changes in Partners' Capital",
+        "Schedule of Investments"
+      ],
+      "query": "You have the Balance Sheet, the Statement of Cash Flows, the Statement of Changes in Partners'/Members' Capital, and the Schedule of Investments in context. This is a rollup of the cross-statement tie-outs that originate on the Balance Sheet -- run all three and aggregate the verdict:\n  (a) BS ending cash = SCF ending cash;\n  (b) BS Partners'/Members' Capital (or 'Net assets' when that is the BS equity line) = CHG ending total;\n  (c) BS investments tie to the SOI on BOTH bases:\n        (c1) BS 'Investments, at fair value' (or equivalent FMV line) = SOI total fair value;\n        (c2) BS 'Investments, at cost' (or equivalent cost line) = SOI total cost.\n\nFor (c2), only evaluate the cost tie when the Balance Sheet discloses an investments-at-cost line (commonly shown alongside fair value, or parenthetically as 'cost $X'); if no cost figure is disclosed on the BS, treat (c2) as not_applicable rather than fail.\n\nNormalize number formats: remove '$', commas; treat parentheses as negative. Ensure all statements are read in the same scale (all in thousands, or all in millions).\n\nPass criteria: All applicable tie-outs match exactly (tolerance 0) -- (a), (b), and (c1) always; (c2) when a BS cost line is disclosed.\n\nFail criteria: Any applicable tie-out has a mismatch >= $1.\n\nneeds_review when a tie-out is partially ambiguous (label match uncertain), when the BS cost disclosure format is unclear, or when SOI subtotaling style makes a grand total uncertain.",
+      "description": "Rollup of Balance Sheet cross-statement ties: cash to SCF, Partners'/Members' Capital to CHG, and investments to SOI on both fair value and cost bases.",
+      "acceptance_criteria": "All applicable BS tie-outs (cash, capital, investments FMV, and investments cost when disclosed) match exactly.",
+      "severity": "critical",
+      "group": "balance_sheet",
+      "bypassable": false
+    },
+    {
+      "id": "SOI-PERCENTAGE-TIE",
+      "name": "SOI Percentage of Members'/Partners' Capital Tie",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Schedule of Investments",
+        "Balance Sheet"
+      ],
+      "query": "You have the Schedule of Investments and the Balance Sheet in context. If the SOI does not disclose a percentage-of-capital column, return not_applicable.\n\nCapture the Members'/Partners' Capital total from the Balance Sheet (labels: 'Members' capital', 'Partners' capital', or 'Net assets' when that is the labeled equity total). For each investment row on the SOI that discloses a percentage of Members'/Partners' Capital, recompute the percentage as (investment fair value / total Members'/Partners' Capital) * 100, rounded to 2 decimal places. Compare the recomputed value to the disclosed percentage on the same SOI line. Apply a 0.02 percentage-point tolerance to absorb half-cent rounding (e.g., 97.56% vs 97.57% should pass). Normalize number formats: remove '$', commas, '%' signs; treat parentheses as negative.\n\nPass criteria: Every SOI line's disclosed percentage matches the recomputed percentage within +/- 0.02 percentage points.\n\nFail criteria: Any SOI line differs from the recomputed value by more than 0.02 percentage points.\n\nneeds_review when an SOI row's fair value or percentage cell is unreadable.",
+      "description": "Each SOI line's disclosed percentage of Members'/Partners' Capital must equal (fair value / capital total) * 100, rounded to 2 decimals, within a 0.02 pp tolerance.",
+      "acceptance_criteria": "Disclosed % matches computed % within 0.02 pp.",
+      "severity": "major",
+      "group": "schedule_of_investments",
+      "bypassable": false
+    }
+  ]
+}

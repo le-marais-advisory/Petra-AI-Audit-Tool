@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from anthropic import Anthropic
@@ -8,6 +9,8 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, compact_rule_payload
 from src.providers.text.base import TextAnalysisProvider
+
+logger = logging.getLogger("petra.providers.text.claude")
 
 
 def _extract_text_content(content_blocks: list[Any]) -> str:
@@ -58,7 +61,20 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             request_kwargs["temperature"] = self._temperature
 
         response = self._client.messages.create(**request_kwargs)
-        return json.loads(_extract_text_content(response.content))
+        raw_text = _extract_text_content(response.content)
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError as exc:
+            stop_reason = getattr(response, "stop_reason", "unknown")
+            logger.error(
+                "Claude text response JSON parse failed (stop_reason=%s, len=%d, max_tokens=%d): %s — raw: %.500s",
+                stop_reason,
+                len(raw_text),
+                self._max_tokens,
+                exc,
+                raw_text,
+            )
+            raise
 
     def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str) -> dict[str, Any]:
         messages: list[dict[str, Any]] = [

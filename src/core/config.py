@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     CLAUDE_VISION_MODEL: str | None = None
     CLAUDE_TEXT_TEMPERATURE: float | None = None
     CLAUDE_VISION_TEMPERATURE: float | None = None
-    CLAUDE_TEXT_MAX_TOKENS: int = 1600
+    CLAUDE_TEXT_MAX_TOKENS: int = 4096
     CLAUDE_VISION_MAX_TOKENS: int = 1600
 
     JWT_SECRET_KEY: str = "change-me"

@@ -93,3 +93,51 @@ cases:
       - rule_id: FMT-DOUBLE-UNDERLINE
         verdict: fail
         pages: [1, 2, 3, 4, 5, 6, 8, 10, 12]
+  - id: multi_page_rules
+    description: "Tests multi-page rule application"
+    document: tests/fixtures/documents/multi_page_rules_doc.pdf
+    rules:
+      - SCP-SECTIONS-PRESENT
+      - TOC-PAGE-NUMBERS-MATCH
+      - TOC-COMPLETENESS
+      - DATE-CONSISTENCY-PACK
+      - DUP-TOTALS
+      - TIE-CASH
+      - TIE-PARTNERS-CAP
+      - TIE-NET-GAIN
+    expected:
+      # Document-scope rules
+      - rule_id: SCP-SECTIONS-PRESENT
+        verdict: fail # missing "Schedule of Investments" section
+      - rule_id: TOC-PAGE-NUMBERS-MATCH
+        verdict: needs_review
+      - rule_id: TOC-COMPLETENESS
+        verdict: needs_review
+      - rule_id: DATE-CONSISTENCY-PACK
+        verdict: pass
+      - rule_id: DUP-TOTALS
+        verdict: pass
+      # Multi-page tie-outs
+      - rule_id: TIE-CASH
+        verdict: pass
+      - rule_id: TIE-PARTNERS-CAP
+        verdict: pass
+      - rule_id: TIE-NET-GAIN
+        verdict: pass
+  - id: schedule_of_investments_rules
+    description: "Tests Schedule of Investments rules"
+    document: tests/fixtures/documents/schedule_of_investments_doc.pdf
+    rules:
+      - SCP-SECTIONS-PRESENT
+      - TIE-SOI-BS
+      - BS-TIE-OUTS
+      - SOI-PERCENTAGE-TIE
+    expected:
+      - rule_id: SCP-SECTIONS-PRESENT
+        verdict: pass
+      - rule_id: TIE-SOI-BS
+        verdict: pass
+      - rule_id: BS-TIE-OUTS
+        verdict: pass
+      - rule_id: SOI-PERCENTAGE-TIE
+        verdict: fail # disclosed percentages gap >= 0.02 percentage-point

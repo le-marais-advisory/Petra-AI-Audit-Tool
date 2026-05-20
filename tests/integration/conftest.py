@@ -7,7 +7,10 @@ import pytest
 import yaml
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-_RULES_FILE = _REPO_ROOT / "rules" / "rules.json"
+_RULES_FILES = [
+    _REPO_ROOT / "rules" / "rules.json",
+    _REPO_ROOT / "rules" / "multi_page_rules.json",
+]
 _CASES_FILE = Path(__file__).parent / "cases.yaml"
 
 
@@ -17,7 +20,11 @@ def _load_cases() -> list[dict]:
 
 
 def _load_all_rules() -> dict[str, dict]:
-    return {r["id"]: r for r in json.loads(_RULES_FILE.read_text())["rules"]}
+    rules: dict[str, dict] = {}
+    for path in _RULES_FILES:
+        if path.exists():
+            rules.update({r["id"]: r for r in json.loads(path.read_text())["rules"]})
+    return rules
 
 
 @pytest.fixture(scope="session")

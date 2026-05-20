@@ -41,6 +41,7 @@ class RuleAssessmentSchema(BaseModel):
     rule_id: str
     rule_name: str
     analysis_type: Literal["text", "vision"] = "text"
+    scope: Literal["page", "multi_page", "document"] = "page"
     execution_status: str = "completed"
     verdict: str = "needs_review"
     summary: str = ""
@@ -59,6 +60,7 @@ class PageRuleAssessmentSchema(BaseModel):
     rule_id: str
     rule_name: str
     analysis_type: Literal["text", "vision"] = "text"
+    scope: Literal["page", "multi_page", "document"] = "page"
     execution_status: str = "completed"
     verdict: str = "needs_review"
     summary: str = ""

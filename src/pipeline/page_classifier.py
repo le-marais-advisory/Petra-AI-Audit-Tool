@@ -8,6 +8,7 @@ BALANCE_SHEET = "balance_sheet"
 STATEMENT_OF_OPERATIONS = "statement_of_operations"
 STATEMENT_OF_CASH_FLOWS = "statement_of_cash_flows"
 SCHEDULE_OF_INVESTMENTS = "schedule_of_investments"
+STATEMENT_OF_CHANGES = "statement_of_changes"
 
 GLOBAL_SECTIONS = {"", "all", "all statements", "full document"}
 
@@ -19,6 +20,9 @@ SECTION_TO_KEY: dict[str, str] = {
     "statement of income": STATEMENT_OF_OPERATIONS,
     "statement of cash flows": STATEMENT_OF_CASH_FLOWS,
     "schedule of investments": SCHEDULE_OF_INVESTMENTS,
+    "statement of changes in partners' capital": STATEMENT_OF_CHANGES,
+    "statement of changes in members' capital": STATEMENT_OF_CHANGES,
+    "statement of changes in net assets": STATEMENT_OF_CHANGES,
 }
 
 BALANCE_SHEET_SIGNALS = (
@@ -74,6 +78,14 @@ COVER_SIGNALS = (
     "semi-annual report",
 )
 
+CHANGES_SIGNALS = (
+    "statement of changes in partners' capital",
+    "statement of changes in partners’ capital",
+    "statement of changes in members' capital",
+    "statement of changes in members’ capital",
+    "statement of changes in net assets",
+)
+
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower()).strip()
@@ -109,6 +121,8 @@ def classify_page(page: dict) -> list[str]:
         types.append(STATEMENT_OF_CASH_FLOWS)
     if any(signal in blob for signal in INVESTMENTS_SIGNALS):
         types.append(SCHEDULE_OF_INVESTMENTS)
+    if any(signal in blob for signal in CHANGES_SIGNALS):
+        types.append(STATEMENT_OF_CHANGES)
 
     page_number = page.get("page")
     table_count = len(page.get("tables") or [])

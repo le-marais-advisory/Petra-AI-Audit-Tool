@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -10,7 +11,7 @@ from datetime import timedelta
 
 from src.core.config import AppYaml, Settings
 from src.core.prompting import load_prompt
-from src.pipeline.page_classifier import rule_applies_to_page
+from src.pipeline.page_classifier import rule_applies_to_page, SECTION_TO_KEY
 from src.providers.text.factory import build_text_provider
 
 logger = logging.getLogger("petra.pipeline.text")
@@ -142,6 +143,7 @@ def _build_not_applicable_rule_result(rule: dict, reason: str) -> dict:
         "rule_id": rule.get("id", ""),
         "rule_name": rule.get("name", rule.get("id", "")),
         "analysis_type": "text",
+        "scope": rule.get("scope", "page"),
         "execution_status": "not_applicable",
         "verdict": "not_applicable",
         "summary": reason,
@@ -151,6 +153,38 @@ def _build_not_applicable_rule_result(rule: dict, reason: str) -> dict:
         "matched_pages": [],
         "notes": [reason],
     }
+
+
+def _pages_for_section(section_name: str, pages: list[dict]) -> list[dict]:
+    key = SECTION_TO_KEY.get(re.sub(r"\s+", " ", section_name.lower()).strip())
+    if key is None:
+        return []
+    return [p for p in pages if key in (p.get("page_type") or [])]
+
+
+def _serialize_broad_scope_content(pages: list[dict], rule: dict, group_by_section: bool = False) -> str:
+    if not group_by_section:
+        parts: list[str] = []
+        for page in pages:
+            page_num = page.get("page", "?")
+            parts.append(f'<page number="{page_num}">')
+            parts.append(_serialize_page_content(page, rule))
+            parts.append("</page>")
+        return "\n\n".join(parts)
+
+    sections_list = rule.get("sections") or []
+    parts = []
+    for section_name in sections_list:
+        section_pages = _pages_for_section(section_name, pages)
+        if section_pages:
+            parts.append(f'<section name="{section_name}">')
+            for page in section_pages:
+                page_num = page.get("page", "?")
+                parts.append(f'<page number="{page_num}">')
+                parts.append(_serialize_page_content(page, rule))
+                parts.append("</page>")
+            parts.append("</section>")
+    return "\n\n".join(parts)
 
 
 class TextRuleAnalyzer:
@@ -207,6 +241,106 @@ class TextRuleAnalyzer:
             "notes": notes[:4],
         }
 
+    def _analyze_broad_scope_rules(
+        self,
+        broad_rules: list[dict],
+        pages: list[dict],
+        provider,
+        results: dict,
+        page_results: list[dict],
+        lock: threading.Lock,
+        on_page_result: Callable[[dict, dict[str, dict], list[dict]], None] | None,
+        is_cancelled: Callable[[], bool] | None,
+    ) -> None:
+        for rule in broad_rules:
+            if is_cancelled and is_cancelled():
+                break
+            rule_id = rule.get("id", "")
+            scope = rule.get("scope", "page")
+
+            if scope == "document":
+                gathered_pages = pages
+                if not gathered_pages:
+                    with lock:
+                        results[rule_id] = _build_not_applicable_rule_result(rule, "Document has no extracted pages.")
+                    continue
+                document_content = _serialize_broad_scope_content(gathered_pages, rule, group_by_section=False)
+
+            elif scope == "multi_page":
+                sections = rule.get("sections") or []
+                if not sections:
+                    with lock:
+                        results[rule_id] = _build_not_applicable_rule_result(rule, "Rule has no sections defined.")
+                    continue
+                missing = [s for s in sections if not _pages_for_section(s, pages)]
+                if missing:
+                    reason = f"Sections not found in document: {', '.join(missing)}."
+                    with lock:
+                        results[rule_id] = _build_not_applicable_rule_result(rule, reason)
+                    continue
+                gathered_pages = [p for s in sections for p in _pages_for_section(s, pages)]
+                document_content = _serialize_broad_scope_content(gathered_pages, rule, group_by_section=True)
+
+            gathered_page_nums = sorted({p.get("page") for p in gathered_pages if p.get("page")})
+
+            try:
+                _t0 = time.perf_counter()
+                logger.info("LLM call start: type=text scope=%s rule=%s pages=%s", scope, rule_id, gathered_page_nums)
+                raw_result = provider.evaluate_rule(document_content=document_content, rule=rule, system_prompt=self.system_prompt)
+                logger.info("LLM call done: type=text scope=%s rule=%s elapsed=%s", scope, rule_id, timedelta(seconds=time.perf_counter() - _t0))
+                verdict = raw_result.get("verdict", "needs_review")
+                summary = raw_result.get("summary", "")
+                reasoning = raw_result.get("reasoning", "")
+                findings = raw_result.get("findings", [])[:4]
+                citations = [
+                    {"page": int(c.get("page", 0) or 0), "evidence": c.get("evidence", "")}
+                    for c in raw_result.get("citations", [])
+                ][:4]
+                notes = [f"Confidence: {raw_result.get('confidence', 'unknown')}"]
+
+                rule_result = {
+                    "rule_id": rule_id,
+                    "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
+                    "analysis_type": "text",
+                    "scope": scope,
+                    "execution_status": "completed",
+                    "verdict": verdict,
+                    "summary": summary,
+                    "reasoning": reasoning,
+                    "findings": findings,
+                    "citations": citations,
+                    "matched_pages": gathered_page_nums,
+                    "notes": notes,
+                }
+                synthetic_page_results = [
+                    {
+                        "page": gathered_page_nums[0],
+                        "rule_id": rule_id,
+                        "rule_name": rule_result["rule_name"],
+                        "analysis_type": "text",
+                        "scope": scope,
+                        "execution_status": "completed",
+                        "verdict": verdict,
+                        "summary": summary,
+                        "reasoning": reasoning,
+                        "findings": findings,
+                        "citations": citations,
+                        "notes": notes,
+                    }
+                ] if gathered_page_nums else []
+            except Exception as exc:
+                rule_result = _build_skipped_result(rule, f"Text analysis failed: {exc}", execution_status="error")
+                synthetic_page_results = (
+                    [_build_skipped_result(rule, f"Text analysis failed: {exc}", execution_status="error", page=gathered_page_nums[0])]
+                    if gathered_page_nums else []
+                )
+
+            with lock:
+                results[rule_id] = rule_result
+                page_results.extend(synthetic_page_results)
+                if on_page_result and synthetic_page_results:
+                    on_page_result(synthetic_page_results[0], dict(results), list(page_results))
+
     def analyze(
         self,
         pages: list[dict],
@@ -218,13 +352,16 @@ class TextRuleAnalyzer:
         if not text_rules:
             return {"rule_results": {}, "page_results": []}
 
+        page_rules = [r for r in text_rules if r.get("scope", "page") == "page"]
+        broad_rules = [r for r in text_rules if r.get("scope", "page") in ("multi_page", "document")]
+
         try:
             provider = build_text_provider(self.settings)
         except ValueError as exc:
             error_message = str(exc)
             skipped_page_results = [
                 _build_skipped_result(rule, error_message, page=max(1, page.get("page", 1)))
-                for rule in text_rules
+                for rule in page_rules
                 for page in (pages[:1] or [{"page": 1}])
             ]
             return {
@@ -237,12 +374,12 @@ class TextRuleAnalyzer:
 
         results: dict[str, dict] = {}
         page_results: list[dict] = []
-        per_rule_page_results: dict[str, list[dict]] = {rule.get("id", ""): [] for rule in text_rules}
+        per_rule_page_results: dict[str, list[dict]] = {rule.get("id", ""): [] for rule in page_rules}
         lock = threading.Lock()
 
         # Mark rules with no applicable pages upfront; collect work items for the rest.
         applicable_pairs: list[tuple[dict, dict]] = []
-        for rule in text_rules:
+        for rule in page_rules:
             rule_id = rule.get("id", "")
             matching = [p for p in pages if rule_applies_to_page(rule, p.get("page_type") or [])]
             if not matching:
@@ -285,6 +422,17 @@ class TextRuleAnalyzer:
             except Exception as exc:
                 return _build_skipped_result(rule, f"Text analysis failed: {exc}", execution_status="error", page=page_number)
 
+        self._analyze_broad_scope_rules(
+            broad_rules=broad_rules,
+            pages=pages,
+            provider=provider,
+            results=results,
+            page_results=page_results,
+            lock=lock,
+            on_page_result=on_page_result,
+            is_cancelled=is_cancelled,
+        )
+
         with ThreadPoolExecutor(max_workers=self.concurrent_requests) as executor:
             future_to_rule = {executor.submit(_call, rule, page): rule for rule, page in applicable_pairs}
             for future in as_completed(future_to_rule):
@@ -304,8 +452,8 @@ class TextRuleAnalyzer:
                     if on_page_result:
                         on_page_result(page_result, dict(results), list(page_results))
 
-        # Any rule that had applicable pages but nothing collected (fully cancelled before first result)
-        for rule in text_rules:
+        # Any page-scope rule that had applicable pages but nothing collected (fully cancelled)
+        for rule in page_rules:
             rule_id = rule.get("id", "")
             if rule_id not in results:
                 results[rule_id] = self._aggregate_rule_results(rule, per_rule_page_results[rule_id])
