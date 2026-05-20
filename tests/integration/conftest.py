@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "Only run rules of this severity (repeatable: --severity critical --severity major). "
             "Valid values: critical, major, minor."
         ),
+    )
+    parser.addoption(
+        "--workers",
+        type=int,
+        default=4,
+        dest="workers",
+        help="Number of parallel pipeline workers for the integration test fixture (default: 4).",
     )
 
 
@@ -122,33 +130,33 @@ def pipeline_results(request) -> dict[str, dict]:
         return {}
 
     service = ValidationService()
-    results: dict[str, dict] = {}
 
-    for case in cases:
+    def _run_case(case: dict) -> tuple[str, dict]:
         case_id = case["id"]
         doc_path = _REPO_ROOT / case["document"]
-
         if not doc_path.exists():
-            results[case_id] = {"__error__": f"Document not found: {doc_path}"}
-            continue
-
+            return case_id, {"__error__": f"Document not found: {doc_path}"}
         rule_ids: list[str] = case.get("rules") or []
         if severity_filter:
             rule_ids = [rid for rid in rule_ids if rid in severity_rule_ids]
-        # Pass only the filtered rules to validate_document — saves API cost
         if rule_filter:
             rule_ids = [rid for rid in rule_ids if rid in rule_filter]
-
         unknown = [rid for rid in rule_ids if rid not in all_rules]
         if unknown:
-            results[case_id] = {"__error__": f"Unknown rule IDs in cases.yaml: {unknown}"}
-            continue
-
+            return case_id, {"__error__": f"Unknown rule IDs in cases.yaml: {unknown}"}
         selected_rules = [all_rules[rid] for rid in rule_ids]
-        results[case_id] = service.validate_document(
+        return case_id, service.validate_document(
             pdf_path=str(doc_path),
             source_filename=doc_path.name,
             rules_json_str=json.dumps({"rules": selected_rules}),
         )
+
+    workers = request.config.getoption("workers")
+    results: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_run_case, case): case for case in cases}
+        for future in as_completed(futures):
+            case_id, result = future.result()
+            results[case_id] = result
 
     return results

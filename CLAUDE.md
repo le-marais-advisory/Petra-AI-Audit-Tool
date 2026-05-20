@@ -72,6 +72,9 @@ pytest tests/integration -m integration --severity critical --rule GRAM-SPELL
 # One specific case
 pytest tests/integration -m integration --case my_fund
 
+# Run with more parallel workers (default 4; lower to respect API rate limits)
+pytest tests/integration -m integration --workers 8
+
 # Filter by node ID substring (case or rule name)
 pytest tests/integration -m integration -k "my_fund"
 pytest tests/integration -m integration -k "my_fund/BS-FMT"
