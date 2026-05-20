@@ -304,7 +304,19 @@ Integration tests run real PDF documents through the full validation pipeline â€
 # Run all integration tests
 pytest tests/integration -m integration
 
-# Filter by case or rule name
+# Critical-severity rules only (~29% of full cost)
+pytest tests/integration -m integration --severity critical
+
+# One specific rule across all cases
+pytest tests/integration -m integration --rule GRAM-SPELL
+
+# Multiple rules
+pytest tests/integration -m integration --rule DATE-INTEGRITY-FULL --rule CVR-DATE-CHECK
+
+# One specific case
+pytest tests/integration -m integration --case my_fund
+
+# Filter by node ID substring (case or rule name)
 pytest tests/integration -m integration -k "my_fund/BS-FMT"
 
 # Verbose output â€” shows the full node ID and failure details

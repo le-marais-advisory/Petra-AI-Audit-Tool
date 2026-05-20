@@ -6,11 +6,12 @@ validation pipeline — including live LLM calls — once per case and caches
 the result so every rule assertion for the same document shares a single run.
 
 Running:
-    pytest tests/integration -m integration                    # full run, all rules
-    pytest tests/integration -m "integration and critical"     # simple: critical-severity rules only
-    pytest tests/integration -m integration --rule GRAM-SPELL  # one specific rule
-    pytest tests/integration -m integration --rule A --rule B  # multiple rules
-    pytest tests/integration -m integration -v                 # verbose
+    pytest tests/integration -m integration                          # full run, all rules
+    pytest tests/integration -m integration --severity critical      # critical-severity rules only
+    pytest tests/integration -m integration --rule GRAM-SPELL        # one specific rule
+    pytest tests/integration -m integration --rule A --rule B        # multiple rules
+    pytest tests/integration -m integration --severity critical --rule GRAM-SPELL  # combined
+    pytest tests/integration -m integration -v                       # verbose
 
 Adding cases: see the instructions at the top of cases.yaml, or run
     python scripts/update_integration_expectations.py

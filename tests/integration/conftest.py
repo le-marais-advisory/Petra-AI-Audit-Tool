@@ -31,6 +31,29 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Only run pipeline for this case ID (repeatable: --case A --case B).",
     )
+    parser.addoption(
+        "--severity",
+        action="append",
+        dest="severities",
+        metavar="SEVERITY",
+        default=None,
+        help=(
+            "Only run rules of this severity (repeatable: --severity critical --severity major). "
+            "Valid values: critical, major, minor."
+        ),
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    severity_filter = set(config.getoption("severities") or [])
+    if not severity_filter:
+        return
+    skip = pytest.mark.skip(reason=f"not in --severity filter ({', '.join(sorted(severity_filter))})")
+    _severity_names = {"critical", "major", "minor"}
+    for item in items:
+        item_severities = {m.name for m in item.iter_markers() if m.name in _severity_names}
+        if item_severities and not item_severities & severity_filter:
+            item.add_marker(skip)
 
 
 def _load_cases() -> list[dict]:
@@ -62,7 +85,21 @@ def pipeline_results(request) -> dict[str, dict]:
 
     rule_filter = set(request.config.getoption("rules") or [])
     case_filter = set(request.config.getoption("cases") or [])
+    severity_filter = set(request.config.getoption("severities") or [])
     cases = [c for c in _load_cases() if c.get("expected")]
+
+    all_rules = _load_all_rules()
+
+    severity_rule_ids: set[str] = set()
+    if severity_filter:
+        severity_rule_ids = {
+            rid for rid, r in all_rules.items()
+            if r.get("severity", "major") in severity_filter
+        }
+        cases = [
+            c for c in cases
+            if any(e["rule_id"] in severity_rule_ids for e in c.get("expected", []))
+        ]
 
     if case_filter:
         cases = [c for c in cases if c["id"] in case_filter]
@@ -77,7 +114,6 @@ def pipeline_results(request) -> dict[str, dict]:
     if not cases:
         return {}
 
-    all_rules = _load_all_rules()
     service = ValidationService()
     results: dict[str, dict] = {}
 
@@ -90,6 +126,8 @@ def pipeline_results(request) -> dict[str, dict]:
             continue
 
         rule_ids: list[str] = case.get("rules") or []
+        if severity_filter:
+            rule_ids = [rid for rid in rule_ids if rid in severity_rule_ids]
         # Pass only the filtered rules to validate_document — saves API cost
         if rule_filter:
             rule_ids = [rid for rid in rule_ids if rid in rule_filter]
