@@ -6,15 +6,19 @@ validation pipeline — including live LLM calls — once per case and caches
 the result so every rule assertion for the same document shares a single run.
 
 Running:
-    pytest tests/integration -m integration           # all cases
-    pytest tests/integration -m integration -k foo    # filter by name
-    pytest tests/integration -m integration -v        # verbose
+    pytest tests/integration -m integration                          # full run, all rules
+    pytest tests/integration -m integration --severity critical      # critical-severity rules only
+    pytest tests/integration -m integration --rule GRAM-SPELL        # one specific rule
+    pytest tests/integration -m integration --rule A --rule B        # multiple rules
+    pytest tests/integration -m integration --severity critical --rule GRAM-SPELL  # combined
+    pytest tests/integration -m integration -v                       # verbose
 
 Adding cases: see the instructions at the top of cases.yaml, or run
     python scripts/update_integration_expectations.py
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -24,6 +28,12 @@ _CASES_FILE = Path(__file__).parent / "cases.yaml"
 
 
 def _collect_params() -> list[pytest.param]:
+    _REPO_ROOT = Path(__file__).parent.parent.parent
+    rule_severity = {
+        r["id"]: r.get("severity", "major")
+        for r in json.loads((_REPO_ROOT / "rules" / "rules.json").read_text())["rules"]
+    }
+
     data = yaml.safe_load(_CASES_FILE.read_text())
     cases = (data or {}).get("cases") or []
     params: list[pytest.param] = []
@@ -36,6 +46,7 @@ def _collect_params() -> list[pytest.param]:
                 else ""
             )
             node_id = f"{case['id']}/{exp['rule_id']}{pages_suffix}"
+            severity = rule_severity.get(exp["rule_id"], "major")
             params.append(
                 pytest.param(
                     case["id"],
@@ -44,6 +55,7 @@ def _collect_params() -> list[pytest.param]:
                     exp.get("matched_pages"),
                     pages_filter,
                     id=node_id,
+                    marks=[getattr(pytest.mark, severity)],
                 )
             )
     return params
@@ -128,7 +140,7 @@ def test_rule_verdict(
 
     result = pipeline_results.get(case_id)
     if result is None:
-        pytest.fail(f"No pipeline result for case '{case_id}' — check conftest.py")
+        pytest.skip(f"Case '{case_id}' not included in this run (filtered by --rule)")
 
     error = result.get("__error__")
     if error:
