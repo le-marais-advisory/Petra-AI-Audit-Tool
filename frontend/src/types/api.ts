@@ -67,6 +67,7 @@ export interface RuleAssessment {
   group?: string | null;
   bypassable?: boolean;
   bypass?: boolean;
+  duration_ms?: number | null;
 }
 
 export interface PageRuleAssessment {
@@ -84,6 +85,7 @@ export interface PageRuleAssessment {
   group?: string | null;
   bypassable?: boolean;
   bypass?: boolean;
+  duration_ms?: number | null;
 }
 
 export interface PageObservation {

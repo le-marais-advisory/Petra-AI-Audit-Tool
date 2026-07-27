@@ -69,12 +69,20 @@ def _enrich_with_rule_metadata(items: list[dict], rule_lookup: dict[str, dict]) 
     return enriched
 
 
+def _format_duration(seconds: float) -> str:
+    if seconds >= 60:
+        minutes, secs = divmod(int(round(seconds)), 60)
+        return f"{minutes}m {secs}s"
+    return f"{seconds:.1f}s"
+
+
 def build_document_analysis(
     pages: list[dict],
     selected_rules: list[dict] | None = None,
     rule_assessments: list[dict] | None = None,
     text_page_results: list[dict] | None = None,
     visual_page_results: list[dict] | None = None,
+    elapsed_seconds: float | None = None,
 ) -> dict:
     total_chars = sum(page.get("char_count", 0) for page in pages)
     total_tables = sum(len(page.get("tables", [])) for page in pages)
@@ -109,6 +117,36 @@ def build_document_analysis(
         {"label": "Text Rules Completed", "value": str(completed_text_rule_count), "detail": "Text rules evaluated by the LLM in this run."},
         {"label": "Rules Bypassed", "value": str(bypassed_rule_count), "detail": "Rules flagged bypassable and marked bypass for this run."},
     ]
+
+    # Surface timing so slow rules can be identified and pruned (latency analysis).
+    if elapsed_seconds is not None:
+        overview.insert(
+            0,
+            {
+                "label": "Processing Time",
+                "value": _format_duration(elapsed_seconds),
+                "detail": "Total wall-clock time for extraction and all rule evaluations.",
+            },
+        )
+    timed_rules = sorted(
+        (item for item in rule_assessments if item.get("duration_ms") is not None),
+        key=lambda item: item.get("duration_ms") or 0,
+        reverse=True,
+    )
+    if timed_rules:
+        slowest = timed_rules[0]
+        slowest_name = slowest.get("rule_name") or slowest.get("rule_id") or "unknown"
+        top = ", ".join(
+            f"{(item.get('rule_name') or item.get('rule_id') or 'unknown')} ({(item.get('duration_ms') or 0) / 1000:.1f}s)"
+            for item in timed_rules[:3]
+        )
+        overview.append(
+            {
+                "label": "Slowest Rule",
+                "value": f"{(slowest.get('duration_ms') or 0) / 1000:.1f}s",
+                "detail": f"Highest total LLM time. Top rules by time: {top}.",
+            }
+        )
 
     page_observations = []
     for page in pages:
@@ -149,6 +187,7 @@ def build_document_result(
     rule_assessments: list[dict] | None = None,
     text_page_results: list[dict] | None = None,
     visual_page_results: list[dict] | None = None,
+    elapsed_seconds: float | None = None,
 ) -> dict:
     return DocumentValidationResponse(
         document_id=document_id,
@@ -160,6 +199,7 @@ def build_document_result(
             rule_assessments=rule_assessments,
             text_page_results=text_page_results,
             visual_page_results=visual_page_results,
+            elapsed_seconds=elapsed_seconds,
         ),
         pages=pages,
     ).model_dump()
