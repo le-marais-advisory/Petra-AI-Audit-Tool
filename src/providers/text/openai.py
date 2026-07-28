@@ -19,10 +19,11 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
     ) -> None:
         # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
         # 2 retries, and timeouts are themselves retried, so an unresponsive call could
-        # occupy a worker for ~30 minutes. 180s covers a legitimate slow whole-document
-        # call; the SDK's own 429/5xx retries (which honour retry-after) are kept as the
-        # rate-limit defence.
-        self._client = OpenAI(api_key=api_key, timeout=httpx.Timeout(180.0, connect=5.0), max_retries=2)
+        # occupy a worker for ~30 minutes. 300s matches the Claude text provider: a
+        # reasoning-heavy broad-scope rule was measured at 147.7s there, and text calls
+        # are the long ones. The SDK's own 429/5xx retries are kept as the rate-limit
+        # defence.
+        self._client = OpenAI(api_key=api_key, timeout=httpx.Timeout(300.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature
         self._max_tokens = max_completion_tokens

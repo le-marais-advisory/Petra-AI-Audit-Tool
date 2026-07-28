@@ -45,7 +45,7 @@ Set these in the root `.env` file (see `env.example` for a template).
 | `CLAUDE_VISION_MODEL` | string | - | Model for vision analysis (falls back to text model) |
 | `CLAUDE_TEXT_TEMPERATURE` | float | - | Temperature for text analysis. Unsupported on Sonnet 5 — leave unset |
 | `CLAUDE_VISION_TEMPERATURE` | float | - | Temperature for vision analysis. Unsupported on Sonnet 5 — leave unset |
-| `CLAUDE_TEXT_MAX_TOKENS` | int | `8192` | Max tokens for text analysis. Covers reasoning as well as the response on models that think by default — too low and reasoning-heavy rules return truncated JSON |
+| `CLAUDE_TEXT_MAX_TOKENS` | int | `24000` | Max tokens for text analysis. Covers reasoning as well as the response on models that think by default. Measured peak across fixtures is 15.2k output tokens; 4096 truncated 6 of 328 calls and 8192 truncated 3 |
 | `CLAUDE_VISION_MAX_TOKENS` | int | `1600` | Max tokens for vision analysis |
 
 Claude Sonnet 5 rejects a non-default `temperature` with a 400. Both temperature

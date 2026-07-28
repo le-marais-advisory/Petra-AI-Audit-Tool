@@ -79,10 +79,13 @@ class Settings(BaseSettings):
     CLAUDE_VISION_MODEL: str | None = None
     CLAUDE_TEXT_TEMPERATURE: float | None = None
     CLAUDE_VISION_TEMPERATURE: float | None = None
-    # Covers reasoning as well as the response on models that think by default, so a
-    # reasoning-heavy broad-scope rule can exhaust 4096 before finishing its JSON and
-    # the response arrives truncated.
-    CLAUDE_TEXT_MAX_TOKENS: int = 8192
+    # Covers reasoning as well as the response on models that think by default, so too
+    # low a value truncates the JSON mid-response. Measured over 328 calls across two
+    # fixtures: median 598 output tokens, p95 3.1k, but a long tail — the peak was
+    # 15,219 (SOI-PERCENTAGE-TIE, which recomputes a percentage per investment).
+    # 4096 truncated 6 calls and 8192 truncated 3; 24000 truncated none.
+    # This is a ceiling the model cannot see, not a target, so headroom costs nothing.
+    CLAUDE_TEXT_MAX_TOKENS: int = 24000
     CLAUDE_VISION_MAX_TOKENS: int = 1600
 
     # Overrides pipeline.concurrent_requests from app.yaml. config/ is baked into the

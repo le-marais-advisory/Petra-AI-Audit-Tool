@@ -36,9 +36,10 @@ class OpenAIVisionProvider(VisionProvider):
     ) -> None:
         # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
         # 2 retries, and timeouts are themselves retried, so an unresponsive call could
-        # occupy a worker for ~30 minutes. 180s covers a legitimate slow whole-document
-        # call; the SDK's own 429/5xx retries (which honour retry-after) are kept as the
-        # rate-limit defence.
+        # occupy a worker for ~30 minutes. 180s rather than the text providers' 300s:
+        # vision is capped at CLAUDE_VISION_MAX_TOKENS (1600), so it cannot legitimately
+        # run as long as a reasoning-heavy text call. The SDK's own 429/5xx retries
+        # (which honour retry-after) are kept as the rate-limit defence.
         self._client = OpenAI(api_key=api_key, timeout=httpx.Timeout(180.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature

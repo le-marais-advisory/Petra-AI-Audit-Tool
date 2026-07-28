@@ -34,10 +34,11 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
     ) -> None:
         # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
         # 2 retries, and timeouts are themselves retried, so an unresponsive call could
-        # occupy a worker for ~30 minutes. 180s covers a legitimate slow whole-document
-        # call; the SDK's own 429/5xx retries (which honour retry-after) are kept as the
-        # rate-limit defence.
-        self._client = Anthropic(api_key=api_key, timeout=httpx.Timeout(180.0, connect=5.0), max_retries=2)
+        # occupy a worker for ~30 minutes. 300s is sized off the slowest legitimate call
+        # measured on the fixtures — 147.7s for SOI-PERCENTAGE-TIE, which emitted 15.2k
+        # output tokens — leaving roughly 2x headroom. The SDK's own 429/5xx retries
+        # (which honour retry-after) are kept as the rate-limit defence.
+        self._client = Anthropic(api_key=api_key, timeout=httpx.Timeout(300.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -61,6 +62,18 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
 
         response = self._client.messages.create(**request_kwargs)
         stop_reason = getattr(response, "stop_reason", "unknown")
+        # Output tokens cover reasoning as well as the response and are what max_tokens
+        # caps, so this is the number to look at when sizing CLAUDE_TEXT_MAX_TOKENS or
+        # judging how much rate-limit headroom a run is using.
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            logger.info(
+                "Claude text usage: in=%s out=%s budget=%d stop=%s",
+                getattr(usage, "input_tokens", "?"),
+                getattr(usage, "output_tokens", "?"),
+                self._max_tokens,
+                stop_reason,
+            )
         raw_text = _extract_text_content(response.content)
         try:
             return json.loads(raw_text)
