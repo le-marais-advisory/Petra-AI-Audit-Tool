@@ -154,6 +154,31 @@ report:
 |---------|------|---------|-------------|
 | `include_thumbnails` | bool | `false` | Include page thumbnails in exported PDF reports |
 
+### Pipeline Settings
+
+```yaml
+pipeline:
+  concurrent_requests: 12
+```
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `concurrent_requests` | int | `12` | Concurrent text-analysis LLM calls |
+
+Notes:
+
+- Both page-scope and broad-scope (`multi_page` / `document`) text rules share this one
+  pool, so it governs the whole text phase.
+- Floored at 1 and capped at `MAX_TEXT_WORKERS` (24) in
+  `src/pipeline/text_rule_analyzer.py`, so a typo cannot launch hundreds of threads.
+- **Jobs run one at a time** (`ValidationJobService` holds a single slot), so this is also
+  the pipeline's total in-flight ceiling regardless of how many uploads are queued.
+- Override without touching the YAML by setting `PIPELINE_CONCURRENT_REQUESTS` in `.env`.
+  This matters in deployment: `config/` is baked into the container image, so the env var
+  is the only way to change the value without a rebuild.
+- `load_app_yaml()` is cached for the process lifetime, so a YAML edit needs a restart.
+- If you see HTTP 429s from the provider, lower this to 8 and re-measure.
+
 ## Key Files
 
 - `env.example` - Backend environment template

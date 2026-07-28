@@ -4,8 +4,8 @@ import json
 import logging
 from typing import Any
 
+import httpx
 from anthropic import Anthropic
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, compact_rule_payload
 from src.providers.text.base import TextAnalysisProvider
@@ -32,17 +32,16 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         temperature: float | None,
         max_tokens: int,
     ) -> None:
-        self._client = Anthropic(api_key=api_key)
+        # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
+        # 2 retries, and timeouts are themselves retried, so an unresponsive call could
+        # occupy a worker for ~30 minutes. 180s covers a legitimate slow whole-document
+        # call; the SDK's own 429/5xx retries (which honour retry-after) are kept as the
+        # rate-limit defence.
+        self._client = Anthropic(api_key=api_key, timeout=httpx.Timeout(180.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature
         self._max_tokens = max_tokens
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((Exception,)),
-        reraise=True,
-    )
     def _call_claude_with_retry(self, messages: list[dict[str, Any]], system_prompt: str) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {
             "model": self._model,

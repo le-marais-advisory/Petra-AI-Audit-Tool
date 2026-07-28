@@ -67,13 +67,25 @@ Uses **pdfplumber** to extract structured content from each page:
 
 Analyzes extracted text and tables against text-type rules using an LLM:
 
-1. Filters selected rules to `analysis_type: "text"` only
-2. For each page, sends the extracted text + tables to the LLM
-3. Uses a system prompt from `config/text_analysis_system_prompt.md`
-4. The LLM evaluates each rule and returns structured JSON with verdicts, findings, and citations
-5. Page-level results are aggregated into rule-level assessments
+1. Filters selected rules to `analysis_type: "text"` only, then splits them by scope:
+   `page` rules evaluate one page at a time, while `multi_page` and `document` rules
+   evaluate whole sections or the whole document in a single call
+2. Classifies every rule up front, single-threaded — which pages a page rule applies to
+   (`page_classifier.rule_applies_to_page`), and which sections a broad-scope rule
+   gathers. Rules with nothing to evaluate are marked `not_applicable` here and never
+   reach the LLM
+3. Submits all remaining work to **one thread pool**, broad-scope calls first: they carry
+   the most content and take longest, so starting them early keeps them off the tail.
+   Pool size is `pipeline.concurrent_requests` (see `docs/configuration.md`)
+4. Uses a system prompt from `config/text_analysis_system_prompt.md`
+5. The LLM evaluates each rule and returns structured JSON with verdicts, findings, and citations
+6. Page-scope results are aggregated per rule; broad-scope results are committed directly
+   (they carry their own `scope` and `matched_pages`) alongside one synthetic page result
+   attributed to the first gathered page
 
 The LLM provider (OpenAI or Claude) is determined by the `TEXT_PROVIDER` environment variable.
+Provider clients are configured with a 180s timeout and 2 SDK retries; the SDK's own
+429/5xx handling (which honours `retry-after`) is the rate-limit defence.
 
 **Output:**
 - `rule_results` - Dict of rule ID to aggregated `RuleAssessmentSchema`

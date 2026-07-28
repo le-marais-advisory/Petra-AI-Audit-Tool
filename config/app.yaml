@@ -39,4 +39,7 @@ report:
   include_thumbnails: false
 
 pipeline:
-  concurrent_requests: 2
+  # Concurrent text-analysis LLM calls. Capped at 24 in code (MAX_TEXT_WORKERS) and
+  # overridable with the PIPELINE_CONCURRENT_REQUESTS env var. Jobs run one at a time,
+  # so this is also the pipeline's total in-flight ceiling. Lower it to 8 if 429s appear.
+  concurrent_requests: 12

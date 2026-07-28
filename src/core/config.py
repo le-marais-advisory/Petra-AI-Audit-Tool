@@ -36,7 +36,10 @@ class ReportConfig(BaseModel):
 
 
 class PipelineConfig(BaseModel):
-    concurrent_requests: int = 2
+    # Concurrent text-analysis LLM calls. Matches vision.concurrent_requests, which
+    # already runs at 12 in production. Floored and capped by
+    # TextRuleAnalyzer._max_workers, and overridable via PIPELINE_CONCURRENT_REQUESTS.
+    concurrent_requests: int = 12
 
 
 class AppYaml(BaseModel):
@@ -78,6 +81,11 @@ class Settings(BaseSettings):
     CLAUDE_VISION_TEMPERATURE: float | None = None
     CLAUDE_TEXT_MAX_TOKENS: int = 4096
     CLAUDE_VISION_MAX_TOKENS: int = 1600
+
+    # Overrides pipeline.concurrent_requests from app.yaml. config/ is baked into the
+    # container image, so without this the most tuning-prone number in the pipeline
+    # can only be rolled back by rebuilding and redeploying.
+    PIPELINE_CONCURRENT_REQUESTS: int | None = None
 
     JWT_SECRET_KEY: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
