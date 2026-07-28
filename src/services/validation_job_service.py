@@ -204,12 +204,13 @@ class ValidationJobService:
             visual_page_results = vision_analysis_results.get("page_results", [])
             final_status = "cancelled" if job.cancel_requested else "completed"
             final_message = "Analysis stopped" if job.cancel_requested else "Analysis complete"
+            elapsed_seconds = time.perf_counter() - t0
             logger.info(
                 "Pipeline complete: file=%s pages=%d rules=%d elapsed=%s",
                 source_filename or Path(pdf_path).name,
                 len(pages),
                 len(selected_rules),
-                timedelta(seconds=time.perf_counter() - t0),
+                timedelta(seconds=elapsed_seconds),
             )
 
             with job.lock:
@@ -228,6 +229,7 @@ class ValidationJobService:
                     ),
                     text_page_results=text_page_results,
                     visual_page_results=visual_page_results,
+                    elapsed_seconds=elapsed_seconds,
                 )
         except Exception as exc:
             with job.lock:

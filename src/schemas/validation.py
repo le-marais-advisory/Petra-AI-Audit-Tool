@@ -53,6 +53,10 @@ class RuleAssessmentSchema(BaseModel):
     group: Optional[str] = None
     bypassable: bool = False
     bypass: bool = False
+    duration_ms: Optional[float] = Field(
+        default=None,
+        description="Total LLM execution time attributed to this rule, in milliseconds.",
+    )
 
 
 class PageRuleAssessmentSchema(BaseModel):
@@ -71,6 +75,10 @@ class PageRuleAssessmentSchema(BaseModel):
     group: Optional[str] = None
     bypassable: bool = False
     bypass: bool = False
+    duration_ms: Optional[float] = Field(
+        default=None,
+        description="LLM execution time for this page-rule evaluation, in milliseconds.",
+    )
 
 
 class DocumentAnalysisSchema(BaseModel):

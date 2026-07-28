@@ -227,6 +227,9 @@ class TextRuleAnalyzer:
             citations.extend(item.get("citations", [])[:2])
             notes.extend(item.get("notes", [])[:1])
 
+        durations = [item.get("duration_ms") for item in page_results if item.get("duration_ms") is not None]
+        total_duration_ms = round(sum(durations), 1) if durations else None
+
         return {
             "rule_id": rule.get("id", ""),
             "rule_name": rule.get("name", rule.get("id", "")),
@@ -239,6 +242,7 @@ class TextRuleAnalyzer:
             "citations": citations[:4],
             "matched_pages": matched_pages,
             "notes": notes[:4],
+            "duration_ms": total_duration_ms,
         }
 
     def _analyze_broad_scope_rules(
@@ -287,7 +291,9 @@ class TextRuleAnalyzer:
                 _t0 = time.perf_counter()
                 logger.info("LLM call start: type=text scope=%s rule=%s pages=%s", scope, rule_id, gathered_page_nums)
                 raw_result = provider.evaluate_rule(document_content=document_content, rule=rule, system_prompt=self.system_prompt)
-                logger.info("LLM call done: type=text scope=%s rule=%s elapsed=%s", scope, rule_id, timedelta(seconds=time.perf_counter() - _t0))
+                _elapsed = time.perf_counter() - _t0
+                logger.info("LLM call done: type=text scope=%s rule=%s elapsed=%s", scope, rule_id, timedelta(seconds=_elapsed))
+                _duration_ms = round(_elapsed * 1000, 1)
                 verdict = raw_result.get("verdict", "needs_review")
                 summary = raw_result.get("summary", "")
                 reasoning = raw_result.get("reasoning", "")
@@ -311,6 +317,7 @@ class TextRuleAnalyzer:
                     "citations": citations,
                     "matched_pages": gathered_page_nums,
                     "notes": notes,
+                    "duration_ms": _duration_ms,
                 }
                 synthetic_page_results = [
                     {
@@ -326,6 +333,7 @@ class TextRuleAnalyzer:
                         "findings": findings,
                         "citations": citations,
                         "notes": notes,
+                        "duration_ms": _duration_ms,
                     }
                 ] if gathered_page_nums else []
             except Exception as exc:
@@ -398,7 +406,8 @@ class TextRuleAnalyzer:
                 _t0 = time.perf_counter()
                 logger.info("LLM call start: type=text rule=%s page=%d", rule_id, page_number)
                 raw_result = provider.evaluate_rule(document_content=document_content, rule=rule, system_prompt=self.system_prompt)
-                logger.info("LLM call done: type=text rule=%s page=%d elapsed=%s", rule_id, page_number, timedelta(seconds=time.perf_counter() - _t0))
+                _elapsed = time.perf_counter() - _t0
+                logger.info("LLM call done: type=text rule=%s page=%d elapsed=%s", rule_id, page_number, timedelta(seconds=_elapsed))
                 citations = raw_result.get("citations", [])
                 return {
                     "page": page_number,
@@ -406,6 +415,7 @@ class TextRuleAnalyzer:
                     "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
                     "analysis_type": "text",
                     "execution_status": "completed",
+                    "duration_ms": round(_elapsed * 1000, 1),
                     "verdict": raw_result.get("verdict", "needs_review"),
                     "summary": raw_result.get("summary", ""),
                     "reasoning": raw_result.get("reasoning", ""),

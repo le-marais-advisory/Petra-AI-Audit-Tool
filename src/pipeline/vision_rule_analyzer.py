@@ -77,6 +77,18 @@ class VisionRuleAnalyzer:
             return 0
         return len(vision_rules) * max(1, page_count)
 
+    def _max_workers(self) -> int:
+        """Concurrency for vision LLM calls.
+
+        Vision is the pipeline's latency bottleneck, so it honors the
+        vision-specific ``concurrent_requests`` knob (defaults to 12) rather
+        than the shared pipeline default (2), capped by ``global_max_concurrent``.
+        """
+        vision = self.app_config.vision
+        requested = max(1, int(getattr(vision, "concurrent_requests", 1) or 1))
+        ceiling = max(1, int(getattr(vision, "global_max_concurrent", requested) or requested))
+        return min(requested, ceiling)
+
     def _aggregate_rule_results(self, rule: dict, page_results: list[dict]) -> dict:
         completed_results = [item for item in page_results if item.get("execution_status") == "completed"]
         if any(item.get("verdict") == "fail" for item in completed_results):
@@ -111,6 +123,9 @@ class VisionRuleAnalyzer:
             citations.extend(item.get("citations", [])[:2])
             notes.extend(item.get("notes", [])[:1])
 
+        durations = [item.get("duration_ms") for item in page_results if item.get("duration_ms") is not None]
+        total_duration_ms = round(sum(durations), 1) if durations else None
+
         return {
             "rule_id": rule.get("id", ""),
             "rule_name": rule.get("name", rule.get("id", "")),
@@ -123,6 +138,7 @@ class VisionRuleAnalyzer:
             "citations": citations[:4],
             "matched_pages": matched_pages,
             "notes": notes[:4],
+            "duration_ms": total_duration_ms,
         }
 
     def _render_page_images(self, pdf_path: str) -> list[dict]:
@@ -228,13 +244,15 @@ class VisionRuleAnalyzer:
                 _t0 = time.perf_counter()
                 logger.info("LLM call start: type=vision rule=%s page=%d", rule_id, page_number)
                 raw_result = provider.evaluate_rule(page_image=page_image_for_rule, rule=rule, system_prompt=self.system_prompt)
-                logger.info("LLM call done: type=vision rule=%s page=%d elapsed=%s", rule_id, page_number, timedelta(seconds=time.perf_counter() - _t0))
+                _elapsed = time.perf_counter() - _t0
+                logger.info("LLM call done: type=vision rule=%s page=%d elapsed=%s", rule_id, page_number, timedelta(seconds=_elapsed))
                 return {
                     "page": page_number,
                     "rule_id": rule_id,
                     "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
                     "analysis_type": "vision",
                     "execution_status": "completed",
+                    "duration_ms": round(_elapsed * 1000, 1),
                     "verdict": raw_result.get("verdict", "needs_review"),
                     "summary": raw_result.get("summary", ""),
                     "reasoning": raw_result.get("reasoning", ""),
@@ -265,7 +283,7 @@ class VisionRuleAnalyzer:
                 }
 
         try:
-            with ThreadPoolExecutor(max_workers=self.app_config.pipeline.concurrent_requests) as executor:
+            with ThreadPoolExecutor(max_workers=self._max_workers()) as executor:
                 future_to_rule = {executor.submit(_call, rule, pi): rule for rule, pi in applicable_pairs}
                 for future in as_completed(future_to_rule):
                     if is_cancelled and is_cancelled():

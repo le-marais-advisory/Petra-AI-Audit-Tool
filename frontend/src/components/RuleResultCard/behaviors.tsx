@@ -16,12 +16,29 @@ export interface RuleResultLike {
   rule_name: string;
   summary: string;
   verdict: string;
+  duration_ms?: number | null;
 }
 
 export interface RuleResultCardProps {
   item: RuleResultLike;
   documentId: string | null;
   sourceFilename: string | null;
+  /** Initial expanded state for the details section. Defaults to collapsed. */
+  defaultExpanded?: boolean;
+}
+
+/** Format an execution time in milliseconds as a compact label (e.g. "1.2s"). */
+export function formatDuration(durationMs: number | null | undefined): string | null {
+  if (durationMs === null || durationMs === undefined || Number.isNaN(durationMs)) {
+    return null;
+  }
+  const seconds = durationMs / 1000;
+  if (seconds >= 60) {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${minutes}m ${secs}s`;
+  }
+  return `${seconds.toFixed(1)}s`;
 }
 
 export function getVerdictClasses(verdict: string): string {
