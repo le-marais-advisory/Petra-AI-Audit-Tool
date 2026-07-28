@@ -14,6 +14,7 @@ services:
     docker:
       path: docker/AppProdDockerfile
       context: .
+      remoteBuild: true
   frontend:
     project: ./frontend
     language: js
@@ -22,6 +23,7 @@ services:
     docker:
       path: docker/AppDevProdDockerfile
       context: .
+      remoteBuild: true
 hooks:
   preprovision:
     - shell: sh
