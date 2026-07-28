@@ -79,7 +79,10 @@ class Settings(BaseSettings):
     CLAUDE_VISION_MODEL: str | None = None
     CLAUDE_TEXT_TEMPERATURE: float | None = None
     CLAUDE_VISION_TEMPERATURE: float | None = None
-    CLAUDE_TEXT_MAX_TOKENS: int = 4096
+    # Covers reasoning as well as the response on models that think by default, so a
+    # reasoning-heavy broad-scope rule can exhaust 4096 before finishing its JSON and
+    # the response arrives truncated.
+    CLAUDE_TEXT_MAX_TOKENS: int = 8192
     CLAUDE_VISION_MAX_TOKENS: int = 1600
 
     # Overrides pipeline.concurrent_requests from app.yaml. config/ is baked into the

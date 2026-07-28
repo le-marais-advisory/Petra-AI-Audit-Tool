@@ -60,11 +60,11 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             request_kwargs["temperature"] = self._temperature
 
         response = self._client.messages.create(**request_kwargs)
+        stop_reason = getattr(response, "stop_reason", "unknown")
         raw_text = _extract_text_content(response.content)
         try:
             return json.loads(raw_text)
         except json.JSONDecodeError as exc:
-            stop_reason = getattr(response, "stop_reason", "unknown")
             logger.error(
                 "Claude text response JSON parse failed (stop_reason=%s, len=%d, max_tokens=%d): %s — raw: %.500s",
                 stop_reason,
@@ -73,6 +73,16 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
                 exc,
                 raw_text,
             )
+            if stop_reason == "max_tokens":
+                # Deterministic, so retrying is pointless — the budget is the problem.
+                # Sonnet 5 thinks by default and max_tokens covers thinking plus the
+                # response, so a reasoning-heavy rule can exhaust it before finishing
+                # the JSON. Raise CLAUDE_TEXT_MAX_TOKENS.
+                raise ValueError(
+                    f"Response was truncated at max_tokens={self._max_tokens} before the JSON was "
+                    "complete. Raise CLAUDE_TEXT_MAX_TOKENS — on models that think by default the "
+                    "budget covers reasoning as well as the response."
+                ) from exc
             raise
 
     def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str) -> dict[str, Any]:
