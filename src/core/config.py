@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     OPENAI_VISION_MODEL: str | None = None
     OPENAI_TEXT_TEMPERATURE: float | None = None
     OPENAI_TEXT_MAX_COMPLETION_TOKENS: int | None = None
-    CLAUDE_TEXT_MODEL: str = "claude-sonnet-4-6"
+    CLAUDE_TEXT_MODEL: str = "claude-sonnet-5"
     CLAUDE_VISION_MODEL: str | None = None
     CLAUDE_TEXT_TEMPERATURE: float | None = None
     CLAUDE_VISION_TEMPERATURE: float | None = None

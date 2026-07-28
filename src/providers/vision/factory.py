@@ -26,11 +26,10 @@ def build_vision_provider(app_config: AppYaml, settings: Settings) -> VisionProv
         return ClaudeVisionProvider(
             api_key=settings.ANTHROPIC_API_KEY,
             model_id=settings.CLAUDE_VISION_MODEL or settings.CLAUDE_TEXT_MODEL,
-            temperature=(
-                settings.CLAUDE_VISION_TEMPERATURE
-                if settings.CLAUDE_VISION_TEMPERATURE is not None
-                else app_config.vision.temperature
-            ),
+            # Only sent when explicitly configured — Claude Sonnet 5 rejects a
+            # non-default temperature with a 400, so don't inherit the OpenAI
+            # default from app.yaml.
+            temperature=settings.CLAUDE_VISION_TEMPERATURE,
             max_tokens=settings.CLAUDE_VISION_MAX_TOKENS,
             max_concurrent=app_config.vision.global_max_concurrent,
         )

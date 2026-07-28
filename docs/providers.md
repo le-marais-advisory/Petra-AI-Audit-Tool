@@ -88,18 +88,25 @@ Also accepts aliases `ANTHROPIC_AI_API_KEY` and `ANTROPIC_AI_API_KEY`.
 ### Models
 
 ```env
-CLAUDE_TEXT_MODEL=claude-sonnet-4-6       # Default text model
-CLAUDE_VISION_MODEL=claude-sonnet-4-6     # Default vision model (falls back to text model)
+CLAUDE_TEXT_MODEL=claude-sonnet-5         # Default text model
+CLAUDE_VISION_MODEL=claude-sonnet-5       # Default vision model (falls back to text model)
 ```
 
 ### Parameters
 
 ```env
-CLAUDE_TEXT_TEMPERATURE=           # Optional
-CLAUDE_VISION_TEMPERATURE=         # Optional
+CLAUDE_TEXT_TEMPERATURE=           # Optional — leave unset on Sonnet 5 (see below)
+CLAUDE_VISION_TEMPERATURE=         # Optional — leave unset on Sonnet 5 (see below)
 CLAUDE_TEXT_MAX_TOKENS=1600        # Max tokens for text analysis
 CLAUDE_VISION_MAX_TOKENS=1600     # Max tokens for vision analysis
 ```
+
+Both temperature settings are unset by default and are omitted from the request
+when unset. Leave them unset unless you have pointed `CLAUDE_TEXT_MODEL` /
+`CLAUDE_VISION_MODEL` at an older model that accepts sampling parameters —
+Claude Sonnet 5 rejects a non-default `temperature` with a 400, so setting
+either one will fail every analysis call. Steer the model through the system
+prompts in `config/` instead.
 
 ### Behavior
 

@@ -41,7 +41,7 @@ python flag_analysis\analyze_flags.py --skip-llm
 ## Environment
 
 - `ANTHROPIC_API_KEY` (required unless `--skip-llm`)
-- `CLAUDE_TEXT_MODEL` (optional, defaults to `claude-sonnet-4-6`)
+- `CLAUDE_TEXT_MODEL` (optional, defaults to `claude-sonnet-5`)
 
 ## Output
 

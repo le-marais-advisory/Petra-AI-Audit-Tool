@@ -22,7 +22,7 @@ Usage:
 
 Environment:
     ANTHROPIC_API_KEY     Required (unless --skip-llm).
-    CLAUDE_TEXT_MODEL     Optional. Defaults to claude-sonnet-4-6.
+    CLAUDE_TEXT_MODEL     Optional. Defaults to claude-sonnet-5.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "claude-sonnet-5"
 FAIL_VERDICTS = {"fail", "needs_review"}
 DEFAULT_DIR = Path.home() / "Desktop" / "feedback_audit_tool"
 DEFAULT_INPUT = DEFAULT_DIR / "feedback.json"

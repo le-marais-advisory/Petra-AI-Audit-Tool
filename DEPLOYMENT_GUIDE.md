@@ -170,8 +170,8 @@ azd env set AZURE_LOCATION eastus
 azd env set AUTH_ENABLED true
 azd env set TEXT_PROVIDER claude
 azd env set VISION_PROVIDER claude
-azd env set CLAUDE_TEXT_MODEL claude-sonnet-4-6
-azd env set CLAUDE_VISION_MODEL claude-sonnet-4-6
+azd env set CLAUDE_TEXT_MODEL claude-sonnet-5
+azd env set CLAUDE_VISION_MODEL claude-sonnet-5
 azd env set-secret ANTHROPIC_API_KEY
 ```
 
@@ -558,8 +558,8 @@ azd env set AZURE_LOCATION eastus
 azd env set AUTH_ENABLED true
 azd env set TEXT_PROVIDER claude
 azd env set VISION_PROVIDER claude
-azd env set CLAUDE_TEXT_MODEL claude-sonnet-4-6
-azd env set CLAUDE_VISION_MODEL claude-sonnet-4-6
+azd env set CLAUDE_TEXT_MODEL claude-sonnet-5
+azd env set CLAUDE_VISION_MODEL claude-sonnet-5
 azd env set-secret ANTHROPIC_API_KEY
 azd hooks run preprovision
 azd provision --preview

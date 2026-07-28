@@ -144,8 +144,8 @@ azd env set TEXT_PROVIDER openai
 azd env set VISION_PROVIDER openai
 azd env set OPENAI_TEXT_MODEL gpt-5.4-mini
 azd env set OPENAI_VISION_MODEL gpt-5.4
-azd env set CLAUDE_TEXT_MODEL claude-sonnet-4-6
-azd env set CLAUDE_VISION_MODEL claude-sonnet-4-6
+azd env set CLAUDE_TEXT_MODEL claude-sonnet-5
+azd env set CLAUDE_VISION_MODEL claude-sonnet-5
 azd env set-secret ANTHROPIC_API_KEY
 ```
 
