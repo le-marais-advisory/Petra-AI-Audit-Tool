@@ -77,7 +77,12 @@ Analyzes extracted text and tables against text-type rules using an LLM:
 3. Submits all remaining work to **one thread pool**, broad-scope calls first: they carry
    the most content and take longest, so starting them early keeps them off the tail.
    Pool size is `pipeline.concurrent_requests` (see `docs/configuration.md`)
-4. Uses a system prompt from `config/text_analysis_system_prompt.md`
+4. Uses a system prompt from `config/text_analysis_system_prompt.md`. Broad-scope
+   payloads are prefixed with a `CONTENT SCOPE` note stating whether they carry the
+   whole document or only the sections the rule covers, and warning that the
+   `<page number="...">` tags are physical file positions rather than printed page
+   numbers. Without it these rules inherit the prompt's single-page framing and hedge
+   to `needs_review` on content they wrongly believe was withheld
 5. The LLM evaluates each rule and returns structured JSON with verdicts, findings, and citations
 6. Page-scope results are aggregated per rule; broad-scope results are committed directly
    (they carry their own `scope` and `matched_pages`) alongside one synthetic page result

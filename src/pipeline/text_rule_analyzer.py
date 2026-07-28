@@ -192,9 +192,49 @@ def _pages_for_section(section_name: str, pages: list[dict]) -> list[dict]:
     return [p for p in pages if key in (p.get("page_type") or [])]
 
 
+def _broad_scope_preamble(pages: list[dict], group_by_section: bool) -> str:
+    """Tell the model what the payload does and does not cover.
+
+    Without this, broad-scope calls inherit the system prompt's single-page framing and
+    hedge to needs_review whenever a Table of Contents references a page they think they
+    were not given — which happens routinely, because TOC entries cite printed page
+    numbers while the <page number="..."> tags below carry physical file positions.
+
+    The completeness claim is deliberately scoped to the uploaded file. A document can
+    reference a separately attached external package that this pipeline never ingests
+    (it accepts exactly one PDF), and TOC-PAGE-NUMBERS-MATCH / TOC-COMPLETENESS both
+    depend on the model still hedging in that case.
+    """
+    if group_by_section:
+        coverage = (
+            "This is a subset of the uploaded PDF: only the pages belonging to the sections this "
+            "rule covers, grouped by section below. The document has other pages; they are omitted "
+            "because they are outside this rule's scope, not because they are unavailable."
+        )
+    else:
+        page_count = len(pages)
+        coverage = (
+            f"This is the complete extracted content of the uploaded PDF — all {page_count} "
+            f"page{'' if page_count == 1 else 's'}, in document order. No pages have been withheld."
+        )
+
+    return (
+        "CONTENT SCOPE\n"
+        f"{coverage}\n"
+        'Numbers in the <page number="..."> tags are physical positions in the file. They may differ '
+        "from the printed page numbers shown on the pages themselves or listed in a Table of Contents. "
+        "A mismatch between the two is not evidence that content is missing from this payload.\n"
+        "Content that lives outside this file — for example a separately attached document that the "
+        "Table of Contents refers to — was never provided to this system and is not available to you. "
+        "Say so explicitly when a verdict depends on it."
+    )
+
+
 def _serialize_broad_scope_content(pages: list[dict], rule: dict, group_by_section: bool = False) -> str:
+    preamble = _broad_scope_preamble(pages, group_by_section)
+
     if not group_by_section:
-        parts: list[str] = []
+        parts: list[str] = [preamble]
         for page in pages:
             page_num = page.get("page", "?")
             parts.append(f'<page number="{page_num}">')
@@ -203,7 +243,7 @@ def _serialize_broad_scope_content(pages: list[dict], rule: dict, group_by_secti
         return "\n\n".join(parts)
 
     sections_list = rule.get("sections") or []
-    parts = []
+    parts = [preamble]
     for section_name in sections_list:
         section_pages = _pages_for_section(section_name, pages)
         if section_pages:

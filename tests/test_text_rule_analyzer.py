@@ -9,6 +9,7 @@ only the correctness of the results.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from typing import Any
@@ -28,7 +29,7 @@ class StubTextProvider(TextAnalysisProvider):
         self.delay = delay
         self.fail_rule_ids = fail_rule_ids
         self.calls: list[str] = []  # rule ids, in start order
-        self.content_lengths: dict[str, int] = {}
+        self.contents: dict[str, str] = {}
         self.max_in_flight = 0
         self._in_flight = 0
         self._lock = threading.Lock()
@@ -39,7 +40,7 @@ class StubTextProvider(TextAnalysisProvider):
             self._in_flight += 1
             self.max_in_flight = max(self.max_in_flight, self._in_flight)
             self.calls.append(rule_id)
-            self.content_lengths[rule_id] = len(document_content)
+            self.contents[rule_id] = document_content
         try:
             if self.delay:
                 time.sleep(self.delay)
@@ -128,11 +129,39 @@ def test_broad_result_keeps_scope_and_matched_pages() -> None:
     assert synthetic[0]["scope"] == "document"
 
 
+def _page_tags(content: str) -> list[int]:
+    return [int(n) for n in re.findall(r'<page number="(\d+)">', content)]
+
+
 def test_multi_page_sends_only_its_sections() -> None:
+    """Asserts on the page tags rather than total content length: the scope preamble
+    differs in length between the two branches, so length is not a proxy for coverage."""
     provider = StubTextProvider()
     _run(provider)
-    # MULTI-OK covers pages 1-2; DOC-RULE covers all three, so it must be longer.
-    assert provider.content_lengths["MULTI-OK"] < provider.content_lengths["DOC-RULE"]
+
+    assert _page_tags(provider.contents["MULTI-OK"]) == [1, 2]
+    assert _page_tags(provider.contents["DOC-RULE"]) == [1, 2, 3]
+
+
+def test_broad_scope_content_declares_its_coverage() -> None:
+    """Without this preamble, broad-scope calls inherit the system prompt's single-page
+    framing and hedge to needs_review on content they wrongly believe was withheld."""
+    provider = StubTextProvider()
+    _run(provider)
+
+    doc_content = provider.contents["DOC-RULE"]
+    assert doc_content.startswith("CONTENT SCOPE\n")
+    assert "complete extracted content of the uploaded PDF — all 3 pages" in doc_content
+
+    multi_content = provider.contents["MULTI-OK"]
+    assert multi_content.startswith("CONTENT SCOPE\n")
+    assert "subset of the uploaded PDF" in multi_content
+
+    # Neither branch may claim the external package was supplied: the pipeline ingests
+    # exactly one PDF, and TOC-COMPLETENESS / TOC-PAGE-NUMBERS-MATCH rely on the model
+    # still hedging when a TOC points at an attached document.
+    for content in (doc_content, multi_content):
+        assert "is not available to you" in content
 
 
 def test_not_applicable_rules_never_reach_the_provider() -> None:
