@@ -122,6 +122,9 @@ class OpenAIVisionProvider(VisionProvider):
             return {
                 "rule_id": rule.get("id", ""),
                 "rule_name": rule.get("name", ""),
+                # Report the failure as such. Without this the analyzer stamps "completed" and an
+                # API outage becomes indistinguishable from the model genuinely being unsure.
+                "execution_status": "error",
                 "verdict": "needs_review",
                 "summary": "Vision analysis failed.",
                 "reasoning": f"OpenAI API error: {exc}",

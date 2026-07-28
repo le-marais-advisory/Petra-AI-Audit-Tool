@@ -35,8 +35,9 @@ The Petra Vision frontend is a React/TypeScript single-page application built wi
 | **TabNavigation** | `src/components/TabNavigation/` | Tab switcher (Source, Extracted, Text Analysis, Visual Analysis) |
 | **SourcePreview** | `src/components/SourcePreview/` | PDF viewer for the original document |
 | **ExtractionResults** | `src/components/ExtractionResults/` | Displays extracted text and tables per page |
-| **PageRuleResults** | `src/components/PageRuleResults/` | Text/vision rule results grouped by page |
+| **AnalysisResults** | `src/components/AnalysisResults/` | Text/vision rule results grouped by verdict: "Needs attention" plus collapsed pass / not-applicable roll-ups, with a coverage line |
 | **RuleResultCard** | `src/components/RuleResultCard/` | Single rule assessment display (verdict, summary, findings, citations) |
+| **DisclosureToggle** | `src/components/DisclosureToggle/` | Shared chevron toggle for collapsible sections and card details |
 | **StatusPill** | `src/components/StatusPill/` | Color-coded verdict badge (pass/fail/needs_review) |
 | **EmptyState** | `src/components/EmptyState/` | Placeholder when no data is available |
 
