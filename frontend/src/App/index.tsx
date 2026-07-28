@@ -3,11 +3,11 @@ import { useMsal } from "@azure/msal-react";
 import { authEnabled, azurePostLogoutRedirectUri } from "@/auth/config";
 import { useState } from "react";
 
+import { AnalysisResults } from "@/components/AnalysisResults";
 import { EmptyState } from "@/components/EmptyState";
 import { ExportModal } from "@/components/ExportModal";
 import { ExtractionResults } from "@/components/ExtractionResults";
 import { HeroBanner } from "@/components/HeroBanner";
-import { PageRuleResults } from "@/components/PageRuleResults";
 import { RulesSidebar } from "@/components/RulesSidebar";
 import { SourcePreview } from "@/components/SourcePreview";
 import { TabNavigation } from "@/components/TabNavigation";
@@ -36,6 +36,7 @@ export function App() {
     pages,
     result,
     rulesError,
+    runOutcome,
     selectedRuleIds,
     bypassedRuleIds,
     sourceFilename,
@@ -114,16 +115,21 @@ export function App() {
 
               {activeTab === "text-analysis" ? (
                 analysis ? (
-                  <PageRuleResults
+                  <AnalysisResults
                     analysisType="text"
                     emptyMessage={
-                      analysis.text_rule_count > 0
-                        ? "Text analysis could not be completed. Check that the text provider is configured correctly."
-                        : "No text rules were selected for this run."
+                      analysis.text_rule_count === 0
+                        ? "No text rules were selected for this run."
+                        : isBusy
+                          ? "Text analysis is still running. Results will appear as pages are evaluated."
+                          : "Text analysis could not be completed. Check that the text provider is configured correctly."
                     }
                     items={analysis.text_page_results || []}
                     documentId={documentId}
                     sourceFilename={sourceFilename}
+                    ruleAssessments={analysis.rule_assessments || []}
+                    isStreaming={isBusy}
+                    runOutcome={runOutcome}
                   />
                 ) : (
                   <EmptyState title="No text analysis yet" description="Upload a PDF to see text/content rule results." />
@@ -132,16 +138,21 @@ export function App() {
 
               {activeTab === "visual-analysis" ? (
                 analysis ? (
-                  <PageRuleResults
+                  <AnalysisResults
                     analysisType="vision"
                     emptyMessage={
-                      analysis.vision_rule_count > 0
-                        ? "Visual analysis could not be completed. Check that the vision provider is configured correctly."
-                        : "No visual rules were selected for this run."
+                      analysis.vision_rule_count === 0
+                        ? "No visual rules were selected for this run."
+                        : isBusy
+                          ? "Visual analysis has not started yet. Text rules are evaluated first."
+                          : "Visual analysis could not be completed. Check that the vision provider is configured correctly."
                     }
                     items={analysis.visual_page_results || []}
                     documentId={documentId}
                     sourceFilename={sourceFilename}
+                    ruleAssessments={analysis.rule_assessments || []}
+                    isStreaming={isBusy}
+                    runOutcome={runOutcome}
                   />
                 ) : (
                   <EmptyState title="No visual analysis yet" description="Upload a PDF to inspect visual-rule status." />

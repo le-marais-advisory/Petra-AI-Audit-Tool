@@ -6,6 +6,7 @@ import { cancelValidationJob, createValidationJob, getValidationJob } from "@/se
 import type {
   DocumentValidationResponse,
   RuleDefinition,
+  RunOutcome,
   ValidationJobResponse,
   WorkspaceStatus,
   WorkspaceTabKey,
@@ -57,6 +58,7 @@ export function useAppBehavior() {
   const [sourceFilename, setSourceFilename] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentValidationResponse | null>(null);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  const [runOutcome, setRunOutcome] = useState<RunOutcome>(null);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -123,6 +125,7 @@ export function useAppBehavior() {
         setIsBusy(false);
 
         if (job.status === "completed") {
+          setRunOutcome("completed");
           setStatus({
             label: "Analysis complete",
             tone: "success",
@@ -133,6 +136,7 @@ export function useAppBehavior() {
         }
 
         if (job.status === "cancelled") {
+          setRunOutcome("cancelled");
           setStatus({
             label: "Analysis stopped",
             tone: "error",
@@ -141,6 +145,7 @@ export function useAppBehavior() {
           return;
         }
 
+        setRunOutcome("failed");
         setStatus({
           label: job.error || job.message || "Analysis failed",
           tone: "error",
@@ -149,6 +154,7 @@ export function useAppBehavior() {
       } catch (error) {
         stopPolling();
         setIsBusy(false);
+        setRunOutcome("failed");
         setStatus({
           label: error instanceof Error ? error.message : "Failed to fetch validation job.",
           tone: "error",
@@ -164,6 +170,7 @@ export function useAppBehavior() {
       stopPolling();
       setCurrentJobId(null);
       setResult(null);
+      setRunOutcome(null);
       replacePreviewUrl(URL.createObjectURL(file));
       setSourceFilename(file.name);
       setActiveTab("source");
@@ -178,6 +185,7 @@ export function useAppBehavior() {
       } catch (error) {
         setIsBusy(false);
         setResult(null);
+        setRunOutcome("failed");
         setStatus({
           label: error instanceof Error ? error.message : "Validation failed.",
           tone: "error",
@@ -269,6 +277,7 @@ export function useAppBehavior() {
     pages,
     result,
     rulesError,
+    runOutcome,
     selectedRuleIds,
     bypassedRuleIds,
     selectedRules,

@@ -3,6 +3,11 @@ export type AnalysisType = "text" | "vision";
 export type WorkspaceTabKey = "source" | "extracted" | "text-analysis" | "visual-analysis";
 
 export type StatusTone = "neutral" | "working" | "success" | "error";
+/**
+ * How the last validation run ended. A cancelled run drops page results silently rather than
+ * emitting error rows, so the results view needs this to explain a coverage shortfall.
+ */
+export type RunOutcome = "completed" | "cancelled" | "failed" | null;
 
 export interface RuleDefinition {
   id: string;
@@ -75,6 +80,8 @@ export interface PageRuleAssessment {
   rule_id: string;
   rule_name: string;
   analysis_type: AnalysisType;
+  /** Broad-scope rows report a synthetic `page`, so the locator label keys off this instead. */
+  scope?: "page" | "multi_page" | "document";
   execution_status: string;
   verdict: string;
   summary: string;

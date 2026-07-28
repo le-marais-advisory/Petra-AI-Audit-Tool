@@ -251,7 +251,9 @@ class VisionRuleAnalyzer:
                     "rule_id": rule_id,
                     "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
                     "analysis_type": "vision",
-                    "execution_status": "completed",
+                    # Providers swallow their own API errors and return a well-formed dict, so
+                    # honour the status they report rather than assuming success.
+                    "execution_status": raw_result.get("execution_status", "completed"),
                     "duration_ms": round(_elapsed * 1000, 1),
                     "verdict": raw_result.get("verdict", "needs_review"),
                     "summary": raw_result.get("summary", ""),
