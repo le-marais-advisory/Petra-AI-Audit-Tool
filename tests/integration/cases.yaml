@@ -134,7 +134,7 @@ cases:
       - SOI-PERCENTAGE-TIE
     expected:
       - rule_id: SCP-SECTIONS-PRESENT
-        verdict: pass
+        verdict: fail # 'Notes to Combined Financial Statements' is listed in the TOC but not present in the doc
       - rule_id: TIE-SOI-BS
         verdict: pass
       - rule_id: BS-TIE-OUTS

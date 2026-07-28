@@ -4,8 +4,8 @@ import json
 import threading
 from typing import Any
 
+import httpx
 from openai import OpenAI
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, build_vector_data_text, compact_rule_payload
 from src.providers.vision.base import VisionProvider
@@ -34,7 +34,13 @@ class OpenAIVisionProvider(VisionProvider):
         image_detail: str,
         max_concurrent: int,
     ) -> None:
-        self._client = OpenAI(api_key=api_key)
+        # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
+        # 2 retries, and timeouts are themselves retried, so an unresponsive call could
+        # occupy a worker for ~30 minutes. 180s rather than the text providers' 300s:
+        # vision is capped at CLAUDE_VISION_MAX_TOKENS (1600), so it cannot legitimately
+        # run as long as a reasoning-heavy text call. The SDK's own 429/5xx retries
+        # (which honour retry-after) are kept as the rate-limit defence.
+        self._client = OpenAI(api_key=api_key, timeout=httpx.Timeout(180.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature
         self._seed = seed
@@ -42,12 +48,6 @@ class OpenAIVisionProvider(VisionProvider):
         self._detail = image_detail
         self._semaphore = get_global_semaphore(max_concurrent)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((Exception,)),
-        reraise=True,
-    )
     def _call_openai_with_retry(self, input_items: list[dict[str, Any]], schema: dict[str, Any], schema_name: str) -> str:
         responses_api = getattr(self._client, "responses", None)
         if responses_api is None:

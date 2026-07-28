@@ -11,6 +11,7 @@ from typing import Any
 
 logger = logging.getLogger("petra.pipeline")
 
+from src.pipeline.page_classifier import rule_applies_to_page
 from src.pipeline.result_builder import build_document_result
 from src.services.validation_service import ValidationService
 
@@ -32,6 +33,11 @@ class ValidationJobService:
     def __init__(self) -> None:
         self._jobs: dict[str, ValidationJob] = {}
         self._jobs_lock = threading.Lock()
+        # One job runs at a time. Each job fans out to pipeline.concurrent_requests
+        # in-flight LLM calls, so without this the total is that value times the number
+        # of simultaneous uploads. Serialising here makes the configured concurrency the
+        # pipeline's absolute ceiling; a second upload waits in "queued".
+        self._job_slots = threading.BoundedSemaphore(1)
 
     def start_job(
         self,
@@ -75,7 +81,17 @@ class ValidationJobService:
         if job is None:
             return
 
+        # Wait for a slot before doing any work. Acquired here rather than in start_job
+        # so the upload request still returns immediately and the job genuinely sits in
+        # "queued" until it runs.
+        self._job_slots.acquire()
         try:
+            if job.cancel_requested:
+                with job.lock:
+                    job.status = "cancelled"
+                    job.message = "Analysis stopped"
+                return
+
             t0 = time.perf_counter()
             service = ValidationService()
             selected_rules = service.rule_service.load_rules(rules_json_str=rules_json_str)
@@ -94,8 +110,17 @@ class ValidationJobService:
 
             pages = service.pipeline.extractor.extract(pdf_path=pdf_path)
             page_scope_text_rules = [r for r in text_rules if r.get("scope", "page") == "page"]
-            broad_scope_text_rules = [r for r in text_rules if r.get("scope", "page") in ("multi_page", "document")]
-            text_total_steps = len(page_scope_text_rules) * max(1, len(pages)) + len(broad_scope_text_rules)
+            broad_scope_text_rules = [r for r in text_rules if r.get("scope", "page") != "page"]
+            # Count only the (rule, page) pairs that will actually be evaluated. Assuming
+            # every page-scope rule runs on every page overcounts by the section-scoped
+            # ones, which left the progress bar stalling well short of 100%.
+            applicable_page_steps = sum(
+                1
+                for rule in page_scope_text_rules
+                for page in pages
+                if rule_applies_to_page(rule, page.get("page_type") or [])
+            )
+            text_total_steps = applicable_page_steps + len(broad_scope_text_rules)
             vision_total_steps = service.pipeline.vision_rule_analyzer.estimate_step_count(len(pages), selected_rules)
             total_steps = max(1, text_total_steps + vision_total_steps)
             with job.lock:
@@ -241,6 +266,7 @@ class ValidationJobService:
                 Path(pdf_path).unlink(missing_ok=True)
             except Exception:
                 pass
+            self._job_slots.release()
 
 
 validation_job_service = ValidationJobService()

@@ -45,7 +45,7 @@ Set these in the root `.env` file (see `env.example` for a template).
 | `CLAUDE_VISION_MODEL` | string | - | Model for vision analysis (falls back to text model) |
 | `CLAUDE_TEXT_TEMPERATURE` | float | - | Temperature for text analysis. Unsupported on Sonnet 5 — leave unset |
 | `CLAUDE_VISION_TEMPERATURE` | float | - | Temperature for vision analysis. Unsupported on Sonnet 5 — leave unset |
-| `CLAUDE_TEXT_MAX_TOKENS` | int | `1600` | Max tokens for text analysis |
+| `CLAUDE_TEXT_MAX_TOKENS` | int | `24000` | Max tokens for text analysis. Covers reasoning as well as the response on models that think by default. Measured peak across fixtures is 15.2k output tokens; 4096 truncated 6 of 328 calls and 8192 truncated 3 |
 | `CLAUDE_VISION_MAX_TOKENS` | int | `1600` | Max tokens for vision analysis |
 
 Claude Sonnet 5 rejects a non-default `temperature` with a 400. Both temperature
@@ -153,6 +153,31 @@ report:
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `include_thumbnails` | bool | `false` | Include page thumbnails in exported PDF reports |
+
+### Pipeline Settings
+
+```yaml
+pipeline:
+  concurrent_requests: 12
+```
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `concurrent_requests` | int | `12` | Concurrent text-analysis LLM calls |
+
+Notes:
+
+- Both page-scope and broad-scope (`multi_page` / `document`) text rules share this one
+  pool, so it governs the whole text phase.
+- Floored at 1 and capped at `MAX_TEXT_WORKERS` (24) in
+  `src/pipeline/text_rule_analyzer.py`, so a typo cannot launch hundreds of threads.
+- **Jobs run one at a time** (`ValidationJobService` holds a single slot), so this is also
+  the pipeline's total in-flight ceiling regardless of how many uploads are queued.
+- Override without touching the YAML by setting `PIPELINE_CONCURRENT_REQUESTS` in `.env`.
+  This matters in deployment: `config/` is baked into the container image, so the env var
+  is the only way to change the value without a rebuild.
+- `load_app_yaml()` is cached for the process lifetime, so a YAML edit needs a restart.
+- If you see HTTP 429s from the provider, lower this to 8 and re-measure.
 
 ## Key Files
 

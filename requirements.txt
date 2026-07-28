@@ -16,7 +16,6 @@ PyJWT>=2.9
 pdfplumber>=0.11
 openai>=2.21,<3
 anthropic>=0.86,<1
-tenacity>=9.0
 
 # PDF -> images
 pymupdf>=1.24.9

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 from openai import OpenAI
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.providers.analysis_result import AnalysisRuleResult, compact_rule_payload
 from src.providers.text.base import TextAnalysisProvider
@@ -17,17 +17,17 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         temperature: float | None,
         max_completion_tokens: int | None,
     ) -> None:
-        self._client = OpenAI(api_key=api_key)
+        # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
+        # 2 retries, and timeouts are themselves retried, so an unresponsive call could
+        # occupy a worker for ~30 minutes. 300s matches the Claude text provider: a
+        # reasoning-heavy broad-scope rule was measured at 147.7s there, and text calls
+        # are the long ones. The SDK's own 429/5xx retries are kept as the rate-limit
+        # defence.
+        self._client = OpenAI(api_key=api_key, timeout=httpx.Timeout(300.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature
         self._max_tokens = max_completion_tokens
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((Exception,)),
-        reraise=True,
-    )
     def _call_openai_with_retry(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {
             "model": self._model,
