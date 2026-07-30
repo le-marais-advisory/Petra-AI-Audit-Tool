@@ -25,6 +25,12 @@ _VERDICT_LABELS = {
 
 _UNCATEGORIZED_KEY = "__uncategorized__"
 
+# Only these verdicts get the full write-up (reasoning + findings + citations +
+# notes) in the per-page sections. Everything else collapses to a one-line
+# summary, mirroring the frontend's collapsed-by-default cards and keeping the
+# PDF from ballooning past the length of the audited document.
+_DETAIL_VERDICTS = {"fail", "needs_review"}
+
 
 def _humanize_group(key: str | None) -> str:
     if not key:
@@ -318,7 +324,19 @@ def _add_page_results_section(
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(15, 23, 42)
     pdf.cell(0, 10, title)
-    pdf.ln(12)
+    pdf.ln(10)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(148, 163, 184)
+    pdf.multi_cell(
+        0,
+        4,
+        _pdf_text(
+            "Full detail (reasoning, findings, citations, notes) is shown for Fail and "
+            "Needs Review rules. Passing and not-applicable rules are condensed to a summary line."
+        ),
+    )
+    pdf.ln(4)
 
     # Group by page
     pages: dict[int, list[PageRuleAssessmentSchema]] = {}
@@ -342,7 +360,46 @@ def _add_page_results_section(
             pdf.ln(4)
 
 
+def _add_compact_result(pdf: _ReportPdf, item: PageRuleAssessmentSchema) -> None:
+    """One-line entry for passing / not-applicable rules: verdict + name + short summary.
+
+    Keeps every rule visible in the report without the full reasoning/findings/
+    citations/notes write-up, which is reserved for fail / needs-review verdicts.
+    """
+    if pdf.get_y() > pdf.h - 20:
+        pdf.add_page()
+
+    v = item.verdict
+    if v == "pass":
+        pdf.set_text_color(4, 120, 87)
+    elif v == "not_applicable":
+        pdf.set_text_color(100, 116, 139)
+    else:
+        pdf.set_text_color(146, 64, 14)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(26, 5, _pdf_text(_verdict_label(v)))
+
+    pdf.set_text_color(15, 23, 42)
+    pdf.set_font("Helvetica", "B", 9)
+    name = _pdf_text(item.rule_name or item.rule_id)
+    pdf.cell(0, 5, name)
+    pdf.ln(5)
+
+    if item.summary:
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(100, 116, 139)
+        pdf.set_x(26)
+        pdf.multi_cell(pdf.w - 20 - 26, 4, _pdf_text(item.summary)[:200])
+    pdf.ln(1)
+
+
 def _add_single_result(pdf: _ReportPdf, item: PageRuleAssessmentSchema) -> None:
+    # Passing / N/A / skipped rules get a compact one-liner; only fail and
+    # needs-review get the full write-up below.
+    if item.verdict not in _DETAIL_VERDICTS:
+        _add_compact_result(pdf, item)
+        return
+
     if pdf.get_y() > pdf.h - 50:
         pdf.add_page()
 
