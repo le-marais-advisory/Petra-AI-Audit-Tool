@@ -141,7 +141,7 @@ def _add_cover_sheet(pdf: _ReportPdf, req: ExportPdfRequest) -> None:
         pdf.ln(8)
         pdf.set_font("Helvetica", "B", 13)
         pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 8, "Auditor Notes", align="L")
+        pdf.cell(0, 8, "Notes", align="L")
         pdf.ln(10)
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(51, 65, 85)  # slate-700
