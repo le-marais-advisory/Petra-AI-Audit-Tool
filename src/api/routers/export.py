@@ -170,61 +170,27 @@ def _add_summary_section(pdf: _ReportPdf, req: ExportPdfRequest) -> None:
             pdf.ln(6)
         pdf.ln(6)
 
-    # Rule assessment summary — grouped
-    assessments = analysis.rule_assessments
-    if assessments:
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 7, "Group Summary")
+    # Rules requiring action — only fail / needs-review are reported; passing and
+    # not-applicable rules are intentionally omitted.
+    action_assessments = [a for a in analysis.rule_assessments if a.verdict in _DETAIL_VERDICTS]
+    n_fail = sum(1 for a in action_assessments if a.verdict == "fail")
+    n_review = sum(1 for a in action_assessments if a.verdict == "needs_review")
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 7, "Rules Requiring Action")
+    pdf.ln(8)
+
+    if action_assessments:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(71, 85, 105)
+        pdf.cell(0, 6, _pdf_text(f"{n_fail} failed, {n_review} need review."))
         pdf.ln(8)
-        _add_group_summary_table(pdf, assessments)
-        pdf.ln(4)
-
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 7, "Rule Assessments by Group")
-        pdf.ln(8)
-        _add_grouped_assessment_tables(pdf, assessments)
-
-
-def _add_group_summary_table(pdf: _ReportPdf, assessments: list[RuleAssessmentSchema]) -> None:
-    """One row per group: Rules / Pass / Fail / N.R. / Bypass."""
-    buckets: dict[str, list[RuleAssessmentSchema]] = {}
-    for a in assessments:
-        buckets.setdefault(_group_key(a), []).append(a)
-
-    col_widths = [70, 18, 18, 18, 22, 22]
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_fill_color(241, 245, 249)
-    pdf.set_text_color(51, 65, 85)
-    headers = ["Group", "Rules", "Pass", "Fail", "Review", "Bypass"]
-    for w, label in zip(col_widths, headers):
-        pdf.cell(w, 7, label, border=1, fill=True)
-    pdf.ln(7)
-
-    pdf.set_font("Helvetica", "", 9)
-    # Sort: alphabetical but Uncategorized last.
-    keys = sorted(buckets.keys(), key=lambda k: (k == _UNCATEGORIZED_KEY, _humanize_group(k).lower()))
-    for key in keys:
-        rules_in_group = buckets[key]
-        total = len(rules_in_group)
-        passes = sum(1 for a in rules_in_group if a.verdict == "pass")
-        fails = sum(1 for a in rules_in_group if a.verdict == "fail")
-        reviews = sum(1 for a in rules_in_group if a.verdict == "needs_review")
-        bypassed = sum(1 for a in rules_in_group if getattr(a, "bypass", False))
-
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(col_widths[0], 6, _pdf_text(_humanize_group(key))[:40], border=1)
-        pdf.cell(col_widths[1], 6, str(total), border=1, align="C")
-        pdf.set_text_color(4, 120, 87) if passes else pdf.set_text_color(15, 23, 42)
-        pdf.cell(col_widths[2], 6, str(passes), border=1, align="C")
-        pdf.set_text_color(190, 18, 60) if fails else pdf.set_text_color(15, 23, 42)
-        pdf.cell(col_widths[3], 6, str(fails), border=1, align="C")
-        pdf.set_text_color(146, 64, 14) if reviews else pdf.set_text_color(15, 23, 42)
-        pdf.cell(col_widths[4], 6, str(reviews), border=1, align="C")
-        pdf.set_text_color(146, 64, 14) if bypassed else pdf.set_text_color(15, 23, 42)
-        pdf.cell(col_widths[5], 6, str(bypassed), border=1, align="C")
-        pdf.ln(6)
+        _add_grouped_assessment_tables(pdf, action_assessments)
+    else:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(71, 85, 105)
+        pdf.multi_cell(0, 6, _pdf_text("No issues requiring action - all evaluated rules passed or were not applicable."))
 
 
 def _add_grouped_assessment_tables(pdf: _ReportPdf, assessments: list[RuleAssessmentSchema]) -> None:
@@ -317,6 +283,9 @@ def _add_page_results_section(
     title: str,
     items: list[PageRuleAssessmentSchema],
 ) -> None:
+    # Only surface rules that failed or need review; passing / not-applicable
+    # results are omitted from the report entirely.
+    items = [item for item in items if item.verdict in _DETAIL_VERDICTS]
     if not items:
         return
 
@@ -332,8 +301,8 @@ def _add_page_results_section(
         0,
         4,
         _pdf_text(
-            "Full detail (reasoning, findings, citations, notes) is shown for Fail and "
-            "Needs Review rules. Passing and not-applicable rules are condensed to a summary line."
+            "Only rules that failed or need review are listed, with full detail "
+            "(reasoning, findings, citations, notes). Passing and not-applicable rules are omitted."
         ),
     )
     pdf.ln(4)
@@ -360,46 +329,9 @@ def _add_page_results_section(
             pdf.ln(4)
 
 
-def _add_compact_result(pdf: _ReportPdf, item: PageRuleAssessmentSchema) -> None:
-    """One-line entry for passing / not-applicable rules: verdict + name + short summary.
-
-    Keeps every rule visible in the report without the full reasoning/findings/
-    citations/notes write-up, which is reserved for fail / needs-review verdicts.
-    """
-    if pdf.get_y() > pdf.h - 20:
-        pdf.add_page()
-
-    v = item.verdict
-    if v == "pass":
-        pdf.set_text_color(4, 120, 87)
-    elif v == "not_applicable":
-        pdf.set_text_color(100, 116, 139)
-    else:
-        pdf.set_text_color(146, 64, 14)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(26, 5, _pdf_text(_verdict_label(v)))
-
-    pdf.set_text_color(15, 23, 42)
-    pdf.set_font("Helvetica", "B", 9)
-    name = _pdf_text(item.rule_name or item.rule_id)
-    pdf.cell(0, 5, name)
-    pdf.ln(5)
-
-    if item.summary:
-        pdf.set_font("Helvetica", "", 8)
-        pdf.set_text_color(100, 116, 139)
-        pdf.set_x(26)
-        pdf.multi_cell(pdf.w - 20 - 26, 4, _pdf_text(item.summary)[:200])
-    pdf.ln(1)
-
-
 def _add_single_result(pdf: _ReportPdf, item: PageRuleAssessmentSchema) -> None:
-    # Passing / N/A / skipped rules get a compact one-liner; only fail and
-    # needs-review get the full write-up below.
-    if item.verdict not in _DETAIL_VERDICTS:
-        _add_compact_result(pdf, item)
-        return
-
+    # Only rules requiring action (fail / needs-review) reach here — page sections
+    # are pre-filtered — so every result gets the full write-up.
     if pdf.get_y() > pdf.h - 50:
         pdf.add_page()
 
