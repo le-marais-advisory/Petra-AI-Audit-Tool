@@ -249,7 +249,7 @@ class VisionRuleAnalyzer:
                 return {
                     "page": page_number,
                     "rule_id": rule_id,
-                    "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
+                    "rule_name": rule.get("name", rule_id),  # canonical name; never trust the model's returned rule_name
                     "analysis_type": "vision",
                     # Providers swallow their own API errors and return a well-formed dict, so
                     # honour the status they report rather than assuming success.

@@ -414,7 +414,7 @@ class TextRuleAnalyzer:
             return {
                 "page": page_number,
                 "rule_id": rule_id,
-                "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
+                "rule_name": rule.get("name", rule_id),  # canonical name; never trust the model's returned rule_name
                 "analysis_type": "text",
                 "execution_status": "completed",
                 "duration_ms": round(_elapsed * 1000, 1),
@@ -484,7 +484,7 @@ class TextRuleAnalyzer:
 
             rule_result = {
                 "rule_id": rule_id,
-                "rule_name": raw_result.get("rule_name", rule.get("name", rule_id)),
+                "rule_name": rule.get("name", rule_id),  # canonical name; never trust the model's returned rule_name
                 "analysis_type": "text",
                 "scope": scope,
                 "execution_status": "completed",
