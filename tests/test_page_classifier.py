@@ -6,6 +6,7 @@ from src.pipeline.page_classifier import (
     SCHEDULE_OF_INVESTMENTS,
     STATEMENT_OF_CASH_FLOWS,
     STATEMENT_OF_OPERATIONS,
+    TABLE_OF_CONTENTS,
     classify_page,
     rule_applies_to_page,
 )
@@ -112,3 +113,52 @@ def test_rule_applies_with_alias_section_names():
 def test_rule_applies_when_section_is_unknown_string():
     rule = {"id": "UNK", "section": "Some Weird Section"}
     assert rule_applies_to_page(rule, [BALANCE_SHEET]) is True
+
+
+# --- Table of contents classification ---
+
+def test_classify_table_of_contents():
+    page = _page("Table of Contents\nBalance Sheet .... 3\nSchedule of Investments .... 5", page=2)
+    assert classify_page(page) == [TABLE_OF_CONTENTS]
+
+
+def test_toc_line_items_do_not_leak_statement_types():
+    # A TOC that lists statement names must NOT be classified as those statements.
+    page = _page(
+        "Table of Contents\n"
+        "Statement of Assets and Liabilities .... 3\n"
+        "Statement of Cash Flows .... 6\n"
+        "Schedule of Investments .... 8",
+        page=2,
+    )
+    types = classify_page(page)
+    assert types == [TABLE_OF_CONTENTS]
+    assert BALANCE_SHEET not in types
+
+
+# --- Numeric / geometry rules must not run on cover / TOC pages ---
+
+def test_numeric_rule_not_applicable_on_cover_page():
+    for rule_id in ("SIG-GLOBAL", "NUM-CROSSFOOT", "NUM-REFOOT", "FMT-DOLLAR-SIGNS", "FMT-DOUBLE-UNDERLINE"):
+        rule = {"id": rule_id, "section": "All Statements"}
+        assert rule_applies_to_page(rule, [COVER_PAGE]) is False, rule_id
+
+
+def test_numeric_rule_not_applicable_on_toc_page():
+    rule = {"id": "SIG-GLOBAL", "section": "All Statements"}
+    assert rule_applies_to_page(rule, [TABLE_OF_CONTENTS]) is False
+
+
+def test_numeric_rule_still_runs_on_statement_page():
+    # The gate is per-page: the same global rule still applies to real statements.
+    rule = {"id": "SIG-GLOBAL", "section": "All Statements"}
+    assert rule_applies_to_page(rule, [BALANCE_SHEET]) is True
+    assert rule_applies_to_page(rule, [STATEMENT_OF_OPERATIONS]) is True
+
+
+def test_non_numeric_rule_still_runs_on_cover_page():
+    # Cover-page and grammar rules must NOT be gated off structural pages.
+    cover_rule = {"id": "CVR-PERIOD-PHRASING", "section": "Cover Page"}
+    assert rule_applies_to_page(cover_rule, [COVER_PAGE]) is True
+    grammar_rule = {"id": "GRAM-SPELL", "section": "Full Document"}
+    assert rule_applies_to_page(grammar_rule, [COVER_PAGE]) is True
