@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from fpdf import FPDF
 
 from src.schemas.export import ExportPdfRequest
-from src.schemas.validation import PageRuleAssessmentSchema, RuleAssessmentSchema
+from src.schemas.validation import RuleAssessmentSchema
 
 
 router = APIRouter(prefix="/export", tags=["export"])
@@ -278,167 +278,6 @@ def _add_assessment_table(pdf: _ReportPdf, assessments: list[RuleAssessmentSchem
             pdf.set_y(expected_y)
 
 
-def _add_page_results_section(
-    pdf: _ReportPdf,
-    title: str,
-    items: list[PageRuleAssessmentSchema],
-) -> None:
-    # Only surface rules that failed or need review; passing / not-applicable
-    # results are omitted from the report entirely.
-    items = [item for item in items if item.verdict in _DETAIL_VERDICTS]
-    if not items:
-        return
-
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(15, 23, 42)
-    pdf.cell(0, 10, title)
-    pdf.ln(10)
-
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_text_color(148, 163, 184)
-    pdf.multi_cell(
-        0,
-        4,
-        _pdf_text(
-            "Only rules that failed or need review are listed, with full detail "
-            "(reasoning, findings, citations, notes). Passing and not-applicable rules are omitted."
-        ),
-    )
-    pdf.ln(4)
-
-    # Group by page
-    pages: dict[int, list[PageRuleAssessmentSchema]] = {}
-    for item in items:
-        pages.setdefault(item.page, []).append(item)
-
-    for page_num in sorted(pages.keys()):
-        page_items = pages[page_num]
-
-        # Check if we need a new page (leave room)
-        if pdf.get_y() > pdf.h - 60:
-            pdf.add_page()
-
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 8, f"Page {page_num}")
-        pdf.ln(8)
-
-        for item in page_items:
-            _add_single_result(pdf, item)
-            pdf.ln(4)
-
-
-def _add_single_result(pdf: _ReportPdf, item: PageRuleAssessmentSchema) -> None:
-    # Only rules requiring action (fail / needs-review) reach here — page sections
-    # are pre-filtered — so every result gets the full write-up.
-    if pdf.get_y() > pdf.h - 50:
-        pdf.add_page()
-
-    # Rule name + verdict
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.set_text_color(15, 23, 42)
-    name = _pdf_text(item.rule_name or item.rule_id)
-    pdf.cell(0, 6, name)
-    pdf.ln(6)
-
-    # Verdict + type badges
-    pdf.set_font("Helvetica", "B", 9)
-    v = item.verdict
-    if v == "pass":
-        pdf.set_text_color(4, 120, 87)
-    elif v == "fail":
-        pdf.set_text_color(190, 18, 60)
-    else:
-        pdf.set_text_color(146, 64, 14)
-    pdf.cell(30, 5, _pdf_text(_verdict_label(v)))
-
-    pdf.set_text_color(100, 116, 139)
-    pdf.cell(20, 5, _pdf_text(item.analysis_type.upper()))
-    pdf.cell(30, 5, _pdf_text(item.execution_status.upper()))
-    if getattr(item, "bypass", False):
-        pdf.set_text_color(146, 64, 14)  # amber-700
-        pdf.cell(30, 5, "BYPASSED")
-    pdf.ln(7)
-
-    if getattr(item, "bypass", False):
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.set_text_color(146, 64, 14)
-        pdf.multi_cell(
-            0,
-            4,
-            _pdf_text(
-                "This rule was marked bypassable for this run - findings are surfaced but not gating."
-            ),
-        )
-        pdf.ln(1)
-
-    # Summary
-    if item.summary:
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 5, "Summary:")
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(71, 85, 105)
-        pdf.multi_cell(0, 5, _pdf_text(item.summary))
-        pdf.ln(2)
-
-    # Reasoning
-    if item.reasoning:
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 5, "Reasoning:")
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(71, 85, 105)
-        pdf.multi_cell(0, 5, _pdf_text(item.reasoning))
-        pdf.ln(2)
-
-    # Findings
-    if item.findings:
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 5, "Findings:")
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(71, 85, 105)
-        for finding in item.findings:
-            pdf.multi_cell(0, 5, _pdf_text(f"  - {finding}"))
-            pdf.ln(1)
-        pdf.ln(2)
-
-    # Citations
-    if item.citations:
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 5, "Citations:")
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(71, 85, 105)
-        for cit in item.citations:
-            pdf.multi_cell(0, 5, _pdf_text(f"  Page {cit.page}: {cit.evidence}"))
-            pdf.ln(1)
-        pdf.ln(2)
-
-    # Notes
-    if item.notes:
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 5, "Notes:")
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(71, 85, 105)
-        for note in item.notes:
-            pdf.multi_cell(0, 5, _pdf_text(f"  - {note}"))
-            pdf.ln(1)
-
-    # Divider
-    pdf.set_draw_color(226, 232, 240)
-    pdf.line(10, pdf.get_y() + 2, pdf.w - 10, pdf.get_y() + 2)
-    pdf.ln(5)
-
-
 @router.post("/pdf")
 async def export_pdf(req: ExportPdfRequest) -> StreamingResponse:
     pdf = _ReportPdf(orientation="P", unit="mm", format="A4")
@@ -451,14 +290,9 @@ async def export_pdf(req: ExportPdfRequest) -> StreamingResponse:
     # 1. Cover sheet
     _add_cover_sheet(pdf, req)
 
-    # 2. Executive summary with assessment table
+    # 2. Concise findings — a single list of only the rules requiring action.
+    #    No per-page breakdown: documents can run to hundreds of pages.
     _add_summary_section(pdf, req)
-
-    # 3. Text rule page-level results
-    _add_page_results_section(pdf, "Text Rule Assessments By Page", req.analysis.text_page_results)
-
-    # 4. Visual rule page-level results
-    _add_page_results_section(pdf, "Visual Rule Assessments By Page", req.analysis.visual_page_results)
 
     # Output
     pdf_bytes = pdf.output()
