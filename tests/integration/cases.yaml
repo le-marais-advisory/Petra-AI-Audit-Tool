@@ -141,3 +141,45 @@ cases:
         verdict: pass
       - rule_id: SOI-PERCENTAGE-TIE
         verdict: fail # disclosed percentages gap >= 0.02 percentage-point
+
+  # --- Reviewer-feedback brief: SIG-GLOBAL signage inversion (1.1) ---
+  # Expected verdicts below encode the INTENDED behavior of the revised rules.
+  # Confirm with: pytest tests/integration -m integration --case sig_expense_signage
+  # and --case toc_unaudited_no_toc / --case toc_audited_no_toc (requires API keys).
+  - id: sig_expense_signage
+    description: "SIG-GLOBAL: positive expenses on a Statement of Operations are compliant (p1 pass); a net investment loss shown WITHOUT parentheses is non-compliant (p2 fail)."
+    document: tests/fixtures/documents/sig_signage_scenarios.pdf
+    rules:
+      - SIG-GLOBAL
+    expected:
+      - rule_id: SIG-GLOBAL
+        verdict: pass
+        pages: [1]  # positive expenses, positive net investment income
+      - rule_id: SIG-GLOBAL
+        verdict: fail
+        pages: [2]  # "Net investment loss 65,000" not shown as (65,000)
+
+  # --- Reviewer-feedback brief: TOC required only for audited statements (1.3) ---
+  - id: toc_unaudited_no_toc
+    description: "Unaudited document, all sections present but NO Table of Contents. A TOC is not required for unaudited statements."
+    document: tests/fixtures/documents/unaudited_no_toc.pdf
+    rules:
+      - SCP-SECTIONS-PRESENT
+      - TOC-COMPLETENESS
+    expected:
+      - rule_id: SCP-SECTIONS-PRESENT
+        verdict: pass  # missing TOC is acceptable when unaudited
+      - rule_id: TOC-COMPLETENESS
+        verdict: not_applicable  # no TOC + unaudited
+
+  - id: toc_audited_no_toc
+    description: "Audited document, all sections present but NO Table of Contents. A TOC IS required for audited statements."
+    document: tests/fixtures/documents/audited_no_toc.pdf
+    rules:
+      - SCP-SECTIONS-PRESENT
+      - TOC-COMPLETENESS
+    expected:
+      - rule_id: SCP-SECTIONS-PRESENT
+        verdict: fail  # TOC required when audited, and it is missing
+      - rule_id: TOC-COMPLETENESS
+        verdict: fail  # no TOC + audited
