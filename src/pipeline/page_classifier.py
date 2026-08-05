@@ -4,6 +4,7 @@ import re
 
 
 COVER_PAGE = "cover_page"
+TABLE_OF_CONTENTS = "table_of_contents"
 BALANCE_SHEET = "balance_sheet"
 STATEMENT_OF_OPERATIONS = "statement_of_operations"
 STATEMENT_OF_CASH_FLOWS = "statement_of_cash_flows"
@@ -11,6 +12,30 @@ SCHEDULE_OF_INVESTMENTS = "schedule_of_investments"
 STATEMENT_OF_CHANGES = "statement_of_changes"
 
 GLOBAL_SECTIONS = {"", "all", "all statements", "full document"}
+
+# Pages that carry no evaluable financial data. Arithmetic / signage / formatting-
+# geometry rules must not run here — on these pages they produce false positives
+# (fail / needs_review) instead of the correct not_applicable.
+STRUCTURAL_PAGE_TYPES = {COVER_PAGE, TABLE_OF_CONTENTS}
+
+# A rule is "structural-skip" (not applicable on cover / TOC pages) when its id
+# starts with one of these prefixes or is one of these exact ids. Covers signage,
+# cross-foot / re-foot, arithmetic tie-outs, dollar-sign placement, double
+# underlines, and visual-integrity checks.
+_STRUCTURAL_SKIP_PREFIXES = ("NUM-", "SIG-", "ARITH-", "TIE-", "RND-")
+_STRUCTURAL_SKIP_IDS = {
+    "FMT-DOLLAR-SIGNS",
+    "FMT-DOUBLE-UNDERLINE",
+    "FMT-VISUAL-INTEGRITY",
+    "BS-TIE-OUTS",
+    "DUP-TOTALS",
+    "SOI-PERCENTAGE-TIE",
+}
+
+
+def _is_structural_skip_rule(rule: dict) -> bool:
+    rule_id = str(rule.get("id") or "").strip().upper()
+    return rule_id in _STRUCTURAL_SKIP_IDS or rule_id.startswith(_STRUCTURAL_SKIP_PREFIXES)
 
 SECTION_TO_KEY: dict[str, str] = {
     "cover page": COVER_PAGE,
@@ -66,6 +91,10 @@ INVESTMENTS_SIGNALS = (
     "portfolio of investments",
 )
 
+TOC_SIGNALS = (
+    "table of contents",
+)
+
 COVER_SIGNALS = (
     "financial statements",
     "for the year ended",
@@ -112,6 +141,13 @@ def classify_page(page: dict) -> list[str]:
     if not blob:
         return []
 
+    # A table of contents lists the statement names alongside page numbers. Detect
+    # it first and short-circuit: its line items (e.g. "Balance Sheet .... 3") would
+    # otherwise trip the statement signals below and mislabel the TOC as those
+    # statements, letting numeric rules run on a page that has no real data.
+    if any(signal in blob for signal in TOC_SIGNALS):
+        return [TABLE_OF_CONTENTS]
+
     types: list[str] = []
     if any(signal in blob for signal in BALANCE_SHEET_SIGNALS):
         types.append(BALANCE_SHEET)
@@ -139,7 +175,15 @@ def rule_applies_to_page(rule: dict, page_types: list[str] | None) -> bool:
 
     Fail-open: a rule runs when its section is global, when the page is
     unclassified, or when the rule's section maps to one of the page's types.
+
+    Exception: numeric / geometry rules never run on structural pages (cover,
+    table of contents) — there they are not_applicable, not fail/needs_review.
     """
+    page_types = page_types or []
+
+    if _is_structural_skip_rule(rule) and any(pt in STRUCTURAL_PAGE_TYPES for pt in page_types):
+        return False
+
     section = _normalize(str(rule.get("section") or ""))
     if section in GLOBAL_SECTIONS:
         return True
