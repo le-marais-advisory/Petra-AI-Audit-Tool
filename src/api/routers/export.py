@@ -148,38 +148,21 @@ def _add_cover_sheet(pdf: _ReportPdf, req: ExportPdfRequest) -> None:
         pdf.multi_cell(0, 6, _pdf_text(req.cover_sheet_text.strip()))
 
 
-def _add_summary_section(pdf: _ReportPdf, req: ExportPdfRequest) -> None:
+def _add_findings_section(pdf: _ReportPdf, req: ExportPdfRequest) -> None:
     pdf.add_page()
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(15, 23, 42)
-    pdf.cell(0, 10, "Executive Summary")
-    pdf.ln(12)
 
     analysis = req.analysis
 
-    # Overview metrics
-    if analysis.overview:
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_text_color(71, 85, 105)
-        pdf.cell(0, 7, "Overview Metrics")
-        pdf.ln(8)
-        pdf.set_font("Helvetica", "", 10)
-        for metric in analysis.overview:
-            detail = f"  ({_pdf_text(metric.detail)})" if metric.detail else ""
-            pdf.cell(0, 6, _pdf_text(f"{metric.label}: {metric.value}{detail}"))
-            pdf.ln(6)
-        pdf.ln(6)
-
-    # Rules requiring action — only fail / needs-review are reported; passing and
-    # not-applicable rules are intentionally omitted.
+    # Only fail / needs-review are reported; passing and not-applicable rules are
+    # intentionally omitted.
     action_assessments = [a for a in analysis.rule_assessments if a.verdict in _DETAIL_VERDICTS]
     n_fail = sum(1 for a in action_assessments if a.verdict == "fail")
     n_review = sum(1 for a in action_assessments if a.verdict == "needs_review")
 
-    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(15, 23, 42)
-    pdf.cell(0, 7, "Rules Requiring Action")
-    pdf.ln(8)
+    pdf.cell(0, 10, "Rules Requiring Action")
+    pdf.ln(12)
 
     if action_assessments:
         pdf.set_font("Helvetica", "", 10)
@@ -291,8 +274,8 @@ async def export_pdf(req: ExportPdfRequest) -> StreamingResponse:
     _add_cover_sheet(pdf, req)
 
     # 2. Concise findings — a single list of only the rules requiring action.
-    #    No per-page breakdown: documents can run to hundreds of pages.
-    _add_summary_section(pdf, req)
+    #    No executive summary / overview metrics, no per-page breakdown.
+    _add_findings_section(pdf, req)
 
     # Output
     pdf_bytes = pdf.output()
