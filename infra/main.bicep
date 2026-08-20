@@ -27,6 +27,9 @@ param azureSpaClientId string
 
 param azureRequiredScope string = 'access_as_user'
 param authEnabled bool = true
+
+@description('Show the validation rules sidebar in the frontend (dev affordance; hidden in client-facing deployments).')
+param showRulesSidebar bool = false
 param appName string = 'Petra Vision'
 param apiPrefix string = '/api/v1'
 param localFrontendOrigin string = 'http://localhost:5173'
@@ -255,6 +258,10 @@ var frontendEnv = [
   {
     name: 'VITE_API_SCOPE'
     value: azureApiScope
+  }
+  {
+    name: 'VITE_SHOW_RULES_SIDEBAR'
+    value: showRulesSidebar ? 'true' : 'false'
   }
 ]
 

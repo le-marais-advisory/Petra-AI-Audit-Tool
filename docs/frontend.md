@@ -112,6 +112,7 @@ The UI has four main views accessible via tabs:
 | `VITE_API_BASE_URL` | Backend API base URL | `http://localhost:8000` |
 | `VITE_API_PREFIX` | API path prefix | `/api/v1` |
 | `VITE_AUTH_ENABLED` | Enable authentication gate | `false` |
+| `VITE_SHOW_RULES_SIDEBAR` | Show the Validation Rules sidebar | `false` |
 
 See [Authentication](authentication.md) for auth-specific variables.
 

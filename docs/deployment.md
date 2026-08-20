@@ -44,7 +44,28 @@ petra_vision_frontend:
     VITE_API_BASE_URL: http://localhost:8000
     VITE_API_PREFIX: /api/v1
     VITE_AUTH_ENABLED: "false"
+    VITE_SHOW_RULES_SIDEBAR: "true"
 ```
+
+### Rules sidebar visibility
+
+The Validation Rules sidebar is a development affordance. It is read at container
+start from `VITE_SHOW_RULES_SIDEBAR` (via `runtime-config.js`), so the same image
+serves both cases — no rebuild needed to change it:
+
+- Local dev (`docker-compose.yml`, `frontend/.env`): `true`
+- Azure deployments: the `showRulesSidebar` Bicep param defaults to `false`, so the
+  sidebar is hidden and every run evaluates the full rule set. To show it in a
+  non-client environment, deploy with `showRulesSidebar=true` or set the frontend
+  container app env var directly:
+
+```bash
+az containerapp update -n <frontend-app> -g <resource-group> \
+  --set-env-vars VITE_SHOW_RULES_SIDEBAR=true
+```
+
+Note that with the sidebar hidden, per-rule `bypassable` toggles are unavailable,
+so no rule is bypassed.
 
 ## Azure Container Apps
 

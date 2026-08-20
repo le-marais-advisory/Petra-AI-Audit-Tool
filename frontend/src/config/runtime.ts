@@ -22,3 +22,11 @@ export function readEnv(name: string): string | undefined {
   return normalizeValue(import.meta.env[name]);
 }
 
+
+export function readBooleanEnv(name: string, defaultValue: boolean): boolean {
+  const value = readEnv(name);
+  if (value === undefined) {
+    return defaultValue;
+  }
+  return !["0", "false", "no", "off"].includes(value.toLowerCase());
+}

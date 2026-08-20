@@ -1,6 +1,6 @@
 import { BrowserCacheLocation, type Configuration, type PopupRequest } from "@azure/msal-browser";
 
-import { readEnv } from "@/config/runtime";
+import { readBooleanEnv, readEnv } from "@/config/runtime";
 
 function readRequiredEnv(name: string): string {
   const value = readEnv(name);
@@ -8,15 +8,6 @@ function readRequiredEnv(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
-
-
-function readBooleanEnv(name: string, defaultValue: boolean): boolean {
-  const value = readEnv(name);
-  if (value === undefined || value === null || value === "") {
-    return defaultValue;
-  }
-  return !["0", "false", "no", "off"].includes(String(value).trim().toLowerCase());
 }
 
 

@@ -86,6 +86,7 @@ Set these in `frontend/.env` (see `frontend/.env.example` for a template).
 | `VITE_API_BASE_URL` | string | `http://localhost:8000` | Backend API base URL |
 | `VITE_API_PREFIX` | string | `/api/v1` | API route prefix |
 | `VITE_AUTH_ENABLED` | string | `false` | Enable auth gate (`true`/`false`) |
+| `VITE_SHOW_RULES_SIDEBAR` | string | `false` | Show the Validation Rules sidebar (`true`/`false`). Off means every run uses the full rule set |
 | `VITE_AZURE_CLIENT_ID` | string | - | Frontend app registration client ID |
 | `VITE_AZURE_TENANT_ID` | string | - | Azure AD tenant ID |
 | `VITE_AZURE_AUTHORITY` | string | - | Azure authority URL |

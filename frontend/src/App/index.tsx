@@ -1,6 +1,7 @@
 import { useMsal } from "@azure/msal-react";
 
 import { authEnabled, azurePostLogoutRedirectUri } from "@/auth/config";
+import { showRulesSidebar } from "@/config/features";
 import { useState } from "react";
 
 import { AnalysisResults } from "@/components/AnalysisResults";
@@ -65,20 +66,28 @@ export function App() {
     <WorkspaceShell
       hero={<HeroBanner appName={appName} authEnabled={authEnabled} signedInAs={signedInAs} onSignOut={handleSignOut} />}
       sidebar={
-        <RulesSidebar
-          rules={availableRules}
-          selectedRuleIds={selectedRuleIds}
-          bypassedRuleIds={bypassedRuleIds}
-          onRuleToggle={handleRuleToggle}
-          onBypassToggle={handleBypassToggle}
-          onGroupToggle={handleGroupToggle}
-          onSelectAll={handleSelectAllRules}
-          onRefresh={loadRules}
-          errorMessage={rulesError}
-        />
+        showRulesSidebar ? (
+          <RulesSidebar
+            rules={availableRules}
+            selectedRuleIds={selectedRuleIds}
+            bypassedRuleIds={bypassedRuleIds}
+            onRuleToggle={handleRuleToggle}
+            onBypassToggle={handleBypassToggle}
+            onGroupToggle={handleGroupToggle}
+            onSelectAll={handleSelectAllRules}
+            onRefresh={loadRules}
+            errorMessage={rulesError}
+          />
+        ) : null
       }
       main={
         <div className="space-y-6">
+          {!showRulesSidebar && rulesError ? (
+            <p className="section-panel px-6 py-4 text-sm text-rose-700">
+              Validation rules could not be loaded: {rulesError}
+            </p>
+          ) : null}
+
           <UploadPanel
             documentId={documentId}
             isBusy={isBusy}

@@ -174,6 +174,20 @@ export function useAppBehavior() {
       replacePreviewUrl(URL.createObjectURL(file));
       setSourceFilename(file.name);
       setActiveTab("source");
+
+      if (!selectedRules.length) {
+        setIsBusy(false);
+        setRunOutcome("failed");
+        setStatus({
+          label: rulesError
+            ? `Validation rules could not be loaded: ${rulesError}`
+            : "No validation rules selected. Select at least one rule before running an analysis.",
+          tone: "error",
+          isLoading: false,
+        });
+        return;
+      }
+
       setStatus(createWorkingStatus(`Uploading ${file.name}`));
       setIsBusy(true);
 
@@ -193,7 +207,7 @@ export function useAppBehavior() {
         });
       }
     },
-    [pollJob, replacePreviewUrl, selectedRules, stopPolling],
+    [pollJob, replacePreviewUrl, rulesError, selectedRules, stopPolling],
   );
 
   const handleRuleToggle = useCallback((ruleId: string) => {
