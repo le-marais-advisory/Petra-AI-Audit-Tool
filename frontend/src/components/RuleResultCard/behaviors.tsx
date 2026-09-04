@@ -76,5 +76,5 @@ export function shouldOpenCitations(item: RuleResultLike): boolean {
 export function getAnalysisTypeClasses(type: AnalysisType): string {
   return type === "vision"
     ? "rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700"
-    : "rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-700";
+    : "rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700";
 }
