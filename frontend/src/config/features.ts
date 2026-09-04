@@ -1,9 +1,8 @@
-import { readBooleanEnv } from "@/config/runtime";
-
 /**
- * Rule selection is a development affordance: client-facing deployments hide the
- * sidebar and run the full rule set. Defaults to hidden so an environment that
- * never sets the flag cannot expose it by omission; local dev opts in via
- * frontend/.env (see .env.example) or docker-compose.yml.
+ * Rule selection is a development-only affordance. It is hard-disabled in the
+ * app so no environment variable — baked in at build time or injected at
+ * runtime — can surface the sidebar in a deployment. The app always runs the
+ * full rule set. To re-enable it for local development, temporarily set this to
+ * `true` (or restore the previous env-driven flag).
  */
-export const showRulesSidebar = readBooleanEnv("VITE_SHOW_RULES_SIDEBAR", false);
+export const showRulesSidebar = false;
