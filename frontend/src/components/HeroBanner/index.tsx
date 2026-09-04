@@ -1,3 +1,5 @@
+import petraLogo from "@/assets/petra-logo.svg";
+
 import type { HeroBannerProps } from "./behaviors";
 
 
@@ -6,6 +8,7 @@ export function HeroBanner({ appName, authEnabled, onSignOut, signedInAs }: Hero
     <section className="glass-panel overflow-hidden">
       <div className="flex flex-col gap-6 px-6 py-8 lg:flex-row lg:items-start lg:justify-between lg:px-10">
         <div>
+          <img src={petraLogo} alt="Petra" className="mb-4 h-9 w-auto" />
           <p className="mb-3 inline-flex rounded-full bg-accentSoft px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-accent">
             PDF Extraction Workspace
           </p>
