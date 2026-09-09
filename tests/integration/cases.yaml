@@ -81,18 +81,6 @@ cases:
         verdict: pass
       - rule_id: NUM-CROSSFOOT
         verdict: pass
-  - id: text_underline_validation
-    description: "Tests that statement totals and subtotals are correctly underlined -single or double-"
-    document: tests/fixtures/documents/underline_test_scenarios.pdf
-    rules:
-      - FMT-DOUBLE-UNDERLINE
-    expected:
-      - rule_id: FMT-DOUBLE-UNDERLINE
-        verdict: pass
-        pages: [7, 9, 11]
-      - rule_id: FMT-DOUBLE-UNDERLINE
-        verdict: fail
-        pages: [1, 2, 3, 4, 5, 6, 8, 10, 12]
   - id: multi_page_rules
     description: "Tests multi-page rule application"
     document: tests/fixtures/documents/multi_page_rules_doc.pdf

@@ -33,7 +33,6 @@ Vision rules analyze rendered page images. Each PDF page is rendered as a high-r
 
 Examples:
 - **FMT-VISUAL-INTEGRITY** - Visual layout integrity (alignment, completeness)
-- **FMT-DOUBLE-UNDERLINE** - Double underline detection on total rows
 
 ## Rule Schema
 

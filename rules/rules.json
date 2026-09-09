@@ -85,18 +85,6 @@
       "bypassable": false
     },
     {
-      "id": "FMT-DOUBLE-UNDERLINE",
-      "name": "Double Underline",
-      "analysis_type": "vision",
-      "query": "Final section totals are double-underlined. A \"final section total\" is the last and most comprehensive figure in a discrete section or statement. A page may contain multiple final section totals if it contains multiple sections, each of which should be double-underlined independently. A \"section\" is a group of line items introduced by a bold heading; subsections within it may have non-bold headings and their totals are intermediate, not final.\n\nIntermediate subtotals are NOT required to be double-underlined and should be ignored by this rule.\n\nHow to identify a final section total vs. an intermediate subtotal:\n- A final section total is not further added into another subtotal on the same page.\n- An intermediate subtotal feeds into a higher-level total that also appears on the same page.\n\nLook for TWO distinct parallel horizontal lines beneath each final section total row — not a single line, not a thick rule, but two separate lines with a visible gap between them.\n\nPass criteria: You can clearly identify two separate parallel lines beneath the final section total figure.\n\nFail criteria: You can clearly and confidently see only one underline line with no second line present — and you are certain it is not a thick double underline rendered at close spacing — on a row that qualifies as a final section total.\n\nAmbiguous cases: In rasterized PDFs, double underlines may appear as a single thick line when the two lines are printed close together. If you are uncertain whether you see one thick line or two close lines, return `needs_review` — do not default to `fail`.\n\nIf vector metadata is provided in the prompt (labeled VECTOR DATA), treat it as authoritative and do not override it with visual judgment alone.",
-      "description": "Final statement totals are double-underlined.",
-      "acceptance_criteria": "Two distinct parallel lines clearly visible on each total row, OR `needs_review` when visual ambiguity prevents a confident determination.",
-      "severity": "major",
-      "group": "rounding_signage_formatting",
-      "section": "All Statements",
-      "bypassable": true
-    },
-    {
       "id": "DATE-INTEGRITY-FULL",
       "name": "Date Validity",
       "analysis_type": "text",
