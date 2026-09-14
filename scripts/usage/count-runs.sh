@@ -6,9 +6,9 @@
 # its Log Analytics workspace. Run from Azure Cloud Shell (bash) or anywhere
 # with the Azure CLI logged in.
 #
-#   ./scripts/usage/count-runs.sh          # last 7 days (default)
-#   ./scripts/usage/count-runs.sh 1        # last 24 hours
-#   ./scripts/usage/count-runs.sh 30       # last 30 days
+#   ./scripts/usage/count-runs.sh          # month to date (default)
+#   ./scripts/usage/count-runs.sh 7        # rolling: last 7 days
+#   ./scripts/usage/count-runs.sh 30       # rolling: last 30 days
 #
 # Override targets via env vars (see the block below), e.g. a different app.
 #
@@ -17,8 +17,21 @@ set -euo pipefail
 SUBSCRIPTION="${SUBSCRIPTION:-Petra AI Tools}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-PET-RG-03}"
 BACKEND_APP="${BACKEND_APP:-ai-audit-tool}"
-DAYS="${1:-${DAYS:-7}}"
 MARKER="${MARKER:-Pipeline start}"
+
+# Window: "mtd" (default, from the 1st of the current month, UTC) or a number of
+# days for a rolling window.
+WINDOW="${1:-mtd}"
+if [ "${WINDOW}" = "mtd" ]; then
+  TIME_FILTER="TimeGenerated >= startofmonth(now())"
+  WINDOW_LABEL="month to date"
+elif printf '%s' "${WINDOW}" | grep -qE '^[0-9]+$'; then
+  TIME_FILTER="TimeGenerated > ago(${WINDOW}d)"
+  WINDOW_LABEL="last ${WINDOW} day(s)"
+else
+  printf '\nERROR: window must be "mtd" or a number of days (e.g. 7, 30).\n' >&2
+  exit 1
+fi
 
 # Log Analytics schema (override only if your workspace uses resource-specific
 # tables instead of the default custom-log table).
@@ -48,7 +61,7 @@ WORKSPACE_GUID="$(az containerapp env show --ids "${ENV_ID}" \
   || die "This environment does not ship logs to Log Analytics (no workspace configured)."
 
 base_query="${TABLE}
-| where TimeGenerated > ago(${DAYS}d)
+| where ${TIME_FILTER}
 | where ${APP_COL} == '${BACKEND_APP}'
 | where ${MSG_COL} has '${MARKER}'"
 
@@ -57,7 +70,7 @@ total="$(az monitor log-analytics query -w "${WORKSPACE_GUID}" \
   -o tsv 2>/dev/null | tr -d '[:space:]')"
 total="${total:-0}"
 
-printf '\nRuns of %s in the last %s day(s): %s\n\n' "${BACKEND_APP}" "${DAYS}" "${total}"
+printf '\nRuns of %s (%s): %s\n\n' "${BACKEND_APP}" "${WINDOW_LABEL}" "${total}"
 
 if [ "${total}" != "0" ]; then
   echo "By day:"
