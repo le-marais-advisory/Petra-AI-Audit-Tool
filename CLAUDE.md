@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Petra Vision is an AI-powered PDF document validation tool. It extracts content from PDFs, runs configurable validation rules through LLMs (OpenAI or Anthropic), and produces structured audit reports. It exposes both a REST API (FastAPI) and a React SPA frontend with Microsoft Entra ID authentication.
+Petra Vision is an AI-powered document validation tool. It validates PDF financial statements and capital-event Excel workbooks against configurable rules, using LLMs (OpenAI or Anthropic) plus deterministic checks for workbooks, and produces structured audit reports. The user picks the document type per run (`GET /document-types`); see `docs/document-types.md`. It exposes both a REST API (FastAPI) and a React SPA frontend with Microsoft Entra ID authentication.
 
 ## Commands
 
@@ -40,7 +40,8 @@ pytest -k "test_name"
 pytest tests/smoke_test.py
 
 # Run CLI validation (one-off, no server)
-python -m src.main validate --pdf ./tests/sample.pdf --out ./data/reports/report.json
+python -m src.main validate --file ./tests/sample.pdf --out ./data/reports/report.json
+python -m src.main validate --file ./workbook.xlsx --document-type capital_event_workbook --event-type capital_call --out ./data/reports/ce.json
 ```
 
 Unit test files:
@@ -162,6 +163,22 @@ The core logic lives in `src/pipeline/` and runs in five sequential stages:
 
 `src/pipeline/orchestrator.py` drives the pipeline and is called by `src/services/validation_service.py`.
 
+### Document Types and the Workbook Pipeline
+
+`src/document_types/registry.py` defines the supported document types. Each has accepted formats, rule files, an options schema and a pipeline factory. `ValidationService` and the job service dispatch on the type; the PDF path above is unchanged.
+
+Capital-event workbooks run through `src/pipeline/workbook/pipeline.py`:
+1. Load formulas and cached values (`loader.py`).
+2. Assign sheet roles (`roles.py`: heuristic, then LLM confirmation).
+3. Keep only the sheets the user-selected event type needs (`selection.py`, `config/document_types/capital_event.yaml`).
+4. Map each kept sheet's layout with the LLM (`skeleton.py`, `layout_mapper.py`) and validate it against the cells (`layout_validator.py`).
+5. Extract typed data (`extract.py`).
+6. Evaluate rules:
+   - deterministic rules run in `checks/`
+   - hybrid rules go to the LLM with a computed-facts block (`facts.py`)
+
+Rules declare `evaluator`, `required_roles` and `event_types`.
+
 ### Key Source Directories
 
 - `src/api/routers/` — FastAPI route handlers (validations, rules, export, feedback, health, auth)
@@ -171,7 +188,8 @@ The core logic lives in `src/pipeline/` and runs in five sequential stages:
 - `src/schemas/` — Pydantic request/response models
 - `src/core/` — settings (`pydantic-settings` + `config/app.yaml`), Azure auth, logging, security middleware
 - `frontend/src/` — React SPA with Microsoft Entra ID auth gate (`@azure/msal-react`)
-- `rules/rules.json` — validation rule definitions (text and vision types)
+- `rules/rules.json` — validation rule definitions (text and vision types); `rules/capital_event/` — capital-event workbook rule pack
+- `src/document_types/` — document-type registry; `src/pipeline/workbook/` — workbook pipeline (loader, roles, layouts, extraction, checks, facts)
 - `config/app.yaml` — PDF rendering DPI, vision concurrency/temperature, report toggles
 - `config/text_analysis_system_prompt.md` / `config/vision_analysis_system_prompt.md` — LLM system prompts (loaded at runtime by the analyzers)
 - `flag_analysis/` — standalone LLM-powered feedback audit tool

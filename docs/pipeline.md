@@ -190,3 +190,14 @@ vision:
 - `src/pipeline/result_builder.py` - Result aggregation
 - `config/text_analysis_system_prompt.md` - Text analysis system prompt
 - `config/vision_analysis_system_prompt.md` - Vision analysis system prompt
+
+## Workbook documents
+
+Capital-event workbooks (`.xlsx` / `.xlsm`) do not use the PDF stages above. They run through `src/pipeline/workbook/pipeline.py`, which works like this:
+- roles are assigned to sheets
+- only the sheets the selected event type needs are kept
+- the LLM maps each kept sheet's layout, and code validates it against the cells
+- deterministic checks run in code
+- hybrid rules run through the LLM, with computed facts
+
+See [Document Types](document-types.md).

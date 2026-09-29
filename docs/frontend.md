@@ -144,3 +144,17 @@ Output goes to `frontend/dist/`.
 - `frontend/src/auth/config.ts` - MSAL auth configuration
 - `frontend/src/config/runtime.ts` - Runtime environment configuration
 - `frontend/vite.config.ts` - Vite build configuration
+
+## Document types
+
+The upload panel first asks for the **document type**, loaded from `GET /document-types`, and any options the type requires, such as the event type for capital-event workbooks. The choice then drives several things:
+- the file input's accepted formats
+- the rule pack, loaded from `GET /rules?document_type=...&event_type=...`
+- the upload request, which sends the `file`, `document_type` and `options_json` form fields
+
+A file whose format doesn't match the type is rejected with a visible message.
+
+Workbook runs change what the tabs show:
+- The source tab lists the processed sheets and their roles, since there is no inline preview.
+- The visual tab is hidden.
+- Result locators read `Sheet "Allocation"`, and citations read `Allocation!H7`.

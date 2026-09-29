@@ -4,7 +4,14 @@ Petra Vision validates documents against configurable rules defined in JSON. Rul
 
 ## Rule Storage
 
-Rules are stored in `rules/rules.json`. The file contains a single object with a `rules` array:
+Each document type has its own rule pack (see [Document Types](document-types.md)):
+
+| Document type | Rule files |
+|---|---|
+| `financial_statements` | `rules/rules.json`, `rules/multi_page_rules.json` |
+| `capital_event_workbook` | `rules/capital_event/workbook_rules.json` (deferred rules sit in `rules/capital_event/deferred/` and are not loaded) |
+
+`GET /rules?document_type=<id>&event_type=<event>` returns the pack filtered by document type and, for capital-event workbooks, by event type. Each file contains a single object with a `rules` array:
 
 ```json
 {
@@ -56,6 +63,13 @@ Examples:
 | `fail_criteria` | string | No | Explicit fail conditions |
 | `action_if_fail` | string | No | What happens on failure (e.g., `"REJECTED."`) |
 | `rationale` | string | No | Why this rule exists |
+| `scope` | `"page"` \| `"multi_page"` \| `"document"` | No | Evaluation scope (default `"page"`) |
+| `sections` | string[] | No | Sections a multi-page rule reads |
+| `document_types` | string[] | No | Document types the rule belongs to (default `["financial_statements"]`) |
+| `event_types` | string[] \| null | No | Capital-event workbooks: the events the rule applies to (`null` = all) |
+| `required_roles` | string[] \| null | No | Workbook sheet roles the rule reads; if one is missing, the rule returns `needs_review` |
+| `evaluator` | `"llm"` \| `"deterministic"` \| `"hybrid"` | No | Workbooks: evaluated in code, or by the LLM with computed facts (default `"llm"`) |
+| `requires_documents` | string[] \| null | No | Reference inputs the rule needs (e.g. `fund_terms`); not yet supported |
 
 ## Verdicts
 

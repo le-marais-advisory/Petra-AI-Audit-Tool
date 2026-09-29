@@ -14,14 +14,18 @@ Synchronous document validation. Blocks until analysis is complete.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `pdf` | file | Yes | PDF file to validate |
-| `rules_json` | string | No | JSON string of selected rules. If omitted, all rules are used. |
+| `file` | file | Yes | Document to validate (`pdf` is accepted as a deprecated alias) |
+| `document_type` | string | No | Document type id from `GET /document-types` (default `financial_statements`) |
+| `options_json` | string | No | JSON object of options for the document type, e.g. `{"event_type": "capital_call"}` (required for `capital_event_workbook`) |
+| `rules_json` | string | No | JSON string of selected rules. If omitted, the document type's rule pack is used (filtered by event type). |
 
 **Response:** `200 OK` - `DocumentValidationResponse`
 
 ```json
 {
   "document_id": "upload_20240115T143022",
+  "document_type": "financial_statements",
+  "options": {},
   "page_count": 5,
   "source_filename": "report.pdf",
   "analysis": {
@@ -49,9 +53,10 @@ Synchronous document validation. Blocks until analysis is complete.
 
 | Status | Condition |
 |--------|-----------|
+| 400 | Unknown `document_type` |
 | 413 | File exceeds `MAX_UPLOAD_SIZE_MB` (default 50 MB) |
-| 415 | File content type is not `application/pdf` |
-| 422 | File does not start with PDF magic bytes (`%PDF-`) |
+| 415 | The file's format (detected from its bytes) is not accepted by the document type, e.g. a `.xls` or a PDF sent as a workbook |
+| 422 | `options_json` is invalid or misses a required option (e.g. `event_type`), or no file was uploaded |
 
 ### POST /validations/jobs
 
@@ -114,6 +119,8 @@ List all available validation rules.
 | Param | Type | Description |
 |-------|------|-------------|
 | `rules_path` | string | Optional path to a custom rules JSON file |
+| `document_type` | string | Rule pack to list (default `financial_statements`) |
+| `event_type` | string | Capital-event workbooks: only rules that apply to this event |
 
 **Response:** `200 OK`
 
@@ -134,6 +141,36 @@ List all available validation rules.
   ]
 }
 ```
+
+## Document Types
+
+### GET /document-types
+
+List the supported document types. The user picks one before uploading.
+
+**Response:** `200 OK`
+
+```json
+{
+  "document_types": [
+    {
+      "id": "capital_event_workbook",
+      "label": "Capital Event Workbook",
+      "description": "Excel roll-forward model for a capital call, distribution or net event.",
+      "accepted_formats": ["xlsx", "xlsm"],
+      "options_schema": {
+        "type": "object",
+        "properties": {
+          "event_type": {"type": "string", "enum": ["capital_call", "distribution", "net_event"]}
+        },
+        "required": ["event_type"]
+      }
+    }
+  ]
+}
+```
+
+For workbook results, each entry in `pages` is a processed sheet: `page` is the sheet index, `label` the sheet name and `page_type` the sheet role. Citations carry `sheet` and `cell`.
 
 ## Export
 
