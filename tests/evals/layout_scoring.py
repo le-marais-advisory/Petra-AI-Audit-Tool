@@ -66,7 +66,8 @@ def _anchor_values(layout: dict[str, Any], anchor: str) -> Any:
         keys = rest.split("+")
         return sorted(tuple(str(_get(item, k)) for k in keys) for item in items)
     if anchor.endswith(".*"):
-        return _get(layout, anchor[:-2])
+        mapping = _get(layout, anchor[:-2]) or {}
+        return {k: v for k, v in mapping.items() if v is not None}
     return _get(layout, anchor)
 
 

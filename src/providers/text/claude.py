@@ -43,7 +43,9 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         self._temperature = temperature
         self._max_tokens = max_tokens
 
-    def _call_claude_with_retry(self, messages: list[dict[str, Any]], system_prompt: str) -> dict[str, Any]:
+    def _call_claude_with_retry(
+        self, messages: list[dict[str, Any]], system_prompt: str, schema: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
@@ -51,7 +53,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             "output_config": {
                 "format": {
                     "type": "json_schema",
-                    "schema": RULE_RESULT_JSON_SCHEMA,
+                    "schema": schema or RULE_RESULT_JSON_SCHEMA,
                 }
             },
         }
@@ -111,3 +113,9 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             }
         ]
         return self._call_claude_with_retry(messages, system_prompt)
+
+    def complete_structured(
+        self, system_prompt: str, user_content: str, json_schema: dict[str, Any], name: str = "result"
+    ) -> dict[str, Any]:
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
+        return self._call_claude_with_retry(messages, system_prompt, schema=json_schema)

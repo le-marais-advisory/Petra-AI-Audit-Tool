@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -66,3 +67,28 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
             }
         )
         return self._call_openai_with_retry(messages)
+
+    def complete_structured(
+        self, system_prompt: str, user_content: str, json_schema: dict[str, Any], name: str = "result"
+    ) -> dict[str, Any]:
+        messages: list[dict[str, Any]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_content})
+        request_kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": name, "schema": json_schema, "strict": True},
+            },
+        }
+        if self._max_tokens is not None:
+            request_kwargs["max_completion_tokens"] = self._max_tokens
+        if self._temperature is not None:
+            request_kwargs["temperature"] = self._temperature
+        response = self._client.chat.completions.create(**request_kwargs)
+        message = response.choices[0].message
+        if getattr(message, "refusal", None):
+            raise ValueError(f"Model refused to answer: {message.refusal}")
+        return json.loads(message.content or "{}")

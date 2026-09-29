@@ -130,9 +130,10 @@ def _role_schema(sheet_names: list[str]) -> dict:
 
 def llm_role_assigner(provider=None) -> RoleAssigner:
     def assign(model: WorkbookModel, inventory: list[SheetInventoryEntry], proposed: dict[str, str]) -> dict[str, str]:
-        from src.providers.text.factory import get_text_provider
+        from src.core.config import get_settings
+        from src.providers.text.factory import build_text_provider
 
-        active = provider or get_text_provider()
+        active = provider or build_text_provider(get_settings())
         lines = []
         for entry in inventory:
             preview = " | ".join(" / ".join(row[:10]) for row in entry.header_preview[:8])
