@@ -74,7 +74,13 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def _run_pipeline(file_path: str, document_type: str = "financial_statements", options: dict | None = None) -> dict:
+def _run_pipeline(
+    file_path: str | None = None,
+    document_type: str = "financial_statements",
+    options: dict | None = None,
+    pdf_path: str | None = None,
+) -> dict:
+    file_path = file_path or pdf_path
     service = ValidationService()
     return service.validate_document(
         file_path=file_path,
