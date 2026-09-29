@@ -64,7 +64,14 @@ def to_money(value: Any) -> Decimal:
     return number if number is not None else Decimal("0")
 
 
-def to_date(value: Any) -> dt.date | None:
+EXCEL_EPOCH = dt.date(1899, 12, 30)
+
+
+def to_date(value: Any, allow_serial: bool = False) -> dt.date | None:
+    """Parse a date cell value. ``allow_serial`` accepts an Excel serial number (a date
+    cell whose number format hides that it is a date)."""
+    if allow_serial and isinstance(value, (int, float)) and not isinstance(value, bool) and 20000 <= value <= 80000:
+        return EXCEL_EPOCH + dt.timedelta(days=int(value))
     if isinstance(value, dt.datetime):
         return value.date()
     if isinstance(value, dt.date):

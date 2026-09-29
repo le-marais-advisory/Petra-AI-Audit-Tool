@@ -22,6 +22,8 @@ from tests.fixtures.generate_capital_event_fixtures import (
 )
 
 RULES = [{"id": rule_id, "name": rule_id} for rule_id in DETERMINISTIC_RULE_IDS]
+# Rules about a sheet or file as a whole (view setting, file name) cite the sheet but no cell.
+SHEET_LEVEL_RULES = {"CE-WB-FILE-NAMING", "CE-WB-PAGE-BREAK-VIEW"}
 
 SPECS = [FixtureSpec(e, v) for e in EVENT_TYPES for v in VARIANTS] + [
     FixtureSpec(d.event_types[0], "standard", d.name) for d in DEFECTS.values()
@@ -75,7 +77,7 @@ def test_failures_cite_sheet_and_cell(evaluate, capital_event_fixtures, spec):
         assert result.citations, result.rule_id
         for citation in result.citations:
             assert citation.sheet in manifest.sheet_roles, (result.rule_id, citation)
-            if result.rule_id != "CE-WB-FILE-NAMING":
+            if result.rule_id not in SHEET_LEVEL_RULES:
                 assert citation.cell, (result.rule_id, citation)
             assert citation.page == list(manifest.sheet_roles).index(citation.sheet) + 1
 

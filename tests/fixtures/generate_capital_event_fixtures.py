@@ -206,7 +206,7 @@ DEFECTS: dict[str, DefectSpec] = {
            verdicts={"CE-ALLOC-PRO-RATA-PARITY": "fail", "CE-ALLOC-PLUG-DISCIPLINE": "fail"}),
         _d("plug_on_affiliate", "The investment rounding plug sits on the affiliate LP.",
            verdicts={"CE-ALLOC-PLUG-DISCIPLINE": "fail"}),
-        _d("short_subtotal_range", "The LP subtotal of Prior Capital Contributions omits the last LP.",
+        _d("short_subtotal_range", "The LP subtotal of Prior Capital Contributions omits the first LP.",
            verdicts={"CE-ALLOC-REFOOT": "fail", "CE-RF-FOOTING": "fail"}),
         _d("commitment_pct_swap", "Two LPs carry typed commitment % values off by +/-0.03 pp.",
            verdicts={"CE-ALLOC-COMMITMENTS": "fail", "CE-ALLOC-PRO-RATA-PARITY": "fail"}),
@@ -339,6 +339,9 @@ class FixtureManifest:
 
 def clean_verdicts(event_type: str) -> dict[str, str | None]:
     verdicts: dict[str, str | None] = {rule_id: "pass" for rule_id in DETERMINISTIC_RULE_IDS}
+    # The Allocation and fee tabs carry no Investor ID column, so by the rule's current
+    # wording identity is compared by name only -> needs_review (calibration item 16).
+    verdicts["CE-ID-INVESTOR-KEYS"] = "needs_review"
     if event_type == "capital_call":
         verdicts["CE-DIST-ROC-LIMIT"] = "not_applicable"
     if event_type == "distribution":
@@ -1558,15 +1561,14 @@ class _Builder:
             for col in numeric_cols:
                 if col == cols["close"]:
                     continue
-                lp_last = last_lp
+                lp_first = first_lp
                 lp_value = col_sums_lp.get(col, Decimal("0"))
                 if self.defect == "short_subtotal_range" and col == cols["rf_prior"] and block is self.ablocks[0]:
-                    lp_last = last_lp - 1
-                    last_name = next(n for n, rr in block["investor_rows"].items() if rr == last_lp)
-                    lp_value -= Decimal(str(sheet.get(sheet.coord(last_lp, col)).cached))
+                    lp_first = first_lp + 1  # the subtotal skips the first LP
+                    lp_value -= Decimal(str(sheet.get(sheet.coord(first_lp, col)).cached))
                 fmt = PCT_FMT if col in (cols["commitment_pct"], cols.get("contributed_pct")) else MONEY_FMT
                 sheet.put(block["lp_subtotal"], col, formula=(
-                    f"SUM({sheet.coord(first_lp, col)}:{sheet.coord(lp_last, col)})"), cached=_num(lp_value), fmt=fmt)
+                    f"SUM({sheet.coord(lp_first, col)}:{sheet.coord(last_lp, col)})"), cached=_num(lp_value), fmt=fmt)
                 gp_value = col_sums_gp.get(col, Decimal("0"))
                 sheet.put(block["gp_subtotal"], col, formula=f"SUM({sheet.coord(block['gp_row'], col)})",
                           cached=_num(gp_value), fmt=fmt)
