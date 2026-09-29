@@ -7,7 +7,9 @@ export type RuleScope = "page" | "multi_page" | "document";
 
 export interface RuleResultLike {
   analysis_type: AnalysisType;
-  citations: Array<{ page: number; evidence: string }>;
+  citations: Array<{ page: number; evidence: string; sheet?: string | null; cell?: string | null }>;
+  /** Workbook documents: the sheet name for ``page``. */
+  label?: string | null;
   execution_status: string;
   findings: string[];
   notes: string[];
@@ -64,7 +66,18 @@ export function getLocatorLabel(item: RuleResultLike): string | null {
   if (item.scope === "multi_page") {
     return "Multiple pages";
   }
+  if (item.label) {
+    return `Sheet "${item.label}"`;
+  }
   return typeof item.page === "number" ? `Page ${item.page}` : null;
+}
+
+/** "Allocation!H7" for workbook citations, "Page 3" for PDF citations. */
+export function formatCitationLocation(citation: { page: number; sheet?: string | null; cell?: string | null }): string {
+  if (citation.sheet) {
+    return citation.cell ? `${citation.sheet}!${citation.cell}` : `Sheet "${citation.sheet}"`;
+  }
+  return `Page ${citation.page}`;
 }
 
 /** Citations are the evidence for an action item, so they start open on rows a reviewer must act on. */

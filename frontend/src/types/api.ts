@@ -9,6 +9,33 @@ export type StatusTone = "neutral" | "working" | "success" | "error";
  */
 export type RunOutcome = "completed" | "cancelled" | "failed" | null;
 
+export interface DocumentTypeOptionProperty {
+  type: string;
+  title?: string;
+  enum?: string[];
+  enumLabels?: string[];
+  format?: string;
+}
+
+export interface DocumentTypeDefinition {
+  id: string;
+  label: string;
+  description: string;
+  /** File formats the type accepts, e.g. ["pdf"] or ["xlsx", "xlsm"]. */
+  accepted_formats: string[];
+  options_schema: {
+    type: string;
+    properties: Record<string, DocumentTypeOptionProperty>;
+    required?: string[];
+  };
+}
+
+export interface DocumentTypesResponse {
+  document_types: DocumentTypeDefinition[];
+}
+
+export type DocumentOptions = Record<string, string>;
+
 export interface RuleDefinition {
   id: string;
   name: string;
@@ -28,6 +55,10 @@ export interface RuleDefinition {
   fail_criteria?: string | null;
   action_if_fail?: string | null;
   rationale?: string | null;
+  document_types?: string[];
+  event_types?: string[] | null;
+  required_roles?: string[] | null;
+  evaluator?: "llm" | "deterministic" | "hybrid";
 }
 
 export interface RulesResponse {
@@ -41,6 +72,9 @@ export interface ExtractedTable {
 
 export interface PageExtraction {
   page: number;
+  /** Workbook documents: the sheet name (``page`` is then the sheet index). */
+  label?: string | null;
+  page_type?: string[];
   text: string;
   tables: ExtractedTable[];
   char_count: number;
@@ -55,6 +89,9 @@ export interface AnalysisMetric {
 export interface AnalysisCitation {
   page: number;
   evidence: string;
+  /** Workbook documents: sheet name and cell/range of the evidence. */
+  sheet?: string | null;
+  cell?: string | null;
 }
 
 export interface RuleAssessment {
@@ -77,6 +114,7 @@ export interface RuleAssessment {
 
 export interface PageRuleAssessment {
   page: number;
+  label?: string | null;
   rule_id: string;
   rule_name: string;
   analysis_type: AnalysisType;
@@ -113,6 +151,8 @@ export interface DocumentAnalysis {
 
 export interface DocumentValidationResponse {
   document_id: string;
+  document_type?: string;
+  options?: DocumentOptions;
   page_count: number;
   source_filename?: string | null;
   analysis: DocumentAnalysis;

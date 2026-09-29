@@ -1,3 +1,4 @@
+import { stripExtension } from "@/utils/documentTypes";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiPostBlob } from "@/services/apiClient";
@@ -10,12 +11,23 @@ export interface ExportModalProps {
   documentId: string | null;
   sourceFilename: string | null;
   pageCount: number;
+  documentType?: string;
+  options?: Record<string, string>;
   analysis: DocumentAnalysis | null;
 }
 
 type ExportStage = "idle" | "exporting" | "done" | "error";
 
-export function useExportModalBehavior({ isOpen, onClose, documentId, sourceFilename, pageCount, analysis }: ExportModalProps) {
+export function useExportModalBehavior({
+  isOpen,
+  onClose,
+  documentId,
+  sourceFilename,
+  pageCount,
+  analysis,
+  documentType,
+  options,
+}: ExportModalProps) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [coverText, setCoverText] = useState("");
   const [stage, setStage] = useState<ExportStage>("idle");
@@ -62,6 +74,8 @@ export function useExportModalBehavior({ isOpen, onClose, documentId, sourceFile
         document_id: documentId,
         source_filename: sourceFilename,
         page_count: pageCount,
+        document_type: documentType || "financial_statements",
+        options: options || {},
         cover_sheet_text: coverText,
         analysis,
       };
@@ -72,7 +86,7 @@ export function useExportModalBehavior({ isOpen, onClose, documentId, sourceFile
       // Trigger download
       const a = document.createElement("a");
       a.href = url;
-      const safeName = (sourceFilename || "report").replace(/\.pdf$/i, "");
+      const safeName = stripExtension(sourceFilename || "report");
       a.download = `${safeName}-audit-report.pdf`;
       document.body.appendChild(a);
       a.click();
@@ -87,7 +101,7 @@ export function useExportModalBehavior({ isOpen, onClose, documentId, sourceFile
       setErrorMsg(err instanceof Error ? err.message : "Export failed.");
       setStage("error");
     }
-  }, [analysis, documentId, sourceFilename, pageCount, coverText, onClose]);
+  }, [analysis, documentId, sourceFilename, pageCount, documentType, options, coverText, onClose]);
 
   return {
     dialogRef,

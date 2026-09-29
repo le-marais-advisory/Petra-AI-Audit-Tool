@@ -6,7 +6,7 @@ import type { ExtractionResultsProps } from "./behaviors";
 
 export function ExtractionResults({ pages }: ExtractionResultsProps) {
   if (!pages.length) {
-    return <EmptyState title="No extraction yet" description="Upload a PDF to inspect extracted page text and tables." />;
+    return <EmptyState title="No extraction yet" description="Upload a document to inspect its extracted content." />;
   }
 
   return (

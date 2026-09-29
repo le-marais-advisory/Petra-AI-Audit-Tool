@@ -1,22 +1,40 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 
-import type { WorkspaceStatus } from "@/types/api";
+import type { DocumentOptions, DocumentTypeDefinition, WorkspaceStatus } from "@/types/api";
 
 
 export interface UploadPanelProps {
   documentId: string | null;
   isBusy: boolean;
   status: WorkspaceStatus;
+  documentTypes: DocumentTypeDefinition[];
+  documentType: DocumentTypeDefinition | null;
+  documentTypeId: string;
+  documentOptions: DocumentOptions;
+  onDocumentTypeChange: (documentTypeId: string) => void;
+  onDocumentOptionChange: (name: string, value: string) => void;
   onFileSelected: (file: File) => Promise<void>;
   onStopAnalysis: () => Promise<void>;
 }
 
-function isPdfFile(file: File | null | undefined): file is File {
-  if (!file) {
-    return false;
+/** Enum options of the selected document type, rendered as dropdowns (e.g. event type). */
+export function getEnumOptions(documentType: DocumentTypeDefinition | null) {
+  if (!documentType) {
+    return [];
   }
-  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const required = new Set(documentType.options_schema.required || []);
+  return Object.entries(documentType.options_schema.properties)
+    .filter(([, property]) => Array.isArray(property.enum) && property.enum.length > 0)
+    .map(([name, property]) => ({
+      name,
+      title: property.title || name.replace(/_/g, " "),
+      required: required.has(name),
+      choices: (property.enum || []).map((value, index) => ({
+        value,
+        label: property.enumLabels?.[index] || value.replace(/_/g, " "),
+      })),
+    }));
 }
 
 export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPanelProps, "isBusy" | "onFileSelected">) {
@@ -25,7 +43,7 @@ export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPa
 
   const handleInputChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (isPdfFile(file)) {
+    if (file) {
       await onFileSelected(file);
     }
     event.target.value = "";
@@ -57,7 +75,7 @@ export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPa
       return;
     }
     const file = event.dataTransfer.files?.[0];
-    if (isPdfFile(file)) {
+    if (file) {
       await onFileSelected(file);
     }
   };

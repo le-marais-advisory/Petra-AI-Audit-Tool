@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readEnv } from "@/config/runtime";
+import { fetchDocumentTypes } from "@/services/documentTypes";
 import { fetchRules } from "@/services/rules";
 import { cancelValidationJob, createValidationJob, getValidationJob } from "@/services/validationJobs";
+import {
+  DEFAULT_DOCUMENT_TYPE,
+  fileMatchesType,
+  isWorkbookType,
+  missingRequiredOptions,
+  optionLabel,
+} from "@/utils/documentTypes";
 import type {
+  DocumentOptions,
+  DocumentTypeDefinition,
   DocumentValidationResponse,
   RuleDefinition,
   RunOutcome,
@@ -59,6 +69,15 @@ export function useAppBehavior() {
   const [result, setResult] = useState<DocumentValidationResponse | null>(null);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [runOutcome, setRunOutcome] = useState<RunOutcome>(null);
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeDefinition[]>([]);
+  const [documentTypeId, setDocumentTypeId] = useState<string>(DEFAULT_DOCUMENT_TYPE);
+  const [documentOptions, setDocumentOptions] = useState<DocumentOptions>({});
+
+  const documentType = useMemo(
+    () => documentTypes.find((type) => type.id === documentTypeId) || null,
+    [documentTypes, documentTypeId],
+  );
+  const eventType = documentOptions.event_type || undefined;
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -75,7 +94,7 @@ export function useAppBehavior() {
 
   const loadRules = useCallback(async () => {
     try {
-      const rules = await fetchRules();
+      const rules = await fetchRules(documentTypeId, eventType);
       setAvailableRules(rules);
       setSelectedRuleIds((currentIds) => {
         if (!currentIds.length) {
@@ -88,6 +107,25 @@ export function useAppBehavior() {
     } catch (error) {
       setRulesError(error instanceof Error ? error.message : "Failed to load rules.");
     }
+  }, [documentTypeId, eventType]);
+
+  const loadDocumentTypes = useCallback(async () => {
+    try {
+      setDocumentTypes(await fetchDocumentTypes());
+    } catch {
+      // Older backends have no /document-types endpoint: fall back to PDFs only.
+      setDocumentTypes([]);
+    }
+  }, []);
+
+  const handleDocumentTypeChange = useCallback((nextId: string) => {
+    setDocumentTypeId(nextId);
+    setDocumentOptions({});
+    setSelectedRuleIds([]);
+  }, []);
+
+  const handleDocumentOptionChange = useCallback((name: string, value: string) => {
+    setDocumentOptions((current) => ({ ...current, [name]: value }));
   }, []);
 
   const selectedRules = useMemo(
@@ -113,7 +151,7 @@ export function useAppBehavior() {
         syncJobSnapshot(job);
 
         if (job.status === "queued" || job.status === "running") {
-          setStatus(createWorkingStatus(`${job.message || "Analyzing PDF"}${buildProgressSuffix(job)}`));
+          setStatus(createWorkingStatus(`${job.message || "Analyzing document"}${buildProgressSuffix(job)}`));
           setIsBusy(true);
           pollTimerRef.current = window.setTimeout(() => {
             void pollJob(jobId);
@@ -167,11 +205,31 @@ export function useAppBehavior() {
 
   const beginUpload = useCallback(
     async (file: File) => {
+      if (documentType && !fileMatchesType(file, documentType)) {
+        const accepted = documentType.accepted_formats.map((format) => `.${format}`).join(", ");
+        setStatus({
+          label: `${file.name} is not a ${documentType.label} file (expected ${accepted}).`,
+          tone: "error",
+          isLoading: false,
+        });
+        return;
+      }
+      const missing = missingRequiredOptions(documentType, documentOptions);
+      if (missing.length) {
+        setStatus({
+          label: `Select ${missing.map((name) => optionLabel(documentType, name).toLowerCase()).join(", ")} before uploading.`,
+          tone: "error",
+          isLoading: false,
+        });
+        return;
+      }
+
       stopPolling();
       setCurrentJobId(null);
       setResult(null);
       setRunOutcome(null);
-      replacePreviewUrl(URL.createObjectURL(file));
+      // Browsers can preview PDFs inline; workbooks are summarised from the analysis result instead.
+      replacePreviewUrl(isWorkbookType(documentType) ? null : URL.createObjectURL(file));
       setSourceFilename(file.name);
       setActiveTab("source");
 
@@ -192,7 +250,7 @@ export function useAppBehavior() {
       setIsBusy(true);
 
       try {
-        const job = await createValidationJob(file, selectedRules);
+        const job = await createValidationJob(file, selectedRules, documentTypeId, documentOptions);
         setCurrentJobId(job.job_id);
         setStatus(createWorkingStatus(job.message || `Analyzing ${file.name}`));
         await pollJob(job.job_id);
@@ -207,7 +265,7 @@ export function useAppBehavior() {
         });
       }
     },
-    [pollJob, replacePreviewUrl, rulesError, selectedRules, stopPolling],
+    [documentOptions, documentType, documentTypeId, pollJob, replacePreviewUrl, rulesError, selectedRules, stopPolling],
   );
 
   const handleRuleToggle = useCallback((ruleId: string) => {
@@ -273,13 +331,16 @@ export function useAppBehavior() {
   const pages = result?.pages || [];
 
   useEffect(() => {
-    void loadRules();
-
+    void loadDocumentTypes();
     return () => {
       stopPolling();
       revokePreviewUrl(previewUrlRef.current);
     };
-  }, [loadRules, stopPolling]);
+  }, [loadDocumentTypes, stopPolling]);
+
+  useEffect(() => {
+    void loadRules();
+  }, [loadRules]);
 
   return {
     activeTab,
@@ -287,6 +348,10 @@ export function useAppBehavior() {
     appName: APP_NAME,
     availableRules,
     documentId,
+    documentOptions,
+    documentType,
+    documentTypeId,
+    documentTypes,
     isBusy,
     pages,
     result,
@@ -299,6 +364,8 @@ export function useAppBehavior() {
     sourcePreviewUrl,
     status,
     beginUpload,
+    handleDocumentOptionChange,
+    handleDocumentTypeChange,
     handleRuleToggle,
     handleBypassToggle,
     handleGroupToggle,

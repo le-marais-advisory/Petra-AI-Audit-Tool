@@ -7,14 +7,16 @@ export function ExtractionPageCard({ page }: ExtractionPageCardProps) {
   return (
     <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-panel">
       <div className="border-b border-slate-200 pb-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Page {page.page}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          {page.label ? `Sheet ${page.page}: ${page.label}` : `Page ${page.page}`}
+        </p>
         <h3 className="mt-2 text-xl font-semibold text-slate-950">{page.char_count} extracted characters</h3>
-        <p className="mt-2 text-sm text-slate-500">{getTableLabel(tables.length)}</p>
+        {page.label ? null : <p className="mt-2 text-sm text-slate-500">{getTableLabel(tables.length)}</p>}
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4">
-          <h4 className="text-sm font-semibold text-slate-900">Extracted Text</h4>
+          <h4 className="text-sm font-semibold text-slate-900">{page.label ? "Sheet skeleton (labels and formula patterns)" : "Extracted Text"}</h4>
           <pre className="pretty-scrollbar mt-3 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-white p-4 text-sm leading-6 text-slate-700">
             {page.text || "No text extracted."}
           </pre>

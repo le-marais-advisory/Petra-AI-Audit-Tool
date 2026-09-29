@@ -1,13 +1,17 @@
 import { apiGet, apiPost, apiPostForm } from "@/services/apiClient";
-import type { RuleDefinition, ValidationJobResponse } from "@/types/api";
+import type { DocumentOptions, RuleDefinition, ValidationJobResponse } from "@/types/api";
 
 
 export async function createValidationJob(
   file: File,
   selectedRules: RuleDefinition[],
+  documentType: string,
+  options: DocumentOptions,
 ): Promise<ValidationJobResponse> {
   const formData = new FormData();
-  formData.append("pdf", file);
+  formData.append("file", file);
+  formData.append("document_type", documentType);
+  formData.append("options_json", JSON.stringify(options));
   formData.append("rules_json", JSON.stringify({ rules: selectedRules }));
   return apiPostForm<ValidationJobResponse>("/validations/jobs", formData);
 }

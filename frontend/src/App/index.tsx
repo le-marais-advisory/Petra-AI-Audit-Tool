@@ -12,8 +12,10 @@ import { HeroBanner } from "@/components/HeroBanner";
 import { RulesSidebar } from "@/components/RulesSidebar";
 import { SourcePreview } from "@/components/SourcePreview";
 import { TabNavigation } from "@/components/TabNavigation";
+import { tabDefinitions, workbookTabDefinitions } from "@/components/TabNavigation/behaviors";
 import { UploadPanel } from "@/components/UploadPanel";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
+import { isWorkbookType } from "@/utils/documentTypes";
 
 import { useAppBehavior } from "./behaviors";
 
@@ -27,6 +29,12 @@ export function App() {
     availableRules,
     beginUpload,
     documentId,
+    documentOptions,
+    documentType,
+    documentTypeId,
+    documentTypes,
+    handleDocumentOptionChange,
+    handleDocumentTypeChange,
     handleRuleToggle,
     handleBypassToggle,
     handleGroupToggle,
@@ -60,6 +68,7 @@ export function App() {
   };
 
   const [exportOpen, setExportOpen] = useState(false);
+  const isWorkbook = result?.document_type ? result.document_type !== "financial_statements" : isWorkbookType(documentType);
 
   return (
     <>
@@ -90,8 +99,14 @@ export function App() {
 
           <UploadPanel
             documentId={documentId}
+            documentOptions={documentOptions}
+            documentType={documentType}
+            documentTypeId={documentTypeId}
+            documentTypes={documentTypes}
             isBusy={isBusy}
             status={status}
+            onDocumentOptionChange={handleDocumentOptionChange}
+            onDocumentTypeChange={handleDocumentTypeChange}
             onFileSelected={beginUpload}
             onStopAnalysis={handleStopAnalysis}
           />
@@ -113,11 +128,21 @@ export function App() {
           ) : null}
 
           <section className="section-panel overflow-hidden">
-            <TabNavigation activeTab={activeTab} onTabChange={setNextTab} />
+            <TabNavigation
+              activeTab={activeTab}
+              onTabChange={setNextTab}
+              tabs={isWorkbook ? workbookTabDefinitions : tabDefinitions}
+            />
 
             <div className="p-5">
               {activeTab === "source" ? (
-                <SourcePreview previewUrl={sourcePreviewUrl} sourceFilename={result?.source_filename || sourceFilename} />
+                <SourcePreview
+                  previewUrl={sourcePreviewUrl}
+                  sourceFilename={result?.source_filename || sourceFilename}
+                  isWorkbook={isWorkbook}
+                  pages={pages}
+                  overview={analysis?.overview}
+                />
               ) : null}
 
               {activeTab === "extracted" ? <ExtractionResults pages={pages} /> : null}
@@ -130,7 +155,7 @@ export function App() {
                       analysis.text_rule_count === 0
                         ? "No text rules were selected for this run."
                         : isBusy
-                          ? "Text analysis is still running. Results will appear as pages are evaluated."
+                          ? "Analysis is still running. Results will appear as rules are evaluated."
                           : "Text analysis could not be completed. Check that the text provider is configured correctly."
                     }
                     items={analysis.text_page_results || []}
@@ -141,11 +166,11 @@ export function App() {
                     runOutcome={runOutcome}
                   />
                 ) : (
-                  <EmptyState title="No text analysis yet" description="Upload a PDF to see text/content rule results." />
+                  <EmptyState title="No rule results yet" description="Upload a document to see rule results." />
                 )
               ) : null}
 
-              {activeTab === "visual-analysis" ? (
+              {activeTab === "visual-analysis" && !isWorkbook ? (
                 analysis ? (
                   <AnalysisResults
                     analysisType="vision"
@@ -164,7 +189,7 @@ export function App() {
                     runOutcome={runOutcome}
                   />
                 ) : (
-                  <EmptyState title="No visual analysis yet" description="Upload a PDF to inspect visual-rule status." />
+                  <EmptyState title="No visual analysis yet" description="Upload a document to inspect visual-rule status." />
                 )
               ) : null}
             </div>
@@ -179,6 +204,8 @@ export function App() {
         documentId={documentId}
         sourceFilename={sourceFilename}
         pageCount={result?.page_count || 0}
+        documentType={result?.document_type}
+        options={result?.options}
         analysis={analysis}
       />
     </>

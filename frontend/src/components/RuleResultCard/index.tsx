@@ -7,6 +7,7 @@ import { getExecutionStatusLabel, getVerdictClasses, getVerdictLabel, isExecutio
 import {
   formatDuration,
   getAnalysisTypeClasses,
+  formatCitationLocation,
   getLocatorLabel,
   isCardExpandable,
   shouldOpenCitations,
@@ -123,7 +124,7 @@ export function RuleResultCard({ item, documentId, sourceFilename, expanded, onT
                 <ul id={citationsId} className="mt-3 space-y-2">
                   {item.citations.map((citation, index) => (
                     <li key={`${item.rule_id}-citation-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                      Page {citation.page}: {citation.evidence}
+                      {formatCitationLocation(citation)}: {citation.evidence}
                     </li>
                   ))}
                 </ul>

@@ -143,12 +143,27 @@ def _page_locator_label(item: PageRuleAssessmentSchema) -> str:
         return "Whole document"
     if scope == "multi_page":
         return "Multiple pages"
+    label = getattr(item, "label", None)
+    if label:
+        return f"Sheet '{label}'"
     page = getattr(item, "page", None)
     return f"Page {page}" if isinstance(page, int) and page > 0 else ""
 
 
+def _cited_sheets(assessment: Any) -> list[str]:
+    sheets: list[str] = []
+    for citation in getattr(assessment, "citations", None) or []:
+        sheet = getattr(citation, "sheet", None)
+        if sheet and sheet not in sheets:
+            sheets.append(sheet)
+    return sheets
+
+
 def _rule_locator_label(assessment: RuleAssessmentSchema) -> str:
     scope = _normalize(getattr(assessment, "scope", "page"))
+    sheets = _cited_sheets(assessment)
+    if sheets:
+        return ("Sheet " if len(sheets) == 1 else "Sheets ") + ", ".join(f"'{s}'" for s in sheets)
     if scope == "document":
         return "Whole document"
     if scope == "multi_page":
@@ -406,10 +421,17 @@ def _add_cover_sheet(pdf: _ReportPdf, req: ExportPdfRequest) -> None:
             ids_preview += f", +{len(bypassed_rules) - 4} more"
         bypassed_line += f"  ({ids_preview})"
 
+    is_pdf = req.document_type == "financial_statements"
     meta_lines = [
         f"Document: {_pdf_text(req.source_filename, 'Unknown')}",
         f"Document ID: {_pdf_text(req.document_id)}",
-        f"Pages: {req.page_count}",
+    ]
+    if not is_pdf:
+        meta_lines.append(f"Document type: {_humanize_token(req.document_type)}")
+        if req.options.get("event_type"):
+            meta_lines.append(f"Event type: {_humanize_token(req.options['event_type'])}")
+    meta_lines += [
+        f"Pages: {req.page_count}" if is_pdf else f"Sheets processed: {req.page_count}",
         f"Generated: {now}",
         f"Rules evaluated: {req.analysis.selected_rule_count}",
         bypassed_line,
