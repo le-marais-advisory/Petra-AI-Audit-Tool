@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 class AnalysisCitation(BaseModel):
     page: int
     evidence: str = ""
+    sheet: str | None = None  # workbook documents: sheet name (page = 1-based sheet index)
+    cell: str | None = None  # workbook documents: cell or range, e.g. "H7" or "H7:H19"
 
 
 class AnalysisRuleResult(BaseModel):

@@ -11,7 +11,8 @@ class ExtractedTableSchema(BaseModel):
 
 
 class PageExtractionSchema(BaseModel):
-    page: int = Field(..., description="1-based page number from the PDF.")
+    page: int = Field(..., description="1-based page number (PDF) or sheet index (workbook).")
+    label: Optional[str] = Field(default=None, description="Display label for the unit, e.g. the sheet name.")
     text: str = Field(default="", description="Raw text extracted from the page.")
     tables: list[ExtractedTableSchema] = Field(default_factory=list, description="Structured tables extracted from the page.")
     char_count: int = Field(default=0, description="Character count of extracted page text.")
@@ -35,6 +36,8 @@ class PageAnalysisSchema(BaseModel):
 class AnalysisCitationSchema(BaseModel):
     page: int
     evidence: str = ""
+    sheet: Optional[str] = None
+    cell: Optional[str] = None
 
 
 class RuleAssessmentSchema(BaseModel):
@@ -61,6 +64,7 @@ class RuleAssessmentSchema(BaseModel):
 
 class PageRuleAssessmentSchema(BaseModel):
     page: int
+    label: Optional[str] = None
     rule_id: str
     rule_name: str
     analysis_type: Literal["text", "vision"] = "text"
@@ -94,6 +98,8 @@ class DocumentAnalysisSchema(BaseModel):
 
 class DocumentValidationResponse(BaseModel):
     document_id: str
+    document_type: str = Field(default="financial_statements", description="Document type selected for the run.")
+    options: dict = Field(default_factory=dict, description="Run options for the document type (e.g. event_type).")
     page_count: int = Field(default=0, description="Total number of pages processed.")
     source_filename: Optional[str] = None
     analysis: DocumentAnalysisSchema = Field(default_factory=DocumentAnalysisSchema)

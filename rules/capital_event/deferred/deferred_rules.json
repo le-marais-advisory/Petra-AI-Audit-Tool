@@ -1,0 +1,338 @@
+{
+  "rules": [
+    {
+      "id": "CE-FMT-VISUAL-INTEGRITY",
+      "name": "Sheet Visual Integrity",
+      "analysis_type": "vision",
+      "scope": "page",
+      "query": "Review the rendered sheet image. Headers should be shaded consistently, total and subtotal rows should carry their border lines (single or double underline on totals), numeric columns should be right-aligned and uniformly formatted, the current event's column block should visually match the prior event blocks (same number format, font, fill and borders), and no text or numbers should be cut off, overlapping, or rendered as '####'.\n\nPass criteria: The sheet is visually clean; the new event block is styled like prior blocks; totals carry borders; nothing is truncated.\n\nFail criteria: Missing header shading or highlight on a key cell (e.g. the amount-due column), a new event block styled differently from prior blocks, truncated / overlapping values, or '####' cells.\n\nneeds_review when the distinction between a single and a double total border is visually ambiguous (a single-vs-double border drift is cosmetic, not a failure).",
+      "description": "Visual consistency of the rendered sheet: header shading, total borders, alignment, and new event block styled like the prior blocks.",
+      "acceptance_criteria": "Sheet renders cleanly; new block matches prior block styling; no truncation.",
+      "severity": "minor",
+      "group": "rounding_signage_formatting",
+      "section": "All",
+      "bypassable": true,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation",
+        "itd"
+      ],
+      "evaluator": "llm"
+    },
+    {
+      "id": "CE-REF-EVENT-REQUEST-TIE",
+      "name": "Workbook Matches Approved Event Request",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "This rule needs the approved event request (event_input.json: event_type, event_label, event_number, notice_date, due_date, gross_total, components[] with label / amount / type) in context. If it is not supplied, return needs_review stating that the check could not be performed.\n\nCompare the workbook's current event against the request: event type, label, number, notice date, due / payment date, gross total, and each component's amount (matched by label / type). Confirm the request's own components sum to its gross total. Normalize: remove '$', commas; treat parentheses as negative.\n\nPass criteria: Every field matches; amounts penny-exact (tolerance $0.005).\n\nFail criteria: Any mismatch in type, label, number, date or amount, or a component present on one side only.",
+      "description": "The workbook's event metadata, gross total and component amounts equal the approved event request.",
+      "acceptance_criteria": "Workbook event = approved request on every field, penny-exact.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-NOTICE-PERIOD",
+      "name": "Notice Period (Business Days)",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "This rule needs the LPA terms from fund_terms.json in context: lpa_terms.min_notice_days (and distribution_min_notice_days for distributions, if set), the optional lpa_terms.holiday_calendar {holidays[], valid_through, vintage_year}, and any per-LP side-letter min_notice_days_override. If min_notice_days is not supplied, return needs_review.\n\nCount BUSINESS days (not calendar days) between the workbook's notice date and due / payment date, excluding weekends and the listed holidays. Holiday calendar handling: missing calendar -> count weekdays only and note the assumption (not by itself a warning); calendar present but stale (valid_through earlier than the due date, or vintage_year earlier than the event year) -> needs_review, because a missing holiday would over-count the runway.\n\nPass criteria: Runway >= the LPA minimum and >= every per-LP override, with a current or absent holiday calendar.\n\nFail criteria: Runway below the LPA minimum (LPA breach).\n\nneeds_review when the holiday calendar is stale, or when the runway clears the LPA floor but breaches a specific LP's side-letter override (that LP needs a personalized extended date).",
+      "description": "Business days between notice and due date meet the LPA minimum and any per-LP side-letter override.",
+      "acceptance_criteria": "Business-day runway >= LPA minimum and every per-LP override.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-AGGREGATE-CALL-CAP",
+      "name": "Aggregate Call Cap",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to capital calls and the call side of net events; for distributions return not_applicable. Needs lpa_terms.aggregate_call_cap_pct and aggregate_call_cap_basis (quarterly | annual | rolling_12mo) from fund_terms.json; if no cap is defined, return not_applicable; if the cap is defined but not supplied in context, return needs_review.\n\nDetermine the cap window from the basis (calendar quarter / calendar year containing the notice date, or the 12 months ending on it). Sum prior call-side gross within the window from the ITD event blocks, add this event's call side (net recall components as negatives), and divide by total commitment (include the GP commitment unless the LPA says LP-only).\n\nPass criteria: Window usage < 90% of the cap.\n\nFail criteria: Window usage exceeds the cap.\n\nneeds_review when usage is between 90% and 100% of the cap, or prior-call history in the window is missing (check incomplete).",
+      "description": "Calls within the LPA's cap window, as a % of total commitments, stay within the aggregate call cap.",
+      "acceptance_criteria": "Window call usage below the aggregate cap (<90% for a clean pass).",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-PER-LP-CALL-CAP",
+      "name": "Per-LP Call Cap",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to capital calls and the call side of net events; for distributions return not_applicable. Skip net-receiving LPs on net events and the GP (unless the LPA sets a GP-specific cap). Needs lpa_terms.per_lp_call_cap_pct and any side-letter per-LP caps (max_quarterly_call_pct / max_annual_call_pct); if no cap is defined, return not_applicable; if not supplied, return needs_review.\n\nFor each LP, the applicable cap is the tighter of the LPA cap and its side-letter cap (each with its own window). Compute (prior calls on this LP within the window + this event's call-side amount for the LP) / LP commitment. Report both the percentage and the dollar amount.\n\nPass criteria: Every LP < 90% of its applicable cap.\n\nFail criteria: Any LP exceeds its applicable cap.\n\nneeds_review when any LP is between 90% and 100% of its cap.",
+      "description": "No LP is called beyond the tighter of the LPA per-LP cap and its side-letter cap within the cap window.",
+      "acceptance_criteria": "Every LP's window call usage below its applicable cap.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-GP-COMMITMENT",
+      "name": "GP Commitment Ratio",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to capital calls and the call side of net events; for distributions return not_applicable. Needs lpa_terms.gp_commitment_pct and gp_commitment_basis (investment_calls_only | all_calls); if not supplied, return needs_review.\n\nBasis components: investment_calls_only -> investment / investment-reserves components (and 'other' components flagged as investment-related); all_calls -> every call-side component. Unless the basis is all_calls, exclude the management-fee component from BOTH numerator and denominator (the GP pays no fee). Sum across every GP entity (GP + GP affiliates). gp_pct_actual = GP contribution to basis components / fund total of those components.\n\nPass criteria: gp_pct_actual >= gp_commitment_pct.\n\nFail criteria: gp_pct_actual is more than 0.1 percentage points below the required %.\n\nneeds_review when gp_pct_actual is short by 0.1 pp or less.",
+      "description": "The GP funds at least its required share of the basis components of the call.",
+      "acceptance_criteria": "GP share of basis components >= LPA GP commitment %.",
+      "severity": "major",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-FEE-TIER-INTEGRITY",
+      "name": "Fee Tier Assignment by Commitment",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to capital calls and the call side of net events; for distributions return not_applicable. Needs fund_terms.json fee_schedule[] (tier_name, min_commitment, mgmt_fee_rate) and any side-letter tier_override; if not supplied, return needs_review.\n\nFor each non-GP investor, the correct tier is the first fee_schedule row, walking from the highest min_commitment down, where the investor's commitment >= min_commitment. The GP is its own tier - skip it. Compare to the tier the investor sits under on the Allocation sheet. A side-letter tier_override makes the side-letter tier correct. A side-letter mgmt_fee_rate_override is NOT a tier override - the tier must still be commitment-correct.\n\nPass criteria: Every investor sits in its commitment-correct tier (or its side-letter override tier).\n\nFail criteria: Any investor sits in a tier its commitment does not support, with no side-letter tier override.",
+      "description": "Each LP sits in the fee tier its commitment qualifies for, unless a side letter assigns a tier.",
+      "acceptance_criteria": "All LPs in their commitment-correct (or side-letter-assigned) tier.",
+      "severity": "major",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-MGMT-FEE-MATH",
+      "name": "Management Fee Math vs LPA",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies when the current event has a management-fee component; otherwise return not_applicable. Needs fee_schedule[], lpa_terms.fee_period (default 4 = quarterly), the investment-period end, any post-period step-down rule, and side-letter mgmt_fee_rate_override / mgmt_fee_basis_override; if not supplied, return needs_review.\n\nPer LP: effective_rate = side-letter rate override if present, else the tier rate (stepped-down rate if post-investment-period); basis = side-letter basis override if present, else commitment (pre-period) or invested capital net (post-period); expected fee = effective_rate x basis / fee_period. Overrides apply only to the named LP. Sum to the expected total and compare to the workbook's management-fee component and per-LP amounts. A negative component (fee recall) must still tie per LP as negatives.\n\nPass criteria: Expected total and every per-LP fee match the workbook penny-exact.\n\nFail criteria: Any difference (no tolerance band - fee math should be exact), or a post-period basis (invested capital) that is required but not available.",
+      "description": "Per-LP management fees equal rate x basis / fee period per the LPA and side letters, penny-exact.",
+      "acceptance_criteria": "Workbook fees = LPA-derived fees, per LP and in total, penny-exact.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-INVESTMENT-PERIOD",
+      "name": "Investment Period Permissibility",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to capital calls and the call side of net events; for distributions return not_applicable. Needs lpa_terms.investment_period_end (or vintage_date + investment_period_years) and permitted_purposes; if not supplied, return needs_review.\n\nIf the notice date is on or before the investment-period end, PASS. Otherwise evaluate each call-side component: organizational expenses after the period -> FAIL; management fees after the period -> permitted; investment reserves after the period -> needs_review if permitted_purposes include follow-ons, FAIL otherwise; 'other' after the period -> needs_review.\n\nPass criteria: Call within the investment period, or only permitted components called after it.\n\nFail criteria: Organizational expenses, or investment calls without a follow-on purpose, called after the investment period.\n\nneeds_review when an extension may have been invoked but is not reflected in the period end date, or for post-period 'other' / follow-on components.",
+      "description": "Components called after the investment period are ones the LPA permits post-period.",
+      "acceptance_criteria": "No impermissible component called after the investment period.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-ORG-EXPENSE-CAP",
+      "name": "Organizational Expense Cap",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies when the current event has an organizational-expense component; otherwise return not_applicable. Needs the LPA org-expense cap (fixed amount or formula, e.g. 'the lesser of $1M or 0.15% of total commitments'); if not supplied, return needs_review.\n\nSum all prior organizational-expense calls across the fund's life (the cap is cumulative and does not reset annually) from the ITD event blocks, add this event's amount, and compare to the cap.\n\nPass criteria: Cumulative organizational expenses after this event <= cap.\n\nFail criteria: Cumulative total exceeds the cap - the excess is GP-borne and cannot be called from LPs. Report the overage.\n\nneeds_review when prior organizational-expense history is incomplete.",
+      "description": "Fund-life cumulative organizational expenses called from LPs stay within the LPA cap.",
+      "acceptance_criteria": "Cumulative org expenses <= LPA cap.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-DISTRIBUTION-CAP",
+      "name": "Distribution Cap",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to distributions and the distribution side of net events; for capital calls return not_applicable. If lpa_terms.distribution_cap_pct is not set, return not_applicable (most LPAs have no distribution cap).\n\nSum prior outbound distributions within the cap window (recallable distributions still count; call-side recalls do not), add this event's distribution side, and divide by total commitment.\n\nPass criteria: Window usage < 90% of the cap.\n\nFail criteria: Window usage exceeds the cap.\n\nneeds_review when usage is between 90% and 100% of the cap.",
+      "description": "Distributions within the cap window stay within the LPA distribution cap, where one exists.",
+      "acceptance_criteria": "Window distribution usage below the cap.",
+      "severity": "major",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-RECALLABLE-FLAGS",
+      "name": "Recallable Distribution Classification",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to distributions and the distribution side of net events; for capital calls return not_applicable. Needs lpa_terms.distribution_recallable_default, the recall window, the investment-period end, and side-letter recall_exemption flags; if not supplied, return needs_review.\n\nFor each distribution component, compare the workbook's classification (the ITD 'Recallable Distributions' vs 'Non-Recallable Distributions' marker) to the expected classification: return of capital during the investment period -> recallable when the LPA default is recallable; carry distributions after fund-level performance is locked -> non-recallable; other components -> the LPA default.\n\nPass criteria: Every component's classification matches the expected one, recall windows have not expired, and no recall-exempt LP's distribution is classified recallable.\n\nFail criteria: A component classified recallable that the LPA does not permit to be recallable, a recallable classification after the recall window expired, or a recall-exempt LP included in a recallable distribution without a waiver.\n\nneeds_review when a component expected to be recallable is classified non-recallable (the GP may be foregoing recall capacity unintentionally).",
+      "description": "Recallable vs non-recallable classification of each distribution component follows the LPA and side-letter recall exemptions.",
+      "acceptance_criteria": "Classifications match LPA expectations; no exempt LP in a recallable distribution.",
+      "severity": "major",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-WATERFALL-TIERS",
+      "name": "Waterfall Tier Math",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Applies to distributions and the distribution side of net events; for capital calls return not_applicable. Needs the waterfall block (structure american | european | hybrid, preferred_return_rate, catch_up_pct, gp_carry_pct) and per-LP accrued unpaid preferred return; if the waterfall is not supplied, return needs_review.\n\nCheck each declared tier against cumulative state: (1) return of capital <= sum of contributed capital outstanding -> else FAIL; (2) preferred return <= sum of accrued unpaid pref -> else needs_review; missing accruals -> needs_review (check incomplete); (3) catch-up <= the GP's catch-up gap -> else needs_review; (4) carry before LPs have received contributed capital + accrued pref in full -> FAIL for European, needs_review for hybrid, acceptable for American (deal-by-deal); (5) declared GP carry = gp_carry_pct x carry total -> else FAIL. Negative carry (clawback) reverses expected signs.\n\nPass criteria: All tiers within their limits and GP carry consistent with gp_carry_pct.\n\nFail criteria: Over-distribution of capital, premature carry under a European waterfall, or GP carry deviating from gp_carry_pct.",
+      "description": "Each waterfall tier is within its cumulative limit and carry is only taken when earned under the fund's waterfall structure.",
+      "acceptance_criteria": "Tiers within limits; carry earned per structure; GP carry = gp_carry_pct x carry.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    },
+    {
+      "id": "CE-REF-SIDE-LETTER-EXCLUSIONS",
+      "name": "Side-Letter Component Exclusions Honored",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "Needs side_letters[] from fund_terms.json (per-LP excluded_components, mgmt_fee_rate_override, carry_rate_override, pro_rata_only); if not supplied, return needs_review. If no side letter carries an override relevant to this event's direction (call-side terms for calls, distribution-side terms for distributions), return not_applicable.\n\nFor each LP with an active override: (1) excluded_components -> the LP carries $0 on each excluded component on the side(s) where it appears, and is excluded from that component's pro-rata basis (its share is redistributed across the other participants, not plugged into one LP); (2) rate overrides -> applied to that LP only, not to its whole tier; (3) pro_rata_only -> the component that LP participates in is allocated strictly pro-rata for the whole pool.\n\nPass criteria: Every active override is reflected in the workbook exactly as specified.\n\nFail criteria: An excluded LP is charged the component, an override is propagated to other LPs, or a pro-rata-only LP's component is allocated on another basis.",
+      "description": "Active side-letter overrides (component exclusions, rate overrides, pro-rata-only) are reflected in the allocation.",
+      "acceptance_criteria": "All active side-letter overrides applied exactly and only to the named LPs.",
+      "severity": "critical",
+      "group": "ce_compliance",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms",
+        "event_input"
+      ]
+    }
+  ]
+}

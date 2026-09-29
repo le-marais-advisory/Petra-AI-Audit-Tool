@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from src.api.deps import require_authenticated_principal
 from src.api.errors import register_exception_handlers
 from src.api.middleware import register_middleware
-from src.api.routers import auth, export, feedback, health, rules, validations
+from src.api.routers import auth, document_types, export, feedback, health, rules, validations
 from src.core.azure_auth import ensure_azure_auth_configured
 from src.core.config import get_settings
 from src.core.logging import configure_logging
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
     protected_router_dependencies = [Depends(require_authenticated_principal)] if settings.AUTH_ENABLED else []
     app.include_router(validations.router, prefix=settings.API_PREFIX, dependencies=protected_router_dependencies)
     app.include_router(rules.router, prefix=settings.API_PREFIX, dependencies=protected_router_dependencies)
+    app.include_router(document_types.router, prefix=settings.API_PREFIX, dependencies=protected_router_dependencies)
     app.include_router(feedback.router, prefix=settings.API_PREFIX, dependencies=protected_router_dependencies)
     app.include_router(export.router, prefix=settings.API_PREFIX, dependencies=protected_router_dependencies)
 
@@ -73,17 +74,29 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def _run_pipeline(pdf_path: str) -> dict:
+def _run_pipeline(file_path: str, document_type: str = "financial_statements", options: dict | None = None) -> dict:
     service = ValidationService()
-    return service.validate_document(pdf_path=pdf_path)
+    return service.validate_document(
+        file_path=file_path,
+        source_filename=Path(file_path).name,
+        document_type=document_type,
+        options=options,
+    )
 
 
 @cli.command("validate")
 def cli_validate(
-    pdf: str = typer.Option(..., help="Path to the PDF"),
+    file: str | None = typer.Option(None, help="Path to the document to validate"),
+    pdf: str | None = typer.Option(None, help="Deprecated alias of --file"),
+    document_type: str = typer.Option("financial_statements", help="Document type id (financial_statements, capital_event_workbook)"),
+    event_type: str | None = typer.Option(None, help="Capital-event workbooks: capital_call | distribution | net_event"),
     out: str | None = typer.Option(None, help="Where to write the extraction JSON. If omitted, prints JSON to stdout."),
 ) -> None:
-    data = _run_pipeline(pdf_path=pdf)
+    path = file or pdf
+    if path is None:
+        raise typer.BadParameter("--file is required")
+    options = {"event_type": event_type} if event_type else {}
+    data = _run_pipeline(file_path=path, document_type=document_type, options=options)
     if out is None:
         typer.echo(json.dumps(data, indent=2))
         return

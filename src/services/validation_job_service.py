@@ -41,16 +41,25 @@ class ValidationJobService:
 
     def start_job(
         self,
-        pdf_path: str,
-        source_filename: str | None,
-        rules_json_str: str | None,
+        file_path: str | None = None,
+        source_filename: str | None = None,
+        rules_json_str: str | None = None,
+        document_type: str = "financial_statements",
+        options: dict | None = None,
+        pdf_path: str | None = None,
     ) -> ValidationJob:
+        file_path = file_path or pdf_path
         job = ValidationJob(job_id=uuid.uuid4().hex)
         with self._jobs_lock:
             self._jobs[job.job_id] = job
+        if document_type == "financial_statements":
+            target, args = self._run_job, (job.job_id, file_path, source_filename, rules_json_str)
+        else:
+            target, args = self._run_document_job, (
+                job.job_id, file_path, source_filename, rules_json_str, document_type, options or {})
         thread = threading.Thread(
-            target=self._run_job,
-            args=(job.job_id, pdf_path, source_filename, rules_json_str),
+            target=target,
+            args=args,
             daemon=True,
         )
         thread.start()
@@ -264,6 +273,71 @@ class ValidationJobService:
         finally:
             try:
                 Path(pdf_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            self._job_slots.release()
+
+
+    def _run_document_job(
+        self,
+        job_id: str,
+        file_path: str,
+        source_filename: str | None,
+        rules_json_str: str | None,
+        document_type: str,
+        options: dict,
+    ) -> None:
+        """Run a non-PDF document type through its registered pipeline."""
+        job = self.get_job(job_id)
+        if job is None:
+            return
+        self._job_slots.acquire()
+        try:
+            if job.cancel_requested:
+                with job.lock:
+                    job.status = "cancelled"
+                    job.message = "Analysis stopped"
+                return
+            from src.document_types.registry import get_document_type
+
+            service = ValidationService()
+            spec = get_document_type(document_type)
+            selected_rules = service.load_rules_for(document_type, options, rules_json_str=rules_json_str)
+            with job.lock:
+                job.status = "running"
+                job.message = "Reading workbook"
+                job.progress_total = max(1, len(selected_rules))
+
+            def on_progress(message: str, current: int, total: int, partial_result: dict | None = None) -> None:
+                with job.lock:
+                    job.message = message
+                    job.progress_total = max(1, total)
+                    job.progress_current = min(current, job.progress_total)
+                    if partial_result is not None:
+                        job.result = partial_result
+
+            result = spec.pipeline_factory().run(
+                file_path,
+                rules=selected_rules,
+                options=options,
+                source_filename=source_filename,
+                on_progress=on_progress,
+                is_cancelled=lambda: bool(job.cancel_requested),
+            )
+            with job.lock:
+                job.status = "cancelled" if job.cancel_requested else "completed"
+                job.message = "Analysis stopped" if job.cancel_requested else "Analysis complete"
+                job.progress_current = job.progress_total
+                job.result = result
+        except Exception as exc:
+            logger.exception("Document job failed: type=%s file=%s", document_type, source_filename)
+            with job.lock:
+                job.status = "failed"
+                job.message = "Analysis failed"
+                job.error = str(exc)
+        finally:
+            try:
+                Path(file_path).unlink(missing_ok=True)
             except Exception:
                 pass
             self._job_slots.release()
