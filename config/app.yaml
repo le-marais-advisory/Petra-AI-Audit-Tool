@@ -43,3 +43,8 @@ pipeline:
   # overridable with the PIPELINE_CONCURRENT_REQUESTS env var. Jobs run one at a time,
   # so this is also the pipeline's total in-flight ceiling. Lower it to 8 if 429s appear.
   concurrent_requests: 12
+
+# Capital-event workbooks (and other .xlsx document types)
+workbook:
+  layout_concurrency: 6   # parallel layout-mapping calls, one per relevant sheet
+  hybrid_concurrency: 6   # parallel LLM calls for hybrid (LLM-judged) rules

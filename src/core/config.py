@@ -42,12 +42,18 @@ class PipelineConfig(BaseModel):
     concurrent_requests: int = 12
 
 
+class WorkbookConfig(BaseModel):
+    layout_concurrency: int = 6  # parallel layout-mapping calls (one per relevant sheet)
+    hybrid_concurrency: int = 6  # parallel hybrid-rule LLM calls
+
+
 class AppYaml(BaseModel):
     app: dict = {"project_name": "petra-vision"}
     pdf: PdfConfig = PdfConfig()
     vision: VisionConfig = VisionConfig()
     report: ReportConfig = ReportConfig()
     pipeline: PipelineConfig = PipelineConfig()
+    workbook: WorkbookConfig = WorkbookConfig()
 
 
 class Settings(BaseSettings):

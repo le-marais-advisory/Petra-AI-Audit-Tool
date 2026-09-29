@@ -40,8 +40,10 @@ RULE_RESULT_JSON_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "page": {"type": "integer"},
                     "evidence": {"type": "string"},
+                    "sheet": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "cell": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                 },
-                "required": ["page", "evidence"],
+                "required": ["page", "evidence", "sheet", "cell"],
                 "additionalProperties": False,
             },
         },
