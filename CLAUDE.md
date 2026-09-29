@@ -49,6 +49,20 @@ Unit test files:
 - `tests/test_double_underline.py` — double-underline vector-hint extraction and detection logic
 - `tests/smoke_test.py` — full pipeline structural check against `tests/sample.pdf`; skips silently if the file is absent
 
+Capital-event workbook tests (TDD; written ahead of the implementation in `src/pipeline/workbook/`):
+- `tests/fixtures/generate_capital_event_fixtures.py` — synthetic workbook generator (event type x layout variant x seeded defect); each fixture's manifest carries sheet roles, golden layouts, truth values and expected verdicts. `tests/conftest.py` exposes it as the session fixture `capital_event_fixtures`. Never commit real client workbooks
+- `tests/test_capital_event_fixtures.py` — generator self-checks (cached values, tie-outs, golden layouts)
+- `tests/test_document_types.py`, `tests/test_capital_event_rule_pack.py` — document-type registry, upload API, rule pack filtering
+- `tests/test_workbook_{loader,layout,extract,checks,facts,pipeline}.py` — loader/inventory/roles/skeleton, layout validator, typed extraction, deterministic checks, hybrid facts, offline pipeline
+- Verdicts that depend on pending FA calibration answers are skipped with the calibration item number
+
+### Evals (live LLM)
+
+```bash
+pytest tests/evals -m eval                                  # layout mapping, role assignment, hybrid rules
+CAPITAL_EVENT_SAMPLE_PATH=temp/capital-event-rules/sample-workbook.xlsx pytest tests/evals/test_real_sample_eval.py -m eval
+```
+
 ### Integration Tests
 
 Integration tests run fixed documents through the live validation pipeline (real LLM calls) and assert that each rule produces the expected verdict. They require a valid `.env` with API keys.

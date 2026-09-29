@@ -1,0 +1,99 @@
+# Hybrid-rule eval cases (live LLM). Each case names a generated fixture
+# (event_type / variant / defect from tests/fixtures/generate_capital_event_fixtures.py)
+# and the expected verdicts for the hybrid rules it exercises. Deterministic rules are
+# covered offline by tests/test_workbook_checks.py.
+#
+#   pytest tests/evals/test_hybrid_rules_eval.py -m eval
+#
+# Verdicts marked `pending: <item>` depend on an open FA calibration answer and are
+# skipped until the item is resolved.
+
+cases:
+  - id: call_clean
+    fixture: {event_type: capital_call}
+    expected:
+      CE-WB-SHEETS-PRESENT: pass
+      CE-WB-MERGE-TABS: pass
+      CE-WB-NO-PLACEHOLDERS: pass
+      CE-ALLOC-FEE-TIERS: {pending: 9}
+      CE-ALLOC-COMPONENT-PARTICIPATION: pass
+      CE-ALLOC-STALE-COMPONENTS: pass
+      CE-ALLOC-SIGNAGE: pass
+      CE-ITD-EVENT-BLOCK: pass
+      CE-TIE-SUMMARY: pass
+      CE-DATE-CONSISTENCY: pass
+
+  - id: call_clean_shifted
+    fixture: {event_type: capital_call, variant: shifted}
+    expected:
+      CE-WB-SHEETS-PRESENT: pass
+      CE-WB-MERGE-TABS: pass
+      CE-TIE-SUMMARY: pass
+      CE-DATE-CONSISTENCY: pass
+
+  - id: call_clean_two_vehicles
+    fixture: {event_type: capital_call, variant: two_vehicles}
+    expected:
+      CE-WB-SHEETS-PRESENT: pass
+      CE-WB-MERGE-TABS: pass
+      CE-ALLOC-COMPONENT-PARTICIPATION: pass
+
+  - id: distribution_clean
+    fixture: {event_type: distribution}
+    expected:
+      CE-ALLOC-SIGNAGE: pass
+      CE-ITD-EVENT-BLOCK: pass
+      CE-DIST-CARRY-SPLIT: pass
+      CE-TIE-SUMMARY: pass
+
+  - id: net_clean
+    fixture: {event_type: net_event}
+    expected:
+      CE-NET-EVENT-STRUCTURE: pass
+      CE-ALLOC-SIGNAGE: pass
+      CE-TIE-SUMMARY: pass
+
+  - id: placeholder_left
+    fixture: {event_type: capital_call, defect: placeholder_left}
+    expected:
+      CE-WB-NO-PLACEHOLDERS: fail
+
+  - id: itd_missing_x
+    fixture: {event_type: capital_call, defect: itd_missing_x}
+    expected:
+      CE-ITD-EVENT-BLOCK: fail
+
+  - id: stale_component
+    fixture: {event_type: capital_call, defect: stale_component}
+    expected:
+      CE-ALLOC-STALE-COMPONENTS: fail
+
+  - id: stale_fee_period
+    fixture: {event_type: capital_call, defect: stale_fee_period}
+    expected:
+      CE-DATE-CONSISTENCY: fail
+
+  - id: affiliate_charged_fee
+    fixture: {event_type: capital_call, defect: affiliate_charged_fee}
+    expected:
+      CE-ALLOC-COMPONENT-PARTICIPATION: fail
+
+  - id: summary_line_hardcoded
+    fixture: {event_type: capital_call, defect: summary_line_hardcoded}
+    expected:
+      CE-TIE-SUMMARY: fail
+
+  - id: carry_split_wrong
+    fixture: {event_type: distribution, defect: carry_split_wrong}
+    expected:
+      CE-DIST-CARRY-SPLIT: fail
+
+  - id: itd_overlay_rows
+    fixture: {event_type: capital_call, defect: probe_itd_overlay_rows}
+    expected:
+      CE-ITD-EVENT-BLOCK: {pending: 3}
+
+  - id: tbd_on_tracker
+    fixture: {event_type: capital_call, defect: probe_tbd_placeholder}
+    expected:
+      CE-WB-NO-PLACEHOLDERS: {pending: 12}

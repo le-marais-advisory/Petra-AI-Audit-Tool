@@ -10,3 +10,4 @@ frontend/dist
 .DS_Store
 **/.DS_Store
 temp/
+tests/fixtures/documents/capital_event/
