@@ -40,7 +40,8 @@ export interface RuleDefinition {
   id: string;
   name: string;
   analysis_type: AnalysisType;
-  query: string;
+  /** LLM prompt for the rule; absent on deterministic (code-evaluated) workbook rules. */
+  query?: string | null;
   description?: string | null;
   acceptance_criteria?: string | null;
   severity?: string | null;

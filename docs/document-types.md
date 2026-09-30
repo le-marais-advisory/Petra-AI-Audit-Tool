@@ -65,7 +65,7 @@ def my_rule(ctx: CheckContext, out: Outcome) -> str:
 - Raising `NotApplicable("reason")` returns `not_applicable`.
 - If a role listed in `needs` has no validated layout, the rule returns `needs_review` automatically.
 
-Then add the rule to `rules/capital_event/workbook_rules.json` with `"evaluator": "deterministic"`. Finally, give it a seeded defect in `tests/fixtures/generate_capital_event_fixtures.py`, so `tests/test_workbook_checks.py` proves it passes on clean fixtures and fails on the defect.
+Then add the rule to `rules/capital_event/workbook_rules.json` with `"evaluator": "deterministic"` and no `query`. The check function is the rule's logic; `description` and `acceptance_criteria` describe it to reviewers. Finally, give it a seeded defect in `tests/fixtures/generate_capital_event_fixtures.py`, so `tests/test_workbook_checks.py` proves it passes on clean fixtures and fails on the defect.
 
 ### Tests and evals
 

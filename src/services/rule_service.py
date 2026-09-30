@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from src.schemas.rule import RuleSchema
+from src.schemas.rule import RuleSchema, query_problem
 
 DEFAULT_RULE_FILES = [
     "rules/rules.json",
@@ -40,6 +40,13 @@ def _validate_rule_ids(rules_data: list[dict]) -> None:
         raise ValueError("Invalid rule definitions - " + "; ".join(problems))
 
 
+def _validate_rule_queries(rules_data: list[dict]) -> None:
+    """Deterministic rules run in code and carry no query; LLM and hybrid rules need one."""
+    bad = [f"{rule.get('id')!r} ({problem})" for rule in rules_data for problem in [query_problem(rule)] if problem]
+    if bad:
+        raise ValueError("Invalid rule definitions - query does not match the evaluator: " + ", ".join(bad))
+
+
 def _rule_matches(rule: dict, document_type: str, event_type: str | None) -> bool:
     document_types = rule.get("document_types") or ["financial_statements"]
     if document_type not in document_types:
@@ -68,6 +75,7 @@ class RuleService:
                 if p.exists():
                     rules_data.extend(json.loads(p.read_text(encoding="utf-8"))["rules"])
         _validate_rule_ids(rules_data)
+        _validate_rule_queries(rules_data)
         for rule in rules_data:
             rule.setdefault("analysis_type", "text")
             rule.setdefault("scope", "page")

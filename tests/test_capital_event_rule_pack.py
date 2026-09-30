@@ -55,6 +55,15 @@ def test_evaluator_split_matches_the_plan(pack):
     assert {i for i, r in by_id.items() if r["evaluator"] == "hybrid"} == set(HYBRID_RULE_IDS)
 
 
+def test_only_llm_evaluated_rules_carry_a_query(pack):
+    # Deterministic checks are implemented in code; a query they never read would mislead developers.
+    for rule in pack:
+        if rule["evaluator"] == "deterministic":
+            assert "query" not in rule, rule["id"]
+        else:
+            assert rule.get("query"), rule["id"]
+
+
 def test_rule_sections_resolve_to_roles(pack):
     # Sheet-scoped rules route by role, not by "applies ONLY to the Allocation sheet" preambles.
     by_id = {r["id"]: r for r in pack}
@@ -76,6 +85,33 @@ def test_default_load_is_unchanged():
         assert RuleSchema(**rule).document_types == ["financial_statements"]
 
 
+def test_rule_schema_query_follows_the_evaluator():
+    assert RuleSchema(id="CE-ALLOC-REFOOT", name="x", evaluator="deterministic").query is None
+    with pytest.raises(ValueError, match="query"):
+        RuleSchema(id="CE-ALLOC-REFOOT", name="x", evaluator="deterministic", query="ignored")
+    with pytest.raises(ValueError, match="query"):
+        RuleSchema(id="NUM-CROSSFOOT", name="x")
+    with pytest.raises(ValueError, match="query"):
+        RuleSchema(id="CE-TIE-SUMMARY", name="x", evaluator="hybrid", query="  ")
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"id": "CE-ALLOC-REFOOT", "name": "x", "query": "q", "evaluator": "deterministic",
+         "document_types": ["capital_event_workbook"]},
+        {"id": "CE-TIE-SUMMARY", "name": "x", "evaluator": "hybrid", "document_types": ["capital_event_workbook"]},
+        {"id": "NUM-CROSSFOOT", "name": "x"},
+    ],
+    ids=["deterministic-with-query", "hybrid-without-query", "llm-without-query"],
+)
+def test_load_rules_rejects_a_query_that_does_not_match_the_evaluator(rule):
+    import json
+
+    with pytest.raises(ValueError, match="query"):
+        RuleService().load_rules(rules_json_str=json.dumps({"rules": [rule]}), document_type="capital_event_workbook")
+
+
 def test_rule_schema_defaults_keep_existing_rules_valid():
     parsed = RuleSchema(id="NUM-CROSSFOOT", name="x", query="q")
     assert parsed.document_types == ["financial_statements"]
@@ -86,6 +122,6 @@ def test_rule_schema_defaults_keep_existing_rules_valid():
 
 
 def test_custom_payload_is_still_validated_and_filtered():
-    payload = '{"rules": [{"id": "CE-ALLOC-REFOOT", "name": "x", "query": "q", "document_types": ["capital_event_workbook"], "evaluator": "deterministic", "required_roles": ["allocation"]}, {"id": "NUM-CROSSFOOT", "name": "y", "query": "q"}]}'
+    payload = '{"rules": [{"id": "CE-ALLOC-REFOOT", "name": "x", "document_types": ["capital_event_workbook"], "evaluator": "deterministic", "required_roles": ["allocation"]}, {"id": "NUM-CROSSFOOT", "name": "y", "query": "q"}]}'
     ids = [r["id"] for r in RuleService().load_rules(rules_json_str=payload, document_type=DOC_TYPE)]
     assert ids == ["CE-ALLOC-REFOOT"]

@@ -49,7 +49,7 @@ Examples:
 | `id` | string | Yes | Unique identifier (e.g., `"FMT-HEADINGS"`) |
 | `name` | string | Yes | Human-readable name |
 | `analysis_type` | `"text"` \| `"vision"` | Yes | Type of analysis to perform |
-| `query` | string | Yes | What to look for in the document |
+| `query` | string | Yes, except deterministic rules | The LLM prompt: what to look for in the document. Deterministic rules (`evaluator: "deterministic"`) are implemented in code and must not define it; the loader rejects a query on them and a missing query on every other rule |
 | `description` | string | Yes | Detailed description of the check |
 | `acceptance_criteria` | string | Yes | What constitutes a pass |
 | `severity` | string | Yes | `"critical"`, `"major"`, or `"minor"` |
