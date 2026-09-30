@@ -83,7 +83,17 @@ def to_date(value: Any, allow_serial: bool = False) -> dt.date | None:
                 return dt.datetime.strptime(text, fmt).date()
             except ValueError:
                 continue
+        embedded = _EMBEDDED_DATE_RE.search(text)  # e.g. "Capital Call - due June 10, 2026"
+        if embedded:
+            try:
+                return dt.datetime.strptime(re.sub(r"\s+", " ", embedded.group(0)), "%B %d, %Y").date()
+            except ValueError:
+                return None
     return None
+
+
+_EMBEDDED_DATE_RE = re.compile(
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}\b")
 
 
 def sum_range_rows(formula: str | None) -> tuple[int, int] | None:

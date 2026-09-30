@@ -80,7 +80,7 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
             "messages": messages,
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {"name": name, "schema": json_schema, "strict": True},
+                "json_schema": {"name": name, "schema": _openai_strict(json_schema), "strict": True},
             },
         }
         if self._max_tokens is not None:
@@ -92,3 +92,19 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         if getattr(message, "refusal", None):
             raise ValueError(f"Model refused to answer: {message.refusal}")
         return json.loads(message.content or "{}")
+
+
+def _openai_strict(schema: Any) -> Any:
+    """OpenAI strict mode needs every property required: make optional ones nullable instead."""
+    if isinstance(schema, list):
+        return [_openai_strict(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: _openai_strict(v) for k, v in schema.items()}
+    if out.get("type") == "object" and "properties" in out:
+        required = set(out.get("required", []))
+        for key, prop in out["properties"].items():
+            if key not in required:
+                out["properties"][key] = {"anyOf": [prop, {"type": "null"}]}
+        out["required"] = list(out["properties"])
+    return out

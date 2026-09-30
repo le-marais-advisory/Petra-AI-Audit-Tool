@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from src.pipeline.workbook.cells import col_idx, is_text, norm_text, sum_range_rows
+from src.pipeline.workbook.cells import col_idx, is_text, norm_text, sum_range_rows, to_date, to_money
 from src.pipeline.workbook.layout import (
     AllocationLayout,
     HolidayCalendarLayout,
@@ -130,11 +130,32 @@ class _Checker:
             rows = sum_range_rows(cell.formula if cell else None)
             if rows is None:
                 continue
-            if rows != (span[0], span[1]):
+            if rows != (span[0], span[1]) and not self._padding_only(rows, span, columns, label_column):
                 self.add("investor_range_mismatch",
                          f"{what}: the subtotal at {column}{subtotal_row} sums rows {rows[0]}-{rows[1]}, "
                          f"but investor_rows is {span[0]}-{span[1]}", f"{column}{subtotal_row}")
             return
+
+    def _padding_only(self, rows: tuple[int, int], span: list[int], columns: list[str], label_column: str) -> bool:
+        """A subtotal may also sum blank template rows around the investors (no name, all zero)."""
+        if rows[0] > span[0] or rows[1] < span[1]:
+            return False
+        extra = [r for r in range(rows[0], rows[1] + 1) if r < span[0] or r > span[1]]
+        for row in extra:
+            if is_text(self.text(f"{label_column}{row}")) and self.text(f"{label_column}{row}").strip() not in ("0",):
+                return False
+            if any(to_money(self.sheet.value(f"{c}{row}")) for c in columns):
+                return False
+        return True
+
+    def date_cell(self, cell: str | None, what: str) -> None:
+        if cell is None:
+            return
+        value = self.sheet.value(cell)
+        if value in (None, ""):
+            self.add("cell_empty", f"{what}: {cell} is empty", cell)
+        elif to_date(value, allow_serial=True) is None:
+            self.add("not_a_date", f"{what}: {cell} holds {value!r}, which is not a date", cell)
 
     def vehicle_rows(self, vehicles: list[VehicleRows], label_column: str, sum_columns: list[str]) -> None:
         spans = []
@@ -174,8 +195,10 @@ def _validate_allocation(c: _Checker, layout: AllocationLayout) -> None:
     for name, column in layout.roll_forward.model_dump().items():
         if column is not None:
             c.header_equals(column, header, None, f"roll_forward.{name}")
-    for name in ("label_cell", "notice_date_cell", "due_date_cell", "carried_interest_rate_cell"):
+    for name in ("label_cell", "carried_interest_rate_cell"):
         c.non_empty(getattr(layout.event, name), f"event.{name}")
+    for name in ("notice_date_cell", "due_date_cell"):
+        c.date_cell(getattr(layout.event, name), f"event.{name}")
     if not layout.vehicles:
         c.add("investor_range_mismatch", "no vehicle blocks")
     for vehicle in layout.vehicles:
@@ -228,8 +251,10 @@ def _validate_itd(c: _Checker, layout: ItdLayout) -> None:
 
 
 def _validate_summary(c: _Checker, layout: SummaryLayout) -> None:
-    for name in ("title_cell", "notice_date_cell", "due_date_cell", "fund_commitment_cell", "event_total_cell"):
+    for name in ("title_cell", "fund_commitment_cell", "event_total_cell"):
         c.non_empty(getattr(layout, name), name)
+    for name in ("notice_date_cell", "due_date_cell"):
+        c.date_cell(getattr(layout, name), name)
     for cell in layout.check_cells:
         c.non_empty(cell, "check cell")
     for line in layout.component_lines:

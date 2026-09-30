@@ -154,6 +154,21 @@ def _fee_tiers(model, data, options):
     }
 
 
+def _is_affiliate(inv, fee_flags) -> bool:
+    return bool(inv.affiliate) or str(fee_flags.get(inv.name, "")).strip().upper() == "Y"
+
+
+def _default_zero(comp, inv, fee_flags) -> bool:
+    """Whether the rule's default participation explains a $0 (GP/affiliates pay no fee, etc.)."""
+    if inv.is_gp and comp.component_type in ("mgmt_fee", "org_expense", "placement_fee"):
+        return True
+    if comp.component_type == "mgmt_fee" and _is_affiliate(inv, fee_flags):
+        return True
+    if comp.side == "distribution" and not (inv.distribution_basis or ZERO):
+        return True  # never funded: nothing to return or share
+    return False
+
+
 @_facts("CE-ALLOC-COMPONENT-PARTICIPATION")
 def _participation(model, data, options):
     alloc = data.allocation
@@ -163,6 +178,7 @@ def _participation(model, data, options):
     components = []
     for comp in alloc.active_components:
         amounts = [(i, i.amounts.get(comp.column, ZERO)) for i in alloc.investors]
+        zeros = [(i, a) for i, a in amounts if not a and i.commitment] if any(a for _, a in amounts) else []
         components.append({
             "column": comp.column,
             "header": comp.header,
@@ -171,8 +187,8 @@ def _participation(model, data, options):
             "gp_amounts": {i.name: _num(a) for i, a in amounts if i.is_gp},
             "affiliate_amounts": {i.name: _num(a) for i, a in amounts
                                   if i.affiliate or str(fee_flags.get(i.name, "")).upper() == "Y"},
-            "lps_at_zero_while_peers_participate": [i.name for i, a in amounts if not i.is_gp and not a and i.commitment]
-            if any(a for _, a in amounts) else [],
+            "zero_explained_by_default_rules": [i.name for i, a in zeros if _default_zero(comp, i, fee_flags)],
+            "zero_without_default_explanation": [i.name for i, a in zeros if not _default_zero(comp, i, fee_flags)],
         })
     return {
         "components": components,
@@ -246,20 +262,29 @@ def _itd_block(model, data, options):
         return {"current_block": None, "event_labels": labels}
     from openpyxl.utils.cell import column_index_from_string as ci
 
+    pairs = {}
+    if data.allocation is not None:
+        from src.pipeline.workbook.checks.ties import _pair_components
+
+        pairs = dict(_pair_components(block, data.allocation)[0])
+    alloc_by_name = {i.name: i for i in data.allocation.investors} if data.allocation else {}
+    itd_by_name = {i.name: i for i in itd.investors}
     columns = []
     for comp in block.components:
-        populated = sum(1 for i in itd.investors if i.values.get(comp.column))
+        alloc_col = pairs.get(comp.column)
+        with_amount = [n for n, inv in alloc_by_name.items() if alloc_col and inv.amounts.get(alloc_col)]
+        missing = [n for n in with_amount if not (itd_by_name.get(n) and itd_by_name[n].values.get(comp.column))]
         columns.append({
             "column": comp.column,
             "header": itd.sheet.value(f"{comp.column}{itd.layout.subheader_row}"),
             "component_type": comp.component_type,
             "classifications": itd.marks.get(comp.column, []),
             "overlays": itd.overlay_marks.get(comp.column, []),
-            "populated_investors": populated,
+            "allocation_column": alloc_col,
+            "investors_with_allocation_amount": len(with_amount),
+            "investors_populated_in_itd": sum(1 for i in itd.investors if i.values.get(comp.column)),
+            "investors_missing_from_itd_block": missing,
         })
-    alloc_participants = sum(1 for i in data.allocation.investors
-                             if any(i.amounts.get(c.column) for c in data.allocation.active_components)) \
-        if data.allocation else None
     prior_last = max((ci(b.total_column or b.last_column) for b in itd.prior_blocks), default=0)
     return {
         "current_block": {"label": block.label, "first_column": block.first_column, "columns": columns},
@@ -267,7 +292,9 @@ def _itd_block(model, data, options):
         "appended_after_prior_blocks": ci(block.first_column) > prior_last,
         "event_labels": labels,
         "overlay_rows": [o.name for o in itd.layout.overlay_rows],
-        "participating_investors_on_allocation": alloc_participants,
+        "note": "Participation differs by component (e.g. affiliates pay no management fee, never-funded investors "
+                "receive no return of capital). A column is fully populated when investors_missing_from_itd_block "
+                "is empty.",
     }
 
 
@@ -348,22 +375,28 @@ def _date_consistency(model, data, options):
             if cols.due_date:
                 refs.append({"sheet": merge.sheet.name, "cell": f"{cols.due_date}{row.row}", "kind": "due_date",
                              "value": str(to_date(row.due_date, allow_serial=True))})
-    fee_periods: list[str] = []
+    alloc_periods: list[str] = []
     if alloc is not None:
-        fee_periods += [quarter_key(c.header) for c in alloc.active_components if c.component_type == "mgmt_fee"]
+        alloc_periods = [quarter_key(c.header) for c in alloc.active_components if c.component_type == "mgmt_fee"]
+    tab_periods: list[str] = []
     fee = data.mgmt_fee
     if fee is not None:
         for index, label in enumerate(fee.period_labels):
             refs.append({"sheet": fee.sheet.name, "cell": f"{fee.layout.fee_columns[index].column}{fee.layout.header_row}",
                          "kind": "fee_period", "value": label})
-            fee_periods.append(quarter_key(label))
+            tab_periods.append(quarter_key(label))
+    alloc_set = {p for p in alloc_periods if p}
+    tab_set = {p for p in tab_periods if p}
+    fee_periods = alloc_set | tab_set
     numbers = sorted({n for r in refs if r["kind"] == "event_label" for n in [event_number(r["value"])] if n is not None})
     return {
         "references": refs,
         "event_numbers": numbers,
         "notice_dates": sorted({r["value"] for r in refs if r["kind"] == "notice_date"}),
         "due_dates": sorted({r["value"] for r in refs if r["kind"] in ("due_date", "header_date")}),
-        "fee_periods": sorted({p for p in fee_periods if p}),
+        "fee_periods": sorted(fee_periods),
+        "fee_periods_by_source": {"allocation_fee_components": sorted(alloc_set), "fee_tab_columns": sorted(tab_set)},
+        "fee_period_mismatch": bool(alloc_set and tab_set and alloc_set != tab_set),
     }
 
 

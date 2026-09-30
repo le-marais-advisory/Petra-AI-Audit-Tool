@@ -13,8 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
 
 ComponentType = Literal[
     "investment",
-    "org_expense",
-    "partnership_expense",
+    "org_expense",  # organizational costs and partnership / fund expenses (incl. combined columns)
     "mgmt_fee",
     "placement_fee",
     "late_interest",
@@ -151,9 +150,9 @@ class EventBlock(_Base):
     event_type: EventType
     number: Optional[int] = None
     date: Optional[str] = Field(default=None, description="ISO date from the header, if any")
-    first_column: str
-    last_column: str
-    total_column: Optional[str] = None
+    first_column: str = Field(..., description="Column of the block's label (its first component column)")
+    last_column: str = Field(..., description="Last component column of the block, i.e. the column before its Total column")
+    total_column: Optional[str] = Field(default=None, description="The block's 'Total' column")
     is_current: bool = False
     components: list[BlockComponent] = Field(default_factory=list)
 
@@ -208,9 +207,9 @@ class SummaryLayout(_Base):
     due_date_cell: Optional[str] = None
     fund_commitment_cell: Optional[str] = None
     component_lines: list[SummaryLine] = Field(default_factory=list)
-    section_totals: list[SectionTotal] = Field(default_factory=list)
-    event_total_cell: str
-    check_cells: list[str] = Field(default_factory=list)
+    section_totals: list[SectionTotal] = Field(default_factory=list, description="Per-side subtotal cells, e.g. 'Total Current Capital Call'")
+    event_total_cell: str = Field(..., description="Bottom-line amount of the event (e.g. 'Total Net Cash Due'), after any adjustments; not a per-side subtotal")
+    check_cells: list[str] = Field(default_factory=list, description="Value cells of rows or cells labelled check / difference / variance that should be zero")
 
 
 class MergeColumns(_Base):
@@ -218,8 +217,10 @@ class MergeColumns(_Base):
     short_name: Optional[str] = None
     letter_date: Optional[str] = None
     due_date: Optional[str] = None
-    investor_id: Optional[str] = None
-    fund_id: Optional[str] = None
+    investor_id: Optional[str] = Field(default=None, description=(
+        "Investor ID in the document / investor system - the ID that appears on the investor data tab "
+        "(often headed 'DX Investor ID'); not a row sequence number"))
+    fund_id: Optional[str] = Field(default=None, description="Fund ID in the document system (often 'DX Fund ID')")
     file_name: Optional[str] = None
     commitment: Optional[str] = None
     commitment_pct: Optional[str] = None
@@ -232,8 +233,8 @@ class MergeLayout(_Base):
     sheet: str
     vehicle: Optional[str] = None
     header_row: int
-    first_data_row: int
-    last_data_row: int
+    first_data_row: int = Field(..., description="First investor row")
+    last_data_row: int = Field(..., description="Last row holding an investor name (exclude blank template rows below)")
     columns: MergeColumns
     component_columns: list[BlockComponent] = Field(default_factory=list)
     total_row: Optional[int] = None
@@ -324,27 +325,81 @@ def parse_layout(raw: dict[str, Any]) -> BaseModel:
 
 
 def layout_json_schema(role: str) -> dict[str, Any]:
-    """Strict-mode JSON schema for structured output (no $refs, no free-form maps)."""
+    """Structured-output JSON schema with every property required and no unions.
+
+    Claude's structured outputs cap a schema at 16 union-typed and 24 optional
+    parameters, and the Allocation layout has ~35 fields that may be absent. So every
+    field is required and an absent value is written as a sentinel: "" for text and 0
+    for integers (row numbers start at 1). ``from_llm_output`` maps sentinels back to
+    None before parsing.
+    """
     model = LAYOUT_MODELS.get(role)
     if model is None:
         raise ValueError(f"Unknown layout role: {role!r}")
     return to_strict_schema(model.model_json_schema())
 
 
+_SENTINEL_NOTE = {"string": 'Use "" if not present.', "integer": "Use 0 if not present."}
+
+
+def _drop_null(node: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    options = node.get("anyOf")
+    if isinstance(options, list):
+        non_null = [o for o in options if o.get("type") != "null"]
+        if len(non_null) == 1 and len(non_null) < len(options):
+            merged = {k: v for k, v in node.items() if k != "anyOf"}
+            merged.update(non_null[0])
+            return merged, True
+    return node, False
+
+
 def to_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
     defs = schema.get("$defs", {})
 
-    def resolve(node: Any) -> Any:
+    def resolve(node: Any, optional: bool = False) -> Any:
         if isinstance(node, dict):
             if "$ref" in node:
-                return resolve(copy.deepcopy(defs[node["$ref"].split("/")[-1]]))
-            out = {k: resolve(v) for k, v in node.items() if k not in ("$defs", "title", "default")}
+                return resolve(copy.deepcopy(defs[node["$ref"].split("/")[-1]]), optional)
+            node, nullable = _drop_null(node)
+            out: dict[str, Any] = {}
+            for key, value in node.items():
+                if key in ("$defs", "title", "default"):
+                    continue
+                if key == "properties":
+                    required = set(node.get("required", []))
+                    out[key] = {name: resolve(prop, optional=name not in required) for name, prop in value.items()}
+                else:
+                    out[key] = resolve(value)
             if out.get("type") == "object" and "properties" in out:
                 out["required"] = list(out["properties"])
                 out["additionalProperties"] = False
+            note = _SENTINEL_NOTE.get(out.get("type"))
+            if (optional or nullable) and note and "enum" not in out:
+                out["description"] = f"{out.get('description', '')} {note}".strip()
             return out
         if isinstance(node, list):
             return [resolve(item) for item in node]
         return node
 
     return resolve(schema)
+
+
+def from_llm_output(raw: Any) -> Any:
+    """Map the "" / 0 sentinels of LLM output back to None."""
+    if isinstance(raw, dict):
+        return {k: from_llm_output(v) for k, v in raw.items()}
+    if isinstance(raw, list):
+        return [from_llm_output(v) for v in raw]
+    if raw == "" or (isinstance(raw, int) and not isinstance(raw, bool) and raw == 0):
+        return None
+    return raw
+
+
+def count_unions(schema: Any) -> int:
+    """Number of union-typed parameters (anyOf / type arrays) in a schema."""
+    if isinstance(schema, dict):
+        own = 1 if ("anyOf" in schema or isinstance(schema.get("type"), list)) else 0
+        return own + sum(count_unions(v) for v in schema.values())
+    if isinstance(schema, list):
+        return sum(count_unions(v) for v in schema)
+    return 0

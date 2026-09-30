@@ -52,6 +52,33 @@ def test_each_role_exposes_a_json_schema_for_structured_output(layout_mod, role)
     assert "role" in schema["properties"]
 
 
+def _optional_params(schema):
+    if isinstance(schema, dict):
+        own = 0
+        if schema.get("type") == "object" and "properties" in schema:
+            own = len(set(schema["properties"]) - set(schema.get("required", [])))
+        return own + sum(_optional_params(v) for v in schema.values())
+    if isinstance(schema, list):
+        return sum(_optional_params(v) for v in schema)
+    return 0
+
+
+@pytest.mark.parametrize("role", LAYOUT_ROLES)
+def test_schemas_fit_claude_structured_output_limits(layout_mod, role):
+    # Claude structured outputs reject > 16 union-typed or > 24 optional parameters.
+    schema = layout_mod.layout_json_schema(role)
+    assert layout_mod.count_unions(schema) == 0
+    assert _optional_params(schema) == 0
+
+
+def test_sentinels_map_back_to_none(layout_mod):
+    raw = {"header_row": 6, "grand_total_row": 0, "event": {"label_cell": "", "label": "Capital Call #4"},
+           "components": [{"active": False, "column": "H"}]}
+    out = layout_mod.from_llm_output(raw)
+    assert out["grand_total_row"] is None and out["event"]["label_cell"] is None
+    assert out["components"][0]["active"] is False and out["header_row"] == 6
+
+
 def test_unknown_role_is_rejected(layout_mod):
     with pytest.raises(ValueError):
         layout_mod.parse_layout({"role": "balance_sheet", "sheet": "BS"})
@@ -158,3 +185,47 @@ def test_issues_are_actionable(layout_mod, validator, loader, capital_event_fixt
     assert issue.sheet == "Allocation"
     assert issue.cell  # points at the cell that disagreed
     assert issue.message
+
+
+def test_subtotal_may_cover_blank_padding_rows(layout_mod, validator, loader, tmp_path):
+    # Real Merge tabs often total over blank template rows below the last investor.
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Merge"
+    for col, header in zip("ABCDE", ["Investor", "DX Investor ID", "DX Fund ID", "File Name", "Cash Due"]):
+        ws[f"{col}1"] = header
+    for row, (name, amount) in enumerate([("Alpha LP", 100.0), ("Beta LLC", 50.0)], start=2):
+        ws[f"A{row}"], ws[f"B{row}"], ws[f"C{row}"], ws[f"D{row}"], ws[f"E{row}"] = name, 1000 + row, 9, f"9_{row}", amount
+    ws["A4"] = 0  # a template row whose name formula evaluates to 0
+    ws["A7"], ws["E7"] = "TOTAL:", "=SUM(E2:E6)"
+    path = tmp_path / "padding.xlsx"
+    wb.save(path)
+    layout = {"role": "merge", "sheet": "Merge", "header_row": 1, "first_data_row": 2, "last_data_row": 3,
+              "columns": {"investor": "A", "investor_id": "B", "fund_id": "C", "file_name": "D", "event_total": "E"},
+              "total_row": 7}
+    model = loader.load_workbook_model(path)
+    assert validator.validate_layout(model, layout_mod.parse_layout(layout)) == []
+    ws["A5"], ws["E5"] = "Gamma Trust", 25.0  # a real investor outside investor_rows is still caught
+    wb.save(path)
+    codes = {i.code for i in validator.validate_layout(loader.load_workbook_model(path), layout_mod.parse_layout(layout))}
+    assert "investor_range_mismatch" in codes
+
+
+def test_date_cells_must_hold_dates(layout_mod, validator, loader, capital_event_fixtures):
+    manifest = capital_event_fixtures.get()
+    model = loader.load_workbook_model(manifest.path)
+    raw = _layout(manifest, "summary")
+    raw["due_date_cell"] = raw["fund_commitment_cell"]
+    codes = {i.code for i in validator.validate_layout(model, layout_mod.parse_layout(raw))}
+    assert "not_a_date" in codes
+
+
+def test_dates_inside_text_are_parsed():
+    import datetime as dt
+
+    from src.pipeline.workbook.cells import to_date
+
+    assert to_date("Capital Call - due June 10, 2026") == dt.date(2026, 6, 10)
+    assert to_date("Capital Call #4") is None

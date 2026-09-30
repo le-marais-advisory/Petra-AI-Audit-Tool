@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from src.pipeline.workbook.layout import layout_json_schema, parse_layout
+from src.pipeline.workbook.layout import from_llm_output, layout_json_schema, parse_layout
 from src.pipeline.workbook.layout_validator import LayoutIssue, validate_layout
 from src.pipeline.workbook.loader import WorkbookModel
 from src.pipeline.workbook.skeleton import build_skeleton
@@ -58,6 +58,15 @@ def _retry_prompt(first_prompt: str, previous: dict[str, Any] | None, problems: 
     )
 
 
+def _drop_none(raw: Any) -> Any:
+    """Remove None values so model defaults (empty lists, empty sub-objects) apply."""
+    if isinstance(raw, dict):
+        return {k: _drop_none(v) for k, v in raw.items() if v is not None}
+    if isinstance(raw, list):
+        return [_drop_none(v) for v in raw]
+    return raw
+
+
 def map_sheet_layout(
     model: WorkbookModel,
     sheet_name: str,
@@ -86,7 +95,7 @@ def map_sheet_layout(
     issues: list[LayoutIssue] = []
     for attempt in range(1, max_attempts + 1):
         raw = provider.complete_structured(system, prompt, schema, name=f"{role}_layout")
-        raw = {**raw, "role": role, "sheet": sheet_name}
+        raw = {**_drop_none(from_llm_output(raw)), "role": role, "sheet": sheet_name}
         try:
             layout = parse_layout(raw)
         except ValidationError as exc:

@@ -128,8 +128,8 @@ def date_display(ctx: CheckContext, out: Outcome) -> str:
         raise NotApplicable("No event dates were located.")
     formats: dict[tuple[str, str, str], set[str]] = {}
     for sheet, coord, kind, cell in cells:
-        if cell is None:
-            continue
+        if cell is None or isinstance(cell.value, str):
+            continue  # a date written inside text (e.g. a title) renders as that text
         fmt = _strip_format(cell.number_format)
         if not _DATE_TOKENS.search(fmt) or fmt in ("general", "0", "0.00"):
             out.fail(f"{sheet.name}!{coord} {kind} date renders as a raw number ({cell.value!r}, format "
