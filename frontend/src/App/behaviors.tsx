@@ -5,11 +5,10 @@ import { fetchDocumentTypes } from "@/services/documentTypes";
 import { fetchRules } from "@/services/rules";
 import { cancelValidationJob, createValidationJob, getValidationJob } from "@/services/validationJobs";
 import {
-  DEFAULT_DOCUMENT_TYPE,
+  FALLBACK_DOCUMENT_TYPES,
   fileMatchesType,
   isWorkbookType,
-  missingRequiredOptions,
-  optionLabel,
+  uploadBlocker,
 } from "@/utils/documentTypes";
 import type {
   DocumentOptions,
@@ -24,6 +23,12 @@ import type {
 
 
 const DEFAULT_STATUS: WorkspaceStatus = {
+  label: "Select a document type to begin",
+  tone: "neutral",
+  isLoading: false,
+};
+
+const READY_STATUS: WorkspaceStatus = {
   label: "No document uploaded",
   tone: "neutral",
   isLoading: false,
@@ -70,7 +75,8 @@ export function useAppBehavior() {
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [runOutcome, setRunOutcome] = useState<RunOutcome>(null);
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeDefinition[]>([]);
-  const [documentTypeId, setDocumentTypeId] = useState<string>(DEFAULT_DOCUMENT_TYPE);
+  // Nothing is preselected: the user must choose the document type before rules load or uploads open.
+  const [documentTypeId, setDocumentTypeId] = useState<string>("");
   const [documentOptions, setDocumentOptions] = useState<DocumentOptions>({});
 
   const documentType = useMemo(
@@ -78,6 +84,7 @@ export function useAppBehavior() {
     [documentTypes, documentTypeId],
   );
   const eventType = documentOptions.event_type || undefined;
+  const uploadHint = uploadBlocker(documentType, documentOptions);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -93,6 +100,12 @@ export function useAppBehavior() {
   }, []);
 
   const loadRules = useCallback(async () => {
+    if (!documentTypeId) {
+      setAvailableRules([]);
+      setSelectedRuleIds([]);
+      setRulesError(null);
+      return;
+    }
     try {
       const rules = await fetchRules(documentTypeId, eventType);
       setAvailableRules(rules);
@@ -111,10 +124,11 @@ export function useAppBehavior() {
 
   const loadDocumentTypes = useCallback(async () => {
     try {
-      setDocumentTypes(await fetchDocumentTypes());
+      const types = await fetchDocumentTypes();
+      setDocumentTypes(types.length ? types : FALLBACK_DOCUMENT_TYPES);
     } catch {
-      // Older backends have no /document-types endpoint: fall back to PDFs only.
-      setDocumentTypes([]);
+      // Older backends have no /document-types endpoint: offer PDFs only (still not preselected).
+      setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
     }
   }, []);
 
@@ -122,6 +136,7 @@ export function useAppBehavior() {
     setDocumentTypeId(nextId);
     setDocumentOptions({});
     setSelectedRuleIds([]);
+    setStatus(nextId ? READY_STATUS : DEFAULT_STATUS);
   }, []);
 
   const handleDocumentOptionChange = useCallback((name: string, value: string) => {
@@ -205,19 +220,15 @@ export function useAppBehavior() {
 
   const beginUpload = useCallback(
     async (file: File) => {
-      if (documentType && !fileMatchesType(file, documentType)) {
+      const blocker = uploadBlocker(documentType, documentOptions);
+      if (blocker || !documentType) {
+        setStatus({ label: blocker || "Select a document type first.", tone: "error", isLoading: false });
+        return;
+      }
+      if (!fileMatchesType(file, documentType)) {
         const accepted = documentType.accepted_formats.map((format) => `.${format}`).join(", ");
         setStatus({
           label: `${file.name} is not a ${documentType.label} file (expected ${accepted}).`,
-          tone: "error",
-          isLoading: false,
-        });
-        return;
-      }
-      const missing = missingRequiredOptions(documentType, documentOptions);
-      if (missing.length) {
-        setStatus({
-          label: `Select ${missing.map((name) => optionLabel(documentType, name).toLowerCase()).join(", ")} before uploading.`,
           tone: "error",
           isLoading: false,
         });
@@ -353,6 +364,7 @@ export function useAppBehavior() {
     documentTypeId,
     documentTypes,
     isBusy,
+    uploadHint,
     pages,
     result,
     rulesError,

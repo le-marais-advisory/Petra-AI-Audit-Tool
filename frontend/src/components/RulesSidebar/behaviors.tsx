@@ -11,6 +11,8 @@ export interface RulesSidebarProps {
   onSelectAll: () => void;
   onRefresh: () => Promise<void>;
   errorMessage?: string | null;
+  /** Shown instead of "No rules available." when there are no rules to list. */
+  emptyMessage?: string;
 }
 
 export interface RuleGroup {

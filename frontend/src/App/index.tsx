@@ -35,6 +35,7 @@ export function App() {
     documentTypes,
     handleDocumentOptionChange,
     handleDocumentTypeChange,
+    uploadHint,
     handleRuleToggle,
     handleBypassToggle,
     handleGroupToggle,
@@ -86,6 +87,7 @@ export function App() {
             onSelectAll={handleSelectAllRules}
             onRefresh={loadRules}
             errorMessage={rulesError}
+            emptyMessage={documentTypeId ? undefined : "Select a document type to load its validation rules."}
           />
         ) : null
       }
@@ -105,6 +107,7 @@ export function App() {
             documentTypes={documentTypes}
             isBusy={isBusy}
             status={status}
+            uploadHint={uploadHint}
             onDocumentOptionChange={handleDocumentOptionChange}
             onDocumentTypeChange={handleDocumentTypeChange}
             onFileSelected={beginUpload}

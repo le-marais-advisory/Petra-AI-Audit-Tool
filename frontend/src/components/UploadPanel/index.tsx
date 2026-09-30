@@ -13,6 +13,7 @@ export function UploadPanel(props: UploadPanelProps) {
     handleDrop,
     handleInputChange,
     inputRef,
+    isDisabled,
     isDragActive,
   } = useUploadPanelBehavior(props);
   const { documentType, documentTypes } = props;
@@ -29,8 +30,7 @@ export function UploadPanel(props: UploadPanelProps) {
         <div className="text-sm text-slate-500">Use the tabs below to compare source, extraction, and analysis.</div>
       </div>
 
-      {documentTypes.length ? (
-        <div className="mt-5 flex flex-wrap items-end gap-4">
+      <div className="mt-5 flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
             Document type
             <select
@@ -39,6 +39,9 @@ export function UploadPanel(props: UploadPanelProps) {
               value={props.documentTypeId}
               onChange={(event) => props.onDocumentTypeChange(event.target.value)}
             >
+              <option value="" disabled>
+                {documentTypes.length ? "Select a document type…" : "Loading document types…"}
+              </option>
               {documentTypes.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.label}
@@ -70,21 +73,32 @@ export function UploadPanel(props: UploadPanelProps) {
           {documentType?.description ? (
             <p className="max-w-md text-xs text-slate-500">{documentType.description}</p>
           ) : null}
-        </div>
-      ) : null}
+      </div>
 
       <label
         className={cn(
           "mt-6 flex cursor-pointer flex-col items-center justify-center rounded-[1.75rem] border-2 border-dashed px-6 py-12 text-center transition",
-          props.isBusy ? "pointer-events-none opacity-70" : "",
-          isDragActive ? "border-teal-500 bg-teal-50" : "border-slate-300 bg-slate-50 hover:border-teal-500 hover:bg-teal-50",
+          isDisabled ? "pointer-events-none cursor-not-allowed opacity-60" : "",
+          isDragActive
+            ? "border-teal-500 bg-teal-50"
+            : isDisabled
+              ? "border-slate-200 bg-slate-50"
+              : "border-slate-300 bg-slate-50 hover:border-teal-500 hover:bg-teal-50",
         )}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
+        aria-disabled={isDisabled}
       >
-        <input ref={inputRef} accept={acceptAttribute(documentType)} className="hidden" type="file" onChange={handleInputChange} />
+        <input
+          ref={inputRef}
+          accept={acceptAttribute(documentType)}
+          className="hidden"
+          disabled={isDisabled}
+          type="file"
+          onChange={handleInputChange}
+        />
 
         <div className="rounded-full bg-white p-4 shadow-sm">
           <svg className="h-8 w-8 text-teal-700" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
@@ -92,9 +106,13 @@ export function UploadPanel(props: UploadPanelProps) {
           </svg>
         </div>
 
-        <h3 className="mt-4 text-base font-semibold text-slate-900">Drop a {formats} file here</h3>
+        <h3 className="mt-4 text-base font-semibold text-slate-900">
+          {props.uploadHint ? props.uploadHint : `Drop a ${formats} file here`}
+        </h3>
         <p className="mt-2 max-w-md text-sm text-slate-500">
-          or click to select a file. The uploaded document is processed ephemerally and discarded after analysis.
+          {props.uploadHint
+            ? "The document type decides which file formats and validation rules apply."
+            : "or click to select a file. The uploaded document is processed ephemerally and discarded after analysis."}
         </p>
 
         <span className="mt-5 rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white">Choose file</span>

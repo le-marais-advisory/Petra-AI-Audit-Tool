@@ -12,6 +12,8 @@ export interface UploadPanelProps {
   documentType: DocumentTypeDefinition | null;
   documentTypeId: string;
   documentOptions: DocumentOptions;
+  /** What must still be chosen before uploading (document type, event type), or null when ready. */
+  uploadHint: string | null;
   onDocumentTypeChange: (documentTypeId: string) => void;
   onDocumentOptionChange: (name: string, value: string) => void;
   onFileSelected: (file: File) => Promise<void>;
@@ -37,9 +39,14 @@ export function getEnumOptions(documentType: DocumentTypeDefinition | null) {
     }));
 }
 
-export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPanelProps, "isBusy" | "onFileSelected">) {
+export function useUploadPanelBehavior({
+  isBusy,
+  uploadHint,
+  onFileSelected,
+}: Pick<UploadPanelProps, "isBusy" | "uploadHint" | "onFileSelected">) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
+  const isDisabled = isBusy || Boolean(uploadHint);
 
   const handleInputChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -51,7 +58,7 @@ export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPa
 
   const handleDragEnter = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
-    if (!isBusy) {
+    if (!isDisabled) {
       setIsDragActive(true);
     }
   };
@@ -63,7 +70,7 @@ export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPa
 
   const handleDragOver = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
-    if (!isBusy) {
+    if (!isDisabled) {
       setIsDragActive(true);
     }
   };
@@ -71,7 +78,7 @@ export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPa
   const handleDrop = async (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     setIsDragActive(false);
-    if (isBusy) {
+    if (isDisabled) {
       return;
     }
     const file = event.dataTransfer.files?.[0];
@@ -82,6 +89,7 @@ export function useUploadPanelBehavior({ isBusy, onFileSelected }: Pick<UploadPa
 
   return {
     inputRef,
+    isDisabled,
     isDragActive,
     handleDragEnter,
     handleDragLeave,

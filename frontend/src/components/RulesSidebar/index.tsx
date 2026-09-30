@@ -13,6 +13,7 @@ import {
 
 export function RulesSidebar({
   errorMessage,
+  emptyMessage,
   onRefresh,
   onRuleToggle,
   onBypassToggle,
@@ -63,7 +64,7 @@ export function RulesSidebar({
         {errorMessage ? <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p> : null}
 
         {!rules.length && !errorMessage ? (
-          <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">No rules available.</p>
+          <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">{emptyMessage || "No rules available."}</p>
         ) : null}
 
         {groups.map((group) => {

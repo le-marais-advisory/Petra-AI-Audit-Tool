@@ -1,7 +1,34 @@
 import type { DocumentTypeDefinition, DocumentOptions } from "@/types/api";
 
 
-export const DEFAULT_DOCUMENT_TYPE = "financial_statements";
+/**
+ * Used only when the backend has no /document-types endpoint (older deployments). The user
+ * still has to pick it explicitly: nothing is preselected.
+ */
+export const FALLBACK_DOCUMENT_TYPES: DocumentTypeDefinition[] = [
+  {
+    id: "financial_statements",
+    label: "Financial Statements (PDF)",
+    description: "Fund financial statements.",
+    accepted_formats: ["pdf"],
+    options_schema: { type: "object", properties: {}, required: [] },
+  },
+];
+
+/**
+ * What still has to be chosen before a file can be uploaded, as a short instruction, or
+ * null when the run is fully specified.
+ */
+export function uploadBlocker(type: DocumentTypeDefinition | null, options: DocumentOptions): string | null {
+  if (!type) {
+    return "Select a document type above to enable uploads.";
+  }
+  const missing = missingRequiredOptions(type, options);
+  if (missing.length) {
+    return `Select the ${missing.map((name) => optionLabel(type, name).toLowerCase()).join(", ")} above to enable uploads.`;
+  }
+  return null;
+}
 
 /** The value for the file input's `accept` attribute, e.g. ".xlsx,.xlsm". */
 export function acceptAttribute(type: DocumentTypeDefinition | null): string {
