@@ -4,9 +4,6 @@
 # covered offline by tests/test_workbook_checks.py.
 #
 #   pytest tests/evals/test_hybrid_rules_eval.py -m eval
-#
-# Verdicts marked `pending: <item>` depend on an open FA calibration answer and are
-# skipped until the item is resolved.
 
 cases:
   - id: call_clean
@@ -15,8 +12,7 @@ cases:
       CE-WB-SHEETS-PRESENT: pass
       CE-WB-MERGE-TABS: pass
       CE-WB-NO-PLACEHOLDERS: pass
-      CE-ALLOC-FEE-TIERS: {pending: 9}
-      CE-ALLOC-COMPONENT-PARTICIPATION: pass
+      CE-ALLOC-REFERENCE-INTEGRITY: pass
       CE-ALLOC-STALE-COMPONENTS: pass
       CE-ALLOC-SIGNAGE: pass
       CE-ITD-EVENT-BLOCK: pass
@@ -36,7 +32,7 @@ cases:
     expected:
       CE-WB-SHEETS-PRESENT: pass
       CE-WB-MERGE-TABS: pass
-      CE-ALLOC-COMPONENT-PARTICIPATION: pass
+      CE-ALLOC-REFERENCE-INTEGRITY: pass
 
   - id: distribution_clean
     fixture: {event_type: distribution}
@@ -58,13 +54,33 @@ cases:
     expected:
       CE-WB-NO-PLACEHOLDERS: fail
 
+  - id: tbd_pending  # FA: a pending wire date is not a placeholder
+    fixture: {event_type: capital_call, defect: ok_tbd_pending}
+    expected:
+      CE-WB-NO-PLACEHOLDERS: pass
+
   - id: itd_missing_x
     fixture: {event_type: capital_call, defect: itd_missing_x}
     expected:
       CE-ITD-EVENT-BLOCK: fail
 
+  - id: itd_overlay_rows  # FA: overlays allowed, one primary X per column
+    fixture: {event_type: capital_call, defect: ok_itd_overlay_rows}
+    expected:
+      CE-ITD-EVENT-BLOCK: pass
+
   - id: stale_component
     fixture: {event_type: capital_call, defect: stale_component}
+    expected:
+      CE-ALLOC-STALE-COMPONENTS: fail
+
+  - id: stale_label_inactive  # FA: leftover labels only matter on a used column
+    fixture: {event_type: capital_call, defect: ok_stale_label_inactive}
+    expected:
+      CE-ALLOC-STALE-COMPONENTS: pass
+
+  - id: stale_label_on_active
+    fixture: {event_type: capital_call, defect: stale_label_on_active}
     expected:
       CE-ALLOC-STALE-COMPONENTS: fail
 
@@ -72,11 +88,7 @@ cases:
     fixture: {event_type: capital_call, defect: stale_fee_period}
     expected:
       CE-DATE-CONSISTENCY: fail
-
-  - id: affiliate_charged_fee
-    fixture: {event_type: capital_call, defect: affiliate_charged_fee}
-    expected:
-      CE-ALLOC-COMPONENT-PARTICIPATION: fail
+      CE-ALLOC-REFERENCE-INTEGRITY: fail
 
   - id: summary_line_hardcoded
     fixture: {event_type: capital_call, defect: summary_line_hardcoded}
@@ -87,13 +99,3 @@ cases:
     fixture: {event_type: distribution, defect: carry_split_wrong}
     expected:
       CE-DIST-CARRY-SPLIT: fail
-
-  - id: itd_overlay_rows
-    fixture: {event_type: capital_call, defect: probe_itd_overlay_rows}
-    expected:
-      CE-ITD-EVENT-BLOCK: {pending: 3}
-
-  - id: tbd_on_tracker
-    fixture: {event_type: capital_call, defect: probe_tbd_placeholder}
-    expected:
-      CE-WB-NO-PLACEHOLDERS: {pending: 12}

@@ -122,22 +122,28 @@ def test_get_document_types(client):
     assert types["capital_event_workbook"]["accepted_formats"] == ["xlsx", "xlsm"]
     assert types["capital_event_workbook"]["options_schema"]["properties"]["event_type"]["enum"] == list(EVENT_TYPES)
     assert types["financial_statements"]["accepted_formats"] == ["pdf"]
+    assert types["capital_event_workbook"]["prior_document"]["waived_by_option"] == "first_event"
+    assert types["financial_statements"]["prior_document"] is None
 
 
-def _post_job(client, content: bytes, filename: str, mime: str, **form):
+def _post_job(client, content: bytes, filename: str, mime: str, prior=None, **form):
     with patch("src.api.routers.validations.validation_job_service") as jobs:
         jobs.start_job.return_value.job_id = "job-1"
         jobs.start_job.return_value.status = "queued"
         jobs.start_job.return_value.message = "Queued"
         jobs.start_job.return_value.progress_current = 0
         jobs.start_job.return_value.progress_total = 0
-        response = client.post("/validations/jobs", files={"file": (filename, io.BytesIO(content), mime)}, data=form)
+        files = {"file": (filename, io.BytesIO(content), mime)}
+        if prior is not None:
+            files["prior_file"] = (prior[0], io.BytesIO(prior[1]), prior[2])
+        response = client.post("/validations/jobs", files=files, data=form)
         return response, jobs.start_job
 
 
 def test_upload_capital_event_workbook(client, xlsx_bytes):
     response, start_job = _post_job(
         client, xlsx_bytes, "egf.xlsx", XLSX_MIME,
+        prior=("egf_prior.xlsx", xlsx_bytes, XLSX_MIME),
         document_type="capital_event_workbook", options_json=json.dumps({"event_type": "capital_call"}),
     )
     assert response.status_code == 200, response.text
@@ -145,6 +151,57 @@ def test_upload_capital_event_workbook(client, xlsx_bytes):
     assert kwargs["document_type"] == "capital_event_workbook"
     assert kwargs["options"] == {"event_type": "capital_call"}
     assert kwargs["source_filename"] == "egf.xlsx"
+    assert kwargs["prior_file_path"] and kwargs["prior_source_filename"] == "egf_prior.xlsx"
+
+
+def test_first_event_needs_no_prior_workbook(client, xlsx_bytes):
+    response, start_job = _post_job(
+        client, xlsx_bytes, "egf.xlsx", XLSX_MIME, document_type="capital_event_workbook",
+        options_json=json.dumps({"event_type": "capital_call", "first_event": True}),
+    )
+    assert response.status_code == 200, response.text
+    assert start_job.call_args.kwargs["prior_file_path"] is None
+    assert start_job.call_args.kwargs["options"] == {"event_type": "capital_call", "first_event": True}
+
+
+def test_prior_workbook_is_required_unless_first_event(client, xlsx_bytes):
+    response, start_job = _post_job(client, xlsx_bytes, "egf.xlsx", XLSX_MIME, document_type="capital_event_workbook",
+                                    options_json=json.dumps({"event_type": "capital_call"}))
+    assert response.status_code == 422
+    assert "prior" in response.json()["detail"].lower()
+    start_job.assert_not_called()
+
+
+def test_prior_workbook_and_first_event_are_exclusive(client, xlsx_bytes):
+    response, _ = _post_job(client, xlsx_bytes, "egf.xlsx", XLSX_MIME, prior=("p.xlsx", xlsx_bytes, XLSX_MIME),
+                            document_type="capital_event_workbook",
+                            options_json=json.dumps({"event_type": "capital_call", "first_event": True}))
+    assert response.status_code == 422
+
+
+def test_prior_workbook_format_is_checked(client, xlsx_bytes):
+    response, _ = _post_job(client, xlsx_bytes, "egf.xlsx", XLSX_MIME, prior=("p.pdf", PDF_BYTES, "application/pdf"),
+                            document_type="capital_event_workbook", options_json=json.dumps({"event_type": "capital_call"}))
+    assert response.status_code == 415
+
+
+def test_prior_file_is_rejected_for_types_without_one(client, xlsx_bytes):
+    response, _ = _post_job(client, PDF_BYTES, "fs.pdf", "application/pdf", prior=("p.pdf", PDF_BYTES, "application/pdf"))
+    assert response.status_code == 422
+
+
+def test_first_event_option_must_be_boolean(registry):
+    spec = registry.get_document_type("capital_event_workbook")
+    with pytest.raises(registry.InvalidOptionsError):
+        registry.validate_options(spec, {"event_type": "capital_call", "first_event": "maybe"})
+
+
+def test_capital_event_type_asks_for_the_prior_workbook(registry):
+    spec = registry.get_document_type("capital_event_workbook")
+    assert spec.prior_document["waived_by_option"] == "first_event"
+    assert spec.prior_document["accepted_formats"] == ["xlsx", "xlsm"]
+    assert spec.options_schema["properties"]["first_event"]["type"] == "boolean"
+    assert registry.get_document_type("financial_statements").prior_document is None
 
 
 def test_upload_defaults_to_financial_statements(client):

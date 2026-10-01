@@ -39,23 +39,31 @@ def run_pipeline(capital_event_fixtures):
     pipeline_mod = importlib.import_module("src.pipeline.workbook.pipeline")
     layout = importlib.import_module("src.pipeline.workbook.layout")
 
-    def run(event_type="capital_call", variant="standard", defect=None):
-        manifest = capital_event_fixtures.get(event_type, variant, defect)
+    def run(event_type="capital_call", variant="standard", defect=None, with_prior=False, options=None):
+        manifest = capital_event_fixtures.get(event_type, variant, defect, with_prior)
         provider = FakeTextProvider()
         mapped: list[str] = []
+        # Route each workbook (current / prior) to its own golden layouts.
+        by_file = {manifest.path.name: manifest}
+        if manifest.prior:
+            by_file[manifest.prior.path.name] = manifest.prior
 
         def role_assigner(model, inventory, proposed):
-            return manifest.sheet_roles
+            return by_file[model.file_name].sheet_roles
 
         def layout_mapper(model, sheet_name, role):
-            mapped.append(sheet_name)
-            return layout.parse_layout(manifest.layouts[sheet_name])
+            source = by_file[model.file_name]
+            if source is manifest:
+                mapped.append(sheet_name)
+            return layout.parse_layout(source.layouts[sheet_name])
 
         pipeline = pipeline_mod.WorkbookPipeline(text_provider=provider, role_assigner=role_assigner,
                                                  layout_mapper=layout_mapper)
         rules = RuleService().load_rules(document_type="capital_event_workbook", event_type=event_type)
-        result = pipeline.run(manifest.path, rules=rules, options={"event_type": event_type},
-                              source_filename=manifest.path.name)
+        result = pipeline.run(manifest.path, rules=rules, options=options or {"event_type": event_type},
+                              source_filename=manifest.path.name,
+                              prior_file_path=str(manifest.prior.path) if manifest.prior else None,
+                              prior_source_filename=manifest.prior.path.name if manifest.prior else None)
         return manifest, result, provider, mapped
 
     return run
@@ -73,10 +81,12 @@ def test_only_relevant_sheets_are_mapped_and_emitted(run_pipeline):
     manifest, result, _, mapped = run_pipeline()
     assert sorted(mapped) == sorted(s for s in manifest.relevant_sheets if s in manifest.layouts)
     labels = [p["label"] for p in result["pages"]]
-    assert labels == manifest.relevant_sheets
+    # Relevant sheets first, then the sheets their formulas reference (scanned, not mapped).
+    assert labels == manifest.relevant_sheets + manifest.reference_sheets
     for page in result["pages"]:
         assert page["page"] == list(manifest.sheet_roles).index(page["label"]) + 1
-        assert page["page_type"] == [manifest.sheet_roles[page["label"]]]
+        expected_type = "reference" if page["label"] in manifest.reference_sheets else manifest.sheet_roles[page["label"]]
+        assert page["page_type"] == [expected_type]
 
 
 def test_deterministic_rules_never_reach_the_llm(run_pipeline):
@@ -153,3 +163,28 @@ def test_validation_service_dispatches_by_document_type(capital_event_fixtures, 
     assert captured["options"] == {"event_type": "distribution"}
     assert "CE-NET-EVENT-STRUCTURE" not in captured["rule_ids"]
     assert "CE-DIST-ROC-LIMIT" in captured["rule_ids"]
+
+
+def _verdicts(result):
+    return {a["rule_id"]: a["verdict"] for a in result["analysis"]["rule_assessments"]}
+
+
+def test_prior_workbook_drives_the_cross_event_rules(run_pipeline):
+    _, result, _, _ = run_pipeline(with_prior=True)
+    verdicts = _verdicts(result)
+    for rule_id in ("CE-XEV-HISTORY-UNCHANGED", "CE-XEV-ROLL-FORWARD", "CE-XEV-PLUG-CONSISTENCY"):
+        assert verdicts[rule_id] == "pass", rule_id
+    assert result["options"] == {"event_type": "capital_call"}
+
+
+def test_cross_event_defect_is_caught_end_to_end(run_pipeline):
+    _, result, _, _ = run_pipeline(defect="plug_pattern_changed")
+    verdicts = _verdicts(result)
+    assert verdicts["CE-XEV-PLUG-CONSISTENCY"] == "fail"
+    assert verdicts["CE-ALLOC-PLUG-DISCIPLINE"] == "pass"  # spreading is allowed on its own
+
+
+def test_first_event_marks_cross_event_rules_not_applicable(run_pipeline):
+    _, result, _, _ = run_pipeline(options={"event_type": "capital_call", "first_event": True})
+    verdicts = _verdicts(result)
+    assert verdicts["CE-XEV-HISTORY-UNCHANGED"] == "not_applicable"

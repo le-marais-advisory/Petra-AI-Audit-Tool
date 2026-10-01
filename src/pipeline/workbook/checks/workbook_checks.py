@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-from src.pipeline.workbook.cells import PENNY, is_text, to_date, to_decimal
+from src.pipeline.workbook.cells import to_date, to_decimal
 from src.pipeline.workbook.checks._common import CheckContext, NotApplicable, Outcome, check, event_number, money
 from src.pipeline.workbook.layout import AllocationLayout, ItdLayout, MergeLayout, SummaryLayout
 from src.pipeline.workbook.loader import CellModel, SheetModel
@@ -12,22 +12,50 @@ from src.pipeline.workbook.loader import CellModel, SheetModel
 ZERO = Decimal("0")
 
 
+def _check_cells(ctx: CheckContext) -> list[tuple[SheetModel, str]]:
+    """Every check / control cell the layouts point at, on every processed sheet (FA calibration)."""
+    cells: list[tuple[SheetModel, str]] = []
+    data = ctx.data
+    if data.summary is not None:
+        cells += [(data.summary.sheet, c) for c in data.summary.check_cells]
+
+    def numeric_cells_on(sheet: SheetModel, rows: list[int]) -> None:
+        for row in rows:
+            for cell in sheet.row_cells(row):
+                if cell.is_error or (isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool)):
+                    cells.append((sheet, cell.coord))
+
+    if data.allocation is not None:
+        numeric_cells_on(data.allocation.sheet, data.allocation.layout.check_rows)
+    if data.itd is not None:
+        numeric_cells_on(data.itd.sheet, data.itd.layout.check_rows)
+    if data.mgmt_fee is not None:
+        numeric_cells_on(data.mgmt_fee.sheet, data.mgmt_fee.layout.check_rows)
+    for merge in data.merges:
+        numeric_cells_on(merge.sheet, merge.layout.check_rows)
+        column = merge.layout.columns.check
+        if column:
+            cells += [(merge.sheet, f"{column}{row.row}") for row in merge.rows
+                      if merge.sheet.value(f"{column}{row.row}") is not None]
+    return cells
+
+
 @check("CE-SUM-CHECKS-ZERO", needs=("summary",))
 def summary_checks_zero(ctx: CheckContext, out: Outcome) -> str:
-    summary = ctx.data.summary
-    sheet = summary.sheet
-    if not summary.check_cells:
-        out.review("No check / control cells were identified on the Summary sheet.")
+    cells = _check_cells(ctx)
+    if not cells:
+        out.review("No check / control cells were identified.")
         return ""
-    for cell in summary.check_cells:
-        model = sheet.cell(cell)
+    for sheet, coord in cells:
+        model = sheet.cell(coord)
         if model is not None and model.is_error:
-            out.fail(f"Check cell {cell} shows {model.value}.", sheet, cell)
+            out.fail(f"Check cell {sheet.name}!{coord} shows {model.value}.", sheet, coord)
             continue
-        value = to_decimal(sheet.value(cell)) or ZERO
+        value = to_decimal(sheet.value(coord)) or ZERO
         if abs(value) > Decimal("0.000001"):
-            out.fail(f"Check cell {cell} is {money(value)}, not 0.00.", sheet, cell)
-    return f"All {len(summary.check_cells)} Summary check cell(s) equal 0.00."
+            out.fail(f"Check cell {sheet.name}!{coord} is {money(value)}, not 0.00.", sheet, coord)
+    sheets = sorted({sheet.name for sheet, _ in cells})
+    return f"All {len(cells)} check cell(s) equal 0.00 ({', '.join(sheets)})."
 
 
 def _event_date_cells(ctx: CheckContext) -> list[tuple[SheetModel, str, str, CellModel | None]]:
@@ -186,7 +214,6 @@ def accounting_format(ctx: CheckContext, out: Outcome) -> str:
     if not groups:
         raise NotApplicable("No monetary cells were located.")
     for sheet, column, cells in groups:
-        fmts = {c.number_format or "General" for c in cells}
         bad = [c for c in cells if "#,##0" not in _strip_format(c.number_format).replace("\\", "")]
         if bad:
             out.fail(f"{sheet.name} column {column}: {len(bad)} monetary cell(s) lack an accounting/currency format "
@@ -209,15 +236,39 @@ def accounting_format(ctx: CheckContext, out: Outcome) -> str:
     return "Monetary cells use an accounting format with thousands separators, consistent decimals and parenthesized negatives."
 
 
+def _inactive_rows(ctx: CheckContext) -> set[tuple[str, int]]:
+    """(sheet, row) of investors no longer active: no commitment and nothing in this event."""
+    data = ctx.data
+    rows: set[tuple[str, int]] = set()
+    if data.allocation is not None:
+        rows |= {(data.allocation.sheet.name, i.row) for i in data.allocation.investors
+                 if not i.commitment and not any(i.amounts.values())}
+    if data.itd is not None:
+        rows |= {(data.itd.sheet.name, i.row) for i in data.itd.investors
+                 if not (i.cumulative.get("commitment") or ZERO) and not any(i.values.values())}
+    for merge in data.merges:
+        rows |= {(merge.sheet.name, r.row) for r in merge.rows
+                 if not (r.commitment or ZERO) and not (r.event_total or ZERO) and not any(r.amounts.values())}
+    if data.mgmt_fee is not None:
+        rows |= {(data.mgmt_fee.sheet.name, r.row) for r in data.mgmt_fee.rows
+                 if not (r.commitment or ZERO) and not any(r.fees.values())}
+    return rows
+
+
 @check("CE-FMT-NO-FORMULA-ERRORS", needs=("allocation",))
 def no_formula_errors(ctx: CheckContext, out: Outcome) -> str:
-    for name in ctx.data.processed_sheets:
+    """FA calibration: processed sheets plus every sheet they reference (hidden or not);
+    unreferenced hidden sheets and inactive investors' rows are ignored."""
+    skip = _inactive_rows(ctx)
+    for name in ctx.data.scanned_sheets:
         sheet = ctx.model.sheet(name)
-        hits = [c for c in sheet.cells.values() if c.is_error or (isinstance(c.value, str) and
-                                                                  _ERROR_OR_OVERFLOW.match(c.value.strip() or "x"))]
+        hits = [c for c in sheet.cells.values() if (c.is_error or (isinstance(c.value, str) and
+                                                                   _ERROR_OR_OVERFLOW.match(c.value.strip() or "x")))
+                and (name, c.row) not in skip]
         for cell in sorted(hits, key=lambda c: (c.row, c.column_index))[:10]:
             out.fail(f"{name}!{cell.coord} shows {cell.value}.", sheet, cell.coord)
-    return "No error values or '####' overflows on the processed sheets."
+    scanned = ", ".join(ctx.data.scanned_sheets)
+    return f"No error values or '####' overflows on the processed and referenced sheets ({scanned})."
 
 
 @check("CE-WB-NO-HIDDEN-DATA", needs=("allocation", "itd"))

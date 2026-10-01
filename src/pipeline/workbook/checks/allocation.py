@@ -9,6 +9,7 @@ from openpyxl.utils.cell import range_boundaries
 from src.pipeline.workbook.cells import PENNY, col_idx
 from src.pipeline.workbook.checks._common import (
     CheckContext,
+    NotApplicable,
     Outcome,
     check,
     differs,
@@ -198,6 +199,20 @@ def refoot(ctx: CheckContext, out: Outcome) -> str:
     return "All subtotals and totals refoot and every row crossfoots to its components."
 
 
+def _is_pro_rata(vehicle: AllocationVehicle, comp) -> bool:
+    """A component is pro-rata when most of its per-LP cells are driver x % formulas.
+
+    Columns pulled from another tab (e.g. management fees via SUMIFS on the fee tab) or
+    typed in are not pro-rata allocations, so parity does not apply to them (FA calibration).
+    """
+    driver_ref = _driver_ref_re(comp.column, vehicle.driver_row)
+    formulas = [i.formulas.get(comp.column) for i in vehicle.investors if i.amounts.get(comp.column)]
+    if not formulas:
+        return False
+    linked = sum(1 for f in formulas if f and "!" not in f and driver_ref.search(f.replace("$", "")))
+    return linked * 2 >= len(formulas)
+
+
 def _parity_rows(alloc: AllocationData, vehicle: AllocationVehicle, comp):
     """(investor, basis, amount) triples for the component's participating pool, or None if no basis."""
     investors = vehicle.investors
@@ -215,10 +230,15 @@ def pro_rata_parity(ctx: CheckContext, out: Outcome) -> str:
     alloc = ctx.data.allocation
     sheet = alloc.sheet
     worst = ZERO
+    checked, skipped = set(), set()
     for vehicle in alloc.vehicles:
         for comp in _active_in_vehicle(alloc, vehicle):
-            rows = _parity_rows(alloc, vehicle, comp)
             label = f"{vehicle.name} / {comp.header or comp.component_type}"
+            if not _is_pro_rata(vehicle, comp):
+                skipped.add(comp.header or comp.component_type)
+                continue
+            checked.add(comp.header or comp.component_type)
+            rows = _parity_rows(alloc, vehicle, comp)
             if rows is None:
                 out.review(f"{label}: no allocation basis column (contributed capital) is shown for this "
                            "distribution component, so parity cannot be measured.")
@@ -238,6 +258,10 @@ def pro_rata_parity(ctx: CheckContext, out: Outcome) -> str:
                 detail = "; ".join(f"{inv.name} {money(res)}" for res, inv in residuals[:6])
                 out.fail(f"{label}: {len(residuals)} investor(s) deviate from pure pro-rata by more than $2 "
                          f"({detail}).", sheet, f"{comp.column}{residuals[0][1].row}")
+    if skipped:
+        out.notes.append(f"Not pro-rata, so not checked: {', '.join(sorted(skipped))}.")
+    if not checked:
+        raise NotApplicable("No active component is allocated pro-rata in this event.")
     return f"Every investor is within $2 of its pure pro-rata share (largest residual {money(worst)})."
 
 
@@ -250,27 +274,34 @@ def _plugs(alloc: AllocationData, vehicle: AllocationVehicle, column: str):
             yield inv, Decimal(match.group(2)) * sign
 
 
+def plug_eligibility(alloc: AllocationData):
+    """eligible(investor) -> True / False / None (unknown): GPs, affiliates and fee-exempt LPs carry no plug."""
+    fee_cols = [c.column for c in alloc.active_components if c.component_type == "mgmt_fee"]
+
+    def eligible(inv) -> bool | None:
+        if inv.is_gp or inv.affiliate is True:
+            return False
+        if fee_cols and all(inv.amounts.get(c, ZERO) == ZERO for c in fee_cols) and inv.commitment:
+            return False
+        if inv.affiliate is None and not fee_cols:
+            return None
+        return True
+
+    return eligible
+
+
 @check("CE-ALLOC-PLUG-DISCIPLINE", needs=("allocation",))
 def plug_discipline(ctx: CheckContext, out: Outcome) -> str:
+    """FA calibration: the residual may sit on one LP or be spread, but only over the largest
+    eligible LPs and within the rounding ceiling in total."""
     alloc = ctx.data.allocation
     sheet = alloc.sheet
     active_cols = {c.column for c in alloc.active_components}
-    fee_cols = [c.column for c in alloc.active_components if c.component_type == "mgmt_fee"]
+    eligible = plug_eligibility(alloc)
     for vehicle in alloc.vehicles:
         lps = vehicle.limited_partners
         ceiling = max(Decimal("0.50"), Decimal(len(lps)) * Decimal("0.01"))
-
-        def eligible(inv) -> bool | None:
-            if inv.is_gp or inv.affiliate is True:
-                return False
-            if fee_cols and all(inv.amounts.get(c, ZERO) == ZERO for c in fee_cols) and inv.commitment:
-                return False
-            if inv.affiliate is None and not fee_cols:
-                return None
-            return True
-
-        eligible_lps = [i for i in lps if eligible(i)]
-        largest = max(eligible_lps, key=lambda i: (i.commitment, -i.row)) if eligible_lps else None
+        ranked = sorted((i.commitment for i in lps if eligible(i)), reverse=True)
         for comp in alloc.components:
             plugs = list(_plugs(alloc, vehicle, comp.column))
             label = f"{vehicle.name} / {comp.header or comp.component_type}"
@@ -281,10 +312,12 @@ def plug_discipline(ctx: CheckContext, out: Outcome) -> str:
                     out.fail(f"{label}: stale plug {offset:+} left on an inactive component ({inv.name}).",
                              sheet, f"{comp.column}{inv.row}")
                 continue
-            if len(plugs) > 1:
+            total = sum((abs(offset) for _, offset in plugs), ZERO)
+            if total > ceiling:
                 names = ", ".join(f"{inv.name} {offset:+}" for inv, offset in plugs)
-                out.fail(f"{label}: {len(plugs)} plugs in one component ({names}); at most one is allowed.",
-                         sheet, f"{comp.column}{plugs[0][0].row}")
+                out.fail(f"{label}: plugs total {total} ({names}), above the rounding ceiling {ceiling}.", sheet,
+                         f"{comp.column}{plugs[0][0].row}")
+            threshold = ranked[min(len(plugs), len(ranked)) - 1] if ranked else None
             for inv, offset in plugs:
                 status = eligible(inv)
                 coord = f"{comp.column}{inv.row}"
@@ -294,13 +327,11 @@ def plug_discipline(ctx: CheckContext, out: Outcome) -> str:
                 elif status is None:
                     out.review(f"{label}: cannot tell whether {inv.name} (plugged {offset:+}) is an eligible LP.",
                                sheet, coord)
-                elif largest is not None and inv is not largest and len(plugs) == 1:
-                    out.fail(f"{label}: plug on {inv.name}, but the largest eligible LP is {largest.name}.", sheet,
+                elif threshold is not None and inv.commitment < threshold:
+                    out.fail(f"{label}: plug {offset:+} on {inv.name}, but {len(plugs)} plug(s) belong on the "
+                             f"{len(plugs)} largest eligible LP(s) (commitment {money(threshold)} or more).", sheet,
                              coord)
-                if abs(offset) > ceiling:
-                    out.fail(f"{label}: plug {offset:+} on {inv.name} exceeds the rounding ceiling {ceiling}.",
-                             sheet, coord)
-    return "At most one plug per vehicle and component, on the largest eligible LP, within the rounding ceiling."
+    return "Plugs sit only on the largest eligible LPs and stay within the rounding ceiling."
 
 
 def _pct_scale(values: list[Decimal]) -> Decimal:
@@ -360,10 +391,11 @@ def _too_precise(value: Decimal) -> bool:
 
 @check("CE-ALLOC-ROUNDING", needs=("allocation",))
 def rounding(ctx: CheckContext, out: Outcome) -> str:
+    """FA calibration: each component keeps one rounding basis; components may differ
+    (e.g. fees in whole dollars, investment in cents)."""
     alloc = ctx.data.allocation
     sheet = alloc.sheet
-    bases: dict[str, str] = {}
-    first_cells: dict[str, str] = {}
+    active = {c.column for c in alloc.active_components}
     for comp in alloc.components:
         values = []
         for inv in alloc.investors:
@@ -373,20 +405,20 @@ def rounding(ctx: CheckContext, out: Outcome) -> str:
                          f"{comp.column}{inv.row}")
             if amount:
                 values.append((inv, amount))
-        if comp.column not in {c.column for c in alloc.active_components} or not values:
+        if comp.column not in active or not values:
             continue
-        first_cells[comp.header or comp.component_type] = f"{comp.column}{values[0][0].row}"
-        digits = {round_digits(inv.formulas.get(comp.column)) for inv, _ in values} - {None}
-        if digits == {0} or (not digits and len(values) >= 3 and not any(_has_cents(v) for _, v in values)):
-            bases[comp.header or comp.component_type] = "whole dollars"
-        elif any(_has_cents(v) for _, v in values) or digits == {2}:
-            bases[comp.header or comp.component_type] = "cents"
-    if len(set(bases.values())) > 1:
-        detail = "; ".join(f"{name}: {basis}" for name, basis in bases.items())
-        whole = next(name for name, basis in bases.items() if basis == "whole dollars")
-        out.fail(f"The event mixes whole-dollar and cent-level rounding across components ({detail}).", sheet,
-                 first_cells[whole])
-    return "All amounts carry at most two decimals with one rounding basis."
+        label = comp.header or comp.component_type
+        digits = {round_digits(inv.formulas.get(comp.column)): inv for inv, _ in values}
+        digits.pop(None, None)
+        if 0 in digits and 2 in digits:
+            out.fail(f"{label}: some per-LP cells round to whole dollars and others to cents.", sheet,
+                     f"{comp.column}{digits[0].row}")
+        elif set(digits) == {0}:
+            with_cents = [inv for inv, v in values if _has_cents(v)]
+            if with_cents:
+                out.fail(f"{label}: rounded to whole dollars but {with_cents[0].name} carries cents.", sheet,
+                         f"{comp.column}{with_cents[0].row}")
+    return "No amount carries more than two decimals and each component keeps one rounding basis."
 
 
 @check("CE-ALLOC-MERGED-CELLS", needs=("allocation",))

@@ -13,6 +13,7 @@ from src.document_types.registry import (
     UnsupportedFormatError,
     ensure_format,
     get_document_type,
+    prior_document_required,
     validate_options,
 )
 from src.schemas.validation import DocumentValidationResponse, ValidationJobResponse
@@ -40,12 +41,13 @@ def _resolve_request(document_type: str, options_json: str | None) -> tuple[Docu
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-async def _read_and_validate_upload(upload: UploadFile, spec: DocumentTypeSpec, max_size_mb: int) -> tuple[bytes, str]:
+async def _read_and_validate_upload(upload: UploadFile, spec: DocumentTypeSpec, max_size_mb: int,
+                                    prior: bool = False) -> tuple[bytes, str]:
     content = await upload.read()
     if len(content) > max_size_mb * 1024 * 1024:
         raise HTTPException(status_code=413, detail=f"File exceeds {max_size_mb} MB limit.")
     try:
-        file_format = ensure_format(spec, content, upload.filename)
+        file_format = ensure_format(spec, content, upload.filename, prior=prior)
     except UnsupportedFormatError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return content, file_format
@@ -59,6 +61,26 @@ def _stage_upload_for_processing(filename: str, content: bytes, file_format: str
     with tempfile.NamedTemporaryFile(prefix="upload_", suffix=f".{file_format}", dir=str(temp_dir), delete=False) as handle:
         handle.write(content)
         return safe_filename, handle.name
+
+
+async def _stage_prior(spec: DocumentTypeSpec, options: dict, prior_file: UploadFile | None, settings) -> tuple[str | None, str | None]:
+    """Validate and stage the prior-event document (returns its source name and temp path)."""
+    if spec.prior_document is None:
+        if prior_file is not None:
+            raise HTTPException(status_code=422, detail=f"{spec.label} does not take a prior document.")
+        return None, None
+    waiver = spec.prior_document["waived_by_option"]
+    if prior_file is None:
+        if prior_document_required(spec, options):
+            raise HTTPException(status_code=422, detail=(
+                f"Upload the {spec.prior_document['label'].lower()} or mark this as the fund's first capital event."))
+        return None, None
+    if options.get(waiver):
+        raise HTTPException(status_code=422, detail=(
+            f"A {spec.prior_document['label'].lower()} was uploaded although the run is marked as the first event."))
+    content, file_format = await _read_and_validate_upload(prior_file, spec, settings.MAX_UPLOAD_SIZE_MB, prior=True)
+    return _stage_upload_for_processing(
+        filename=prior_file.filename or "", content=content, file_format=file_format, workdir=settings.LOCAL_WORKDIR)
 
 
 def _pick_upload(file: UploadFile | None, pdf: UploadFile | None) -> UploadFile:
@@ -75,11 +97,13 @@ async def validate_document(
     document_type: str = Form("financial_statements", description="Document type id (see GET /document-types)"),
     options_json: str | None = Form(None, description="Run options JSON for the document type"),
     rules_json: str | None = Form(None, description="Selected rules JSON"),
+    prior_file: UploadFile | None = File(None, description="Prior event document, when the type takes one"),
 ) -> DocumentValidationResponse:
     settings = get_settings()
     spec, options = _resolve_request(document_type, options_json)
     upload = _pick_upload(file, pdf)
     content, file_format = await _read_and_validate_upload(upload, spec, settings.MAX_UPLOAD_SIZE_MB)
+    prior_name, prior_path = await _stage_prior(spec, options, prior_file, settings)
     filename, file_path = _stage_upload_for_processing(
         filename=upload.filename or "", content=content, file_format=file_format, workdir=settings.LOCAL_WORKDIR,
     )
@@ -91,13 +115,17 @@ async def validate_document(
             rules_json_str=rules_json,
             document_type=spec.id,
             options=options,
+            prior_file_path=prior_path,
+            prior_source_filename=prior_name,
         )
         return DocumentValidationResponse(**result)
     finally:
-        try:
-            Path(file_path).unlink(missing_ok=True)
-        except Exception:
-            pass
+        for path in (file_path, prior_path):
+            try:
+                if path:
+                    Path(path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 @router.post("/jobs", response_model=ValidationJobResponse)
@@ -107,11 +135,13 @@ async def create_validation_job(
     document_type: str = Form("financial_statements", description="Document type id (see GET /document-types)"),
     options_json: str | None = Form(None, description="Run options JSON for the document type"),
     rules_json: str | None = Form(None, description="Selected rules JSON"),
+    prior_file: UploadFile | None = File(None, description="Prior event document, when the type takes one"),
 ) -> ValidationJobResponse:
     settings = get_settings()
     spec, options = _resolve_request(document_type, options_json)
     upload = _pick_upload(file, pdf)
     content, file_format = await _read_and_validate_upload(upload, spec, settings.MAX_UPLOAD_SIZE_MB)
+    prior_name, prior_path = await _stage_prior(spec, options, prior_file, settings)
     filename, file_path = _stage_upload_for_processing(
         filename=upload.filename or "", content=content, file_format=file_format, workdir=settings.LOCAL_WORKDIR,
     )
@@ -121,6 +151,8 @@ async def create_validation_job(
         rules_json_str=rules_json,
         document_type=spec.id,
         options=options,
+        prior_file_path=prior_path,
+        prior_source_filename=prior_name,
     )
     return ValidationJobResponse(
         job_id=job.job_id,

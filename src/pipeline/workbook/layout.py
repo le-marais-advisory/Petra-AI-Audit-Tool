@@ -238,6 +238,7 @@ class MergeLayout(_Base):
     columns: MergeColumns
     component_columns: list[BlockComponent] = Field(default_factory=list)
     total_row: Optional[int] = None
+    check_rows: list[int] = Field(default_factory=list, description="Rows of check / difference cells below the total")
 
 
 class FeeColumns(_Base):

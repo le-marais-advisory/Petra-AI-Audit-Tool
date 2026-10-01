@@ -30,13 +30,31 @@ Event types are defined in `config/document_types/capital_event.yaml`. Each one 
 
 To add an event type, add an entry to the YAML file. To limit a rule to certain events, set its `event_types`.
 
+### Prior-event workbook
+
+The type declares a `prior_document`. With each upload the user also sends the workbook from the most recent prior event (`prior_file`). For the fund's first capital event they set the `first_event` option instead, and no prior workbook is needed. Sending both is rejected.
+
+From the prior workbook, the pipeline reads only the Allocation and ITD sheets. Three deterministic **cross-event rules** compare it with the current workbook (`checks/cross_event.py`):
+
+| Rule | Check |
+|---|---|
+| `CE-XEV-HISTORY-UNCHANGED` | Every ITD event block in the prior workbook reappears unchanged in the current one |
+| `CE-XEV-ROLL-FORWARD` | The current Allocation's prior contributions equal the prior workbook's ITD contributions to date |
+| `CE-XEV-PLUG-CONSISTENCY` | The rounding-plug pattern (single or spread, and which investors) matches the prior event |
+
+These rules return `not_applicable` on a first event, and `needs_review` when no prior workbook was supplied (for example, in a CLI run without one).
+
+### Referenced sheets
+
+Unreferenced hidden or legacy sheets are skipped. A sheet that a formula on a processed sheet references (for example `'Portfolio Investment Tracker'!E12`) is a **reference sheet**, hidden or not. The workbook-wide scans (formula errors and placeholders) cover it too. Reference sheets appear in the result with `page_type: ["reference"]`.
+
 ### How a workbook run works
 
 The pipeline is `src/pipeline/workbook/pipeline.py`.
 
 1. **Load.** `loader.py` reads the workbook twice with openpyxl, once for the stored formulas and once for the cached values Excel saved, so nothing is recalculated. Macros are never executed. A workbook saved without cached values is flagged.
 2. **Inventory and roles.** `inventory.py` summarises every sheet cheaply. `roles.py` proposes a role for each sheet from its name and headers, and one small LLM call confirms or corrects the proposal. Hidden sheets are treated as legacy and assigned `other`.
-3. **Select.** `selection.py` keeps the sheets whose role the event type needs.
+3. **Select.** `selection.py` keeps the sheets whose role the event type needs. The sheets those sheets reference are added as reference sheets.
 4. **Map layouts.** For each selected sheet, `skeleton.py` builds a compact view: every text label, the formulas folded into relative per-column patterns with the exceptions listed (for example a `+0.02` rounding plug), and the merged ranges and hidden rows and columns. `layout_mapper.py` sends that view to the LLM, which returns a `SheetLayout` (`layout.py`) through strict structured output. The layout says where the header, driver and investor rows, component columns, event blocks and so on are.
 5. **Validate layouts.** `layout_validator.py` checks each layout against the actual cells: header labels, subtotal `SUM` ranges against the investor ranges, band labels, block overlaps. If it finds problems, the mapper re-prompts once with them. A layout that still fails makes only the rules that need that sheet return `needs_review`.
 6. **Extract.** `extract.py` reads typed data (`AllocationData`, `ItdData`, ...) from the validated layouts.
@@ -74,7 +92,7 @@ Then add the rule to `rules/capital_event/workbook_rules.json` with `"evaluator"
 - `pytest tests/evals -m eval` runs the live-LLM evals: layout mapping against the golden anchors, role assignment, and hybrid-rule verdicts (`tests/evals/capital_event_cases.yaml`).
 - `CAPITAL_EVENT_SAMPLE_PATH=... pytest tests/evals/test_real_sample_eval.py -m eval` runs a local check against a real workbook.
 
-Verdicts that depend on open calibration questions for the fund accountants are skipped, and the skip message names the question number.
+The rule semantics follow the fund accountants' calibration answers. These are summarised in the "Phase 1 outcome" section of the project plan and reflected in the rule descriptions in `rules/capital_event/workbook_rules.json`. The rules that need the fund's terms (`CE-ALLOC-FEE-TIERS`, `CE-ALLOC-COMPONENT-PARTICIPATION`) are parked in `rules/capital_event/deferred/` with `requires_documents: ["fund_terms"]`.
 
 ## Adding a document type
 

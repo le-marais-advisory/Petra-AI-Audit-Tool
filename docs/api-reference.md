@@ -17,6 +17,7 @@ Synchronous document validation. Blocks until analysis is complete.
 | `file` | file | Yes | Document to validate (`pdf` is accepted as a deprecated alias) |
 | `document_type` | string | No | Document type id from `GET /document-types` (default `financial_statements`) |
 | `options_json` | string | No | JSON object of options for the document type, e.g. `{"event_type": "capital_call"}` (required for `capital_event_workbook`) |
+| `prior_file` | file | Conditional | Workbook from the most recent prior event. Required for `capital_event_workbook` unless `options_json` sets `"first_event": true` |
 | `rules_json` | string | No | JSON string of selected rules. If omitted, the document type's rule pack is used (filtered by event type). |
 
 **Response:** `200 OK` - `DocumentValidationResponse`
@@ -55,8 +56,8 @@ Synchronous document validation. Blocks until analysis is complete.
 |--------|-----------|
 | 400 | Unknown `document_type` |
 | 413 | File exceeds `MAX_UPLOAD_SIZE_MB` (default 50 MB) |
-| 415 | The file's format (detected from its bytes) is not accepted by the document type, e.g. a `.xls` or a PDF sent as a workbook |
-| 422 | `options_json` is invalid or misses a required option (e.g. `event_type`), or no file was uploaded |
+| 415 | The file's format (detected from its bytes) is not accepted by the document type, e.g. a `.xls` or a PDF sent as a workbook. Also returned when `prior_file` is not an accepted format |
+| 422 | `options_json` is invalid or misses a required option (e.g. `event_type`), or no file was uploaded. Also returned when `prior_file` is missing (and `first_event` is not set), is sent together with `first_event`, or is sent for a type with no prior document |
 
 ### POST /validations/jobs
 
@@ -161,9 +162,16 @@ List the supported document types. The user picks one before uploading.
       "options_schema": {
         "type": "object",
         "properties": {
-          "event_type": {"type": "string", "enum": ["capital_call", "distribution", "net_event"]}
+          "event_type": {"type": "string", "enum": ["capital_call", "distribution", "net_event"]},
+          "first_event": {"type": "boolean", "title": "This is the fund's first capital event (no prior workbook)"}
         },
         "required": ["event_type"]
+      },
+      "prior_document": {
+        "label": "Prior event workbook",
+        "description": "The workbook of the most recent prior capital event, used to check that history and the roll-forward carried over and that plugs are allocated consistently.",
+        "accepted_formats": ["xlsx", "xlsm"],
+        "waived_by_option": "first_event"
       }
     }
   ]

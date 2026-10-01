@@ -85,8 +85,8 @@
       "name": "Per-LP Pro-Rata Parity (No Concentrated Plug)",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Each LP's allocation must be within $2 of its pure commitment-pro-rata share per component; larger residuals indicate a concentrated plug, a dropped investor, or a fat-finger error.",
-      "acceptance_criteria": "No investor deviates from its pure pro-rata share by more than $2.00 on any component.",
+      "description": "On pro-rata components, each LP's allocation must be within $2 of its pure pro-rata share. A component is pro-rata when its per-LP cells are driver x % formulas; components pulled from another tab (e.g. management fees from the fee tab) or set per investor are not checked.",
+      "acceptance_criteria": "On every pro-rata component, no investor deviates from its pure pro-rata share (commitment basis for calls, contributed-capital basis for distributions) by more than $2.00.",
       "severity": "critical",
       "group": "ce_allocation",
       "section": "Allocation",
@@ -105,8 +105,8 @@
       "name": "Residual Plug Discipline",
       "analysis_type": "text",
       "scope": "page",
-      "description": "The rounding residual lands on exactly one deterministic, eligible LP per vehicle and component, and is small enough to be rounding.",
-      "acceptance_criteria": "At most one plug per vehicle/component, on the largest eligible (non-affiliate, fee-paying) LP, within the rounding ceiling.",
+      "description": "The rounding residual may sit on one LP or be spread across several, as the client prefers, but only on eligible LPs (never the GP, an affiliate or a fee-exempt investor), only on the largest eligible LPs, and only as much as rounding explains.",
+      "acceptance_criteria": "Per vehicle and component: total plug magnitude <= max($0.50, number of LPs x $0.01); every plugged investor is eligible and among the N largest eligible LPs, where N is the number of plugs; no plug on an inactive component.",
       "severity": "critical",
       "group": "ce_allocation",
       "section": "Allocation",
@@ -141,55 +141,13 @@
       "evaluator": "deterministic"
     },
     {
-      "id": "CE-ALLOC-FEE-TIERS",
-      "name": "Management Fee Rate vs. Tier Header",
-      "analysis_type": "text",
-      "scope": "page",
-      "query": "This rule applies ONLY to the Allocation sheet. If this sheet is not the Allocation sheet, return not_applicable. If the sheet has no management-fee rate column, return not_applicable.\n\nInvestors are grouped under tier-header rows such as 'Non-Affiliate Commitment 2.0% Mgmt Fee:', 'Non-Affiliate Commitment 1.75% Mgmt Fee:', 'Affiliate Commitments:'. An investor belongs to the tier above it until the next tier header or subtotal row. For each investor, compare its inline 'Mgmt Fee Rate' with the rate named in its tier header. Affiliate rows and the GP / carry block (which shows 'Carried Interest Rate' instead of 'Mgmt Fee Rate') must carry a 0% management-fee rate.\n\nPass criteria: Every investor's inline rate equals its tier-header rate, and affiliate / GP rows carry 0%.\n\nFail criteria: An affiliate or GP row carries a non-zero management-fee rate, or an investor sits under a tier header whose rate contradicts its inline rate with no annotation explaining the difference.\n\nneeds_review when an inline rate differs from its tier header and a side-letter override could explain it (the inline rate is the source of truth, the header is the cross-check).",
-      "description": "Each investor's inline management-fee rate agrees with its tier-header group; affiliates and GP members pay no management fee.",
-      "acceptance_criteria": "Inline rates match tier headers (or are flagged as possible side-letter overrides); affiliate/GP rates are 0%.",
-      "severity": "major",
-      "group": "ce_allocation",
-      "section": "Allocation",
-      "bypassable": true,
-      "document_types": [
-        "capital_event_workbook"
-      ],
-      "event_types": null,
-      "required_roles": [
-        "allocation"
-      ],
-      "evaluator": "hybrid"
-    },
-    {
-      "id": "CE-ALLOC-COMPONENT-PARTICIPATION",
-      "name": "Component Participation Rules",
-      "analysis_type": "text",
-      "scope": "page",
-      "query": "This rule applies ONLY to the Allocation sheet. If this sheet is not the Allocation sheet, return not_applicable.\n\nCheck who carries an amount in each active component column against the default participation rules: management fees - LPs only (GP / affiliate rows at $0); organizational expenses - LPs only (GP excluded); investment / investment reserves - LPs AND GP, pari passu by commitment; return of capital - only investors who have contributed capital; catch-up - GP only; carry distribution - GP receives its carried-interest share, LPs the remainder. An LP at $0 on a component where its peers participate is an exclusion.\n\nPass criteria: Participation in every active component follows the default rules, or each deviation is explained by a visible annotation (e.g. a side-letter exclusion note or a fund-specific participation override).\n\nFail criteria: The GP / an affiliate is charged a management fee; the GP is missing from an investment component that other investors fund pari passu; or catch-up is spread across LPs.\n\nneeds_review when an individual LP is at $0 on a component with no visible explanation (a side-letter excluded_components term may apply) or when a component's type cannot be determined from its header.",
-      "description": "Checks that each component is borne by the right investor pool (e.g. no mgmt fee on GP, GP included in investment calls pari passu).",
-      "acceptance_criteria": "Component participation matches the default rules or is explicitly annotated.",
-      "severity": "major",
-      "group": "ce_allocation",
-      "section": "Allocation",
-      "bypassable": true,
-      "document_types": [
-        "capital_event_workbook"
-      ],
-      "event_types": null,
-      "required_roles": [
-        "allocation"
-      ],
-      "evaluator": "hybrid"
-    },
-    {
       "id": "CE-ALLOC-STALE-COMPONENTS",
       "name": "No Stale Prior-Event Components",
       "analysis_type": "text",
       "scope": "page",
-      "query": "This rule applies ONLY to the Allocation sheet. If this sheet is not the Allocation sheet, return not_applicable.\n\nIdentify the components that apply to the current event (non-zero fund-level drivers, and the component list in the event header if shown). For every component column that does NOT apply to this event, confirm the fund-level driver, every vehicle driver, every per-LP cell and every total for that column is zero or blank, and that the column header does not still carry a prior event's label (an unused component may be relabelled, e.g. '(not used <event label>)').\n\nPass criteria: Every inactive component is zeroed end-to-end (drivers, per-LP cells, totals) and no header or amount from a prior event remains.\n\nFail criteria: Any inactive component still carries a non-zero driver, per-LP amount, or total, or a column header still names a prior event (stale values bleed into the Summary and the notices).\n\nneeds_review when it cannot be determined which components belong to the current event.",
+      "query": "Using the COMPUTED FACTS (active and inactive components, with their drivers, totals, non-zero cell counts, whether a header names another event, and, when the prior event's workbook is supplied, which components were active then), check that components from earlier events do not leak into this one. An inactive component may keep an old label, e.g. a distribution column still headed 'Distribution #3' during a capital call; leftover labels only matter on a column that is actually used.\n\nPass criteria: Every inactive component is zero end-to-end (driver, per-LP cells, totals), and no active component's header names a prior event.\n\nFail criteria: An inactive component still carries a non-zero driver, per-LP amount or total (stale values bleed into the Summary and the notices), or an active component is still headed with a prior event's label.\n\nneeds_review when it cannot be determined which components belong to the current event.",
       "description": "Components from a prior call that do not apply to this event must be zeroed across drivers, per-LP cells and totals.",
-      "acceptance_criteria": "All inactive components are zero/blank end-to-end with no prior-event labels.",
+      "acceptance_criteria": "Inactive components are all zero; active components carry no prior-event label (labels on unused columns are fine).",
       "severity": "major",
       "group": "ce_allocation",
       "section": "Allocation",
@@ -229,8 +187,8 @@
       "name": "Allocation Rounding Basis",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Per-LP allocations are rounded to cents (or uniformly to whole dollars when that is the fund's basis); no unrounded values.",
-      "acceptance_criteria": "At most two decimals on all amounts, with a single consistent rounding basis.",
+      "description": "Per-LP allocations carry at most two decimals, and each component keeps one rounding basis. Components may differ, e.g. fees in whole dollars and investment in cents.",
+      "acceptance_criteria": "No amount carries more than two decimals; within each component, cells are not rounded partly to whole dollars and partly to cents.",
       "severity": "major",
       "group": "rounding_signage_formatting",
       "section": "Allocation",
@@ -309,8 +267,8 @@
       "name": "Prior ITD Event Blocks Are Frozen",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Prior event columns on the ITD sheet must hold frozen values; only the current event block may link to the Allocation sheet, otherwise history is corrupted.",
-      "acceptance_criteria": "Prior ITD event blocks contain no live Allocation! references.",
+      "description": "Prior event columns on the ITD sheet must hold frozen values. A live formula into the Allocation sheet that currently reads a non-zero amount fails; one that reads $0 is a warning, since it would corrupt history only once the amount changes.",
+      "acceptance_criteria": "No prior ITD event block links live to the Allocation sheet with a non-zero value; $0 live links are flagged for review.",
       "severity": "critical",
       "group": "ce_itd",
       "section": "ITD Capital Activity",
@@ -329,9 +287,9 @@
       "name": "Current Event Block Present and Classified",
       "analysis_type": "text",
       "scope": "page",
-      "query": "This rule applies ONLY to the ITD / Inception-To-Date sheet. If this sheet is not the ITD sheet, return not_applicable.\n\nThe top of the ITD sheet carries a classification band - rows labelled e.g. 'Investment Contributions', 'Cost Contributions', 'Recallable Distributions', 'Non-Recallable Distributions', 'Tax Withholding' - with 'X' markers across the event columns. Confirm: (1) a column block for the current event exists, appended after the last prior event block (not overwriting one); (2) the event label is written once, at the block's first column, and is unique among the event headers; (3) every column in the block carries an 'X' in exactly one classification row, and that row is consistent with the column's component (Investment -> Investment Contributions; organizational costs / partnership expenses / GP expenses / placement fees / management fees -> Cost Contributions; recallable vs non-recallable distributions accordingly); (4) the block's per-LP cells are populated for every participating investor.\n\nPass criteria: The current event block exists, is uniquely labelled, fully classified and populated.\n\nFail criteria: No block for the current event (the event never landed in the ITD roll), a duplicated or missing event label, a column with no 'X' or with an 'X' in a category inconsistent with its component, or a block that overwrote a prior event.\n\nneeds_review when a column's component cannot be determined from its sub-header, or a column carries more than one 'X'.",
+      "query": "Using the COMPUTED FACTS for the current ITD event block (its columns, their component types, their classification X marks on the primary rows, any overlay marks, and which Allocation investors are missing from each column), check the current event block. The primary classification rows are Investment Contributions, Cost Contributions, Recallable Distributions, Non-Recallable Distributions and Tax Withholding. Other marked rows (e.g. 'Mgmt Fees', 'Late Interest') are overlays and may mark columns in addition to their primary row. 'Total' columns carry no mark.\n\nConfirm: (1) a block for the current event exists, appended after the last prior block; (2) its label is written once and is unique; (3) every component column carries an X in exactly one primary row, consistent with its component (Investment -> Investment Contributions; expenses and management fees -> Cost Contributions; distributions -> Recallable or Non-Recallable), overlays allowed and Total columns excluded; (4) every investor with an Allocation amount for a component is populated in the matching column. Participation differs by component (e.g. affiliates pay no management fee), so a column is fully populated when no investor is listed as missing from it.\n\nPass criteria: The block exists, is uniquely labelled, every component column has exactly one consistent primary X, and no investor is missing.\n\nFail criteria: No current block, a duplicated or missing label, a component column with no primary X or more than one, an X inconsistent with the component, or an investor missing from a column.\n\nneeds_review when a column's component cannot be determined from its sub-header.",
       "description": "The current event is appended to the ITD sheet as a new, uniquely labelled block with correct classification markers.",
-      "acceptance_criteria": "A new, uniquely labelled, fully classified and populated event block exists after the prior blocks.",
+      "acceptance_criteria": "Current block appended, uniquely labelled, one consistent primary X per component column (overlays allowed, totals excluded), fully populated.",
       "severity": "critical",
       "group": "ce_itd",
       "section": "ITD Capital Activity",
@@ -370,8 +328,8 @@
       "name": "Event Numbering and Chronology",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Event numbers are sequential per event type (current = prior max + 1) and event dates run forward in time.",
-      "acceptance_criteria": "Sequential, unique event numbers per type; valid, non-decreasing event dates.",
+      "description": "Event numbers run sequentially per event type and event dates (the due dates shown in the headers) run forward. Transfer blocks do not take part in the numbering. A net event continues the call counter, the distribution counter, or both, depending on the client.",
+      "acceptance_criteria": "Calls and distributions each number +1 with no gap or repeat; each net event continues at least one counter; header dates never go backwards; transfers are ignored.",
       "severity": "major",
       "group": "dates",
       "section": "ITD Capital Activity",
@@ -387,11 +345,11 @@
     },
     {
       "id": "CE-SUM-CHECKS-ZERO",
-      "name": "Summary Check Cells Equal Zero",
+      "name": "Check Cells Equal Zero",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Every control / check cell on the Summary tab must read exactly 0.00.",
-      "acceptance_criteria": "All Summary check cells equal 0.00.",
+      "description": "Every control / check cell must read exactly 0.00: the Summary check cells and the check rows or columns on the Allocation, ITD, fee and Merge tabs.",
+      "acceptance_criteria": "All check cells on every processed sheet equal 0.00, including sub-cent differences.",
       "severity": "critical",
       "group": "ce_summary",
       "section": "Summary",
@@ -491,8 +449,8 @@
       "name": "No Formula Error Values",
       "analysis_type": "text",
       "scope": "page",
-      "description": "No inherited #REF!/#NAME?/#VALUE!/#DIV/0!/#N/A errors or '####' overflows anywhere in the workbook.",
-      "acceptance_criteria": "No formula error values or '####' overflow cells.",
+      "description": "No #REF!/#NAME?/#VALUE!/#DIV/0!/#N/A errors or '####' overflows on the processed sheets or on any sheet their formulas reference (hidden or not). Unreferenced hidden sheets and the rows of investors no longer active (no commitment, nothing in this event) are ignored.",
+      "acceptance_criteria": "No error values on the processed and referenced sheets, outside inactive investors' rows.",
       "severity": "major",
       "group": "ce_structure",
       "section": "All",
@@ -533,9 +491,9 @@
       "name": "Merge Tab per Vehicle with Document-System Keys",
       "analysis_type": "text",
       "scope": "document",
-      "query": "List the vehicles on the Allocation sheet (one per vehicle block) and the workbook's Merge tabs. Each vehicle must have its own Merge tab carrying, per investor, a Fund ID column and an Investor ID column, and preferably a 'File Name' column. Where a 'File Name' column is present, each file name must follow the document-system ingest format '{Fund ID}_{Investor ID}_{Fund Legal Name}_{Event Label}', using that row's own Fund ID and Investor ID and the CURRENT event's label (not a prior event's label).\n\nPass criteria: Every vehicle has a Merge tab with Fund ID and Investor ID for every participating investor, and every File Name (when present) follows the format with the current event label.\n\nFail criteria: A vehicle has no Merge tab; an investor row is missing its Fund ID or Investor ID; or a File Name carries another investor's IDs or a prior event's label (the notice would be mis-tagged).\n\nneeds_review when a Merge tab has no 'File Name' column (file names will be built from Fund ID + Investor ID) or a Merge tab cannot be matched to a vehicle by name.",
+      "query": "List the vehicles on the Allocation sheet and the workbook's Merge tabs (identified by their headers, whatever the tab is called). Each vehicle needs a Merge tab carrying, per investor, a Fund ID and an Investor ID column; 'DX Fund ID' and 'DX Investor ID' are the same IDs under another name. Where a File Name column is present, each file name must start with that row's own Fund ID and Investor ID ('{Fund ID}_{Investor ID}_...'), include the fund's legal name, and refer to the CURRENT event - by its event label or by its due date, e.g. via the summary title 'Capital Call - due June 10, 2026'. Separators after the IDs may vary.\n\nPass criteria: Every vehicle has a Merge tab with Fund ID and Investor ID for every participating investor, and every file name starts with the row's own IDs and refers to the current event.\n\nFail criteria: A vehicle has no Merge tab; an investor row lacks its IDs; or a file name carries another investor's IDs or refers to a prior event.\n\nneeds_review when a Merge tab has no File Name column or cannot be matched to a vehicle.",
       "description": "Each vehicle has a Merge tab with Fund ID / Investor ID (and File Name in the doc-system format using the current event label).",
-      "acceptance_criteria": "Merge tab per vehicle, complete IDs, and correctly formatted current-event file names.",
+      "acceptance_criteria": "Merge tab per vehicle with complete IDs; file names start with the row's own IDs and refer to the current event.",
       "severity": "major",
       "group": "ce_identity",
       "bypassable": false,
@@ -554,9 +512,9 @@
       "name": "No Template Placeholders Left",
       "analysis_type": "text",
       "scope": "document",
-      "query": "Scan every sheet name and every cell for unresolved template placeholders: tab names such as '{Fund Name}', '{Bank Name}', '{GP Name}' (any sheet name wrapped in curly braces), and cell text such as '{{TOKEN}}', '{Fund Name}', '[LP Name]', '[XXX.XX]', 'TBD', 'XXX' used as a stand-in for a real value.\n\nPass criteria: No sheet name or cell contains an unresolved placeholder.\n\nFail criteria: Any placeholder tab name or placeholder cell value remains. Report each occurrence with sheet and cell.\n\nneeds_review when bracketed text could be a legitimate label rather than a placeholder.",
+      "query": "Using the COMPUTED FACTS (placeholder candidates and TBD cells, scanned on the processed sheets and every sheet they reference), check for unresolved template placeholders: sheet names wrapped in curly braces such as '{Fund Name}', and cell text such as '{{TOKEN}}', '{Fund Name}', '[LP Name]', '[XXX.XX]' or 'XXX' standing in for a real value. 'TBD' is a placeholder only when it stands in for a value the event uses (an amount, name, ID or date that event formulas reference). A 'TBD' on a status or date field that no event formula references, such as a wire date while cash has not moved yet, is legitimately pending.\n\nPass criteria: No placeholder sheet name or cell remains, and every TBD is a legitimately pending status.\n\nFail criteria: Any placeholder tab name or placeholder cell, or a TBD that event formulas reference. Report each occurrence with sheet and cell.\n\nneeds_review when bracketed text could be a legitimate label rather than a placeholder.",
       "description": "No placeholder tabs ({Fund Name}, {Bank Name}, {GP Name}) or placeholder cell tokens survive in the delivered workbook.",
-      "acceptance_criteria": "No unresolved placeholder tab names or cell tokens.",
+      "acceptance_criteria": "No unresolved placeholders; TBD only on pending status/date fields that no event formula uses.",
       "severity": "major",
       "group": "ce_structure",
       "bypassable": false,
@@ -639,8 +597,8 @@
         "DX Investor Data",
         "Mgmt Fee Calc"
       ],
-      "description": "Every participating investor's ID and legal name tie exactly across Allocation, Merge (system of record), DX Investor Data and Mgmt Fee Calc.",
-      "acceptance_criteria": "Exact ID + name match across all four tabs for every participating investor.",
+      "description": "Every participating investor's legal name ties exactly across the Allocation, Merge, DX Investor Data and fee tabs, and its Merge Investor ID / Fund ID (the DX IDs) matches the DX Investor Data tab. Investor IDs usually exist only on the Merge tab, so the other tabs are matched by exact name.",
+      "acceptance_criteria": "Exact name match on every tab; Merge Investor and Fund IDs found on the DX Investor Data tab under the same name.",
       "severity": "critical",
       "group": "ce_identity",
       "bypassable": false,
@@ -664,8 +622,8 @@
         "Allocation",
         "Mgmt Fee Calc"
       ],
-      "description": "Per-LP management fees on the Allocation sheet tie to the current-period fee tab, the fee tab recomputes (rate x basis / periods), and totals tie to the fee driver.",
-      "acceptance_criteria": "Allocation fees = fee tab fees = recomputed fees; fee tab total = fee driver; current period.",
+      "description": "The fee tab is the source of the management fees: each LP's fee on the Allocation sheet must equal its fee on the fee tab, the fee tab total must equal the Allocation fee driver, and the fee tab must be for the current period. The fee calculation itself (rate x basis, exempt investors) is checked against the fund terms (deferred CE-REF-MGMT-FEE-MATH).",
+      "acceptance_criteria": "Allocation fees = fee tab fees per LP; fee tab total = fee driver; the fee tab period matches the Allocation fee component.",
       "severity": "critical",
       "group": "cross_tie_outs",
       "bypassable": false,
@@ -760,9 +718,9 @@
       "name": "Event Label and Date Consistency Across Tabs",
       "analysis_type": "text",
       "scope": "document",
-      "query": "Extract every reference to the CURRENT event across all sheets: the event label / number (e.g. 'Capital Call #3'), the notice date and the due / payment date - on the Allocation header, the ITD current block header, the Summary, the Merge tab file names, and any fee tab period label. Normalize dates to canonical calendar dates (accept 'MMMM D, YYYY', 'YYYY-MM-DD', 'M/D/YYYY', 'M.D.YY', 'MM-DD-YY'); compare labels case-insensitively ignoring punctuation.\n\nPass criteria: Every reference to the current event resolves to the same event label / number, the same notice date and the same due / payment date.\n\nFail criteria: Any sheet references a different event number, label or date for the current event (stale prior-event metadata).\n\nneeds_review when a reference is ambiguous and cannot be normalized to a specific date or event.",
+      "query": "Using the COMPUTED FACTS (every reference to the current event across the processed sheets: event labels, notice dates, due dates, ITD header dates, summary title, Merge letter and due dates and file names, and the fee periods with an explicit fee_period_mismatch flag), check that every tab describes the same current event. ITD event headers always show the due date, the date the items are recorded for accounting purposes, so compare them with the due date, not the notice date.\n\nPass criteria: Every reference resolves to the same event number, the same notice date and the same due date, and the fee periods agree (fee_period_mismatch is false).\n\nFail criteria: Any tab references a different event number or date for the current event, or the fee tab is for a different period than the Allocation fee component (stale prior-event metadata). Do not explain a mismatch away (e.g. as a catch-up); report it.\n\nneeds_review when a reference cannot be normalized to a specific date or event.",
       "description": "The current event's label, number, notice date and due date are identical on every tab.",
-      "acceptance_criteria": "One event label/number and one set of dates across all tabs.",
+      "acceptance_criteria": "One event number, notice date, due date and fee period across all tabs.",
       "severity": "major",
       "group": "dates",
       "bypassable": false,
@@ -847,6 +805,83 @@
       "required_roles": [
         "allocation",
         "itd"
+      ],
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "CE-ALLOC-REFERENCE-INTEGRITY",
+      "name": "Allocation Pulls Correctly From Source Tabs",
+      "analysis_type": "text",
+      "scope": "document",
+      "query": "The Allocation sheet pulls figures from other tabs - typically the management fee tab (the source of the fees), an investment / deal tracker, holiday calendars or summary inputs. Using the COMPUTED FACTS (every reference from the Allocation sheet to another tab, with the target cell, its value, the labels on the target row, the header of the target column, the current event label and the current fee period, plus any period_mismatches), check that each reference points at the current event's figures: the current period's fee column, the row of the current deal or event, and the total rather than a subtotal or a prior-period cell. Only check that the figures are pulled correctly; the fee calculation itself is checked against the fund terms.\n\nPass criteria: Every reference points at the current event's figures and period_mismatches is empty.\n\nFail criteria: A reference points at a prior period, a prior deal or event, another investor's row, a subtotal instead of a total, or a sheet that does not exist. Name the Allocation cell and the target.\n\nneeds_review when the target's labels do not show which event or period it belongs to.",
+      "description": "Every tab the Allocation sheet references is pulled correctly: the right period, the right deal or event row, and totals rather than subtotals.",
+      "acceptance_criteria": "All Allocation references to other tabs point at the current event's figures.",
+      "severity": "major",
+      "group": "cross_tie_outs",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "hybrid"
+    },
+    {
+      "id": "CE-XEV-HISTORY-UNCHANGED",
+      "name": "Prior Events Carried Over Unchanged",
+      "analysis_type": "text",
+      "scope": "document",
+      "description": "Every event block in the prior event's ITD sheet - including what was then the current event - reappears in the current workbook with the same values for every investor. Needs the prior event's workbook; not applicable to the fund's first capital event.",
+      "acceptance_criteria": "All prior ITD event blocks are present and unchanged (within $0.005), and the prior current event is now a prior block.",
+      "severity": "critical",
+      "group": "ce_cross_event",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "itd"
+      ],
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "CE-XEV-ROLL-FORWARD",
+      "name": "Roll-Forward Continues From the Prior Event",
+      "analysis_type": "text",
+      "scope": "document",
+      "description": "Each investor's Prior Capital Contributions on the current Allocation sheet equal its contributions to date in the prior event's workbook (which include that event). Commitment changes since the prior event are flagged for review (transfers, new closes). Needs the prior event's workbook; not applicable to the fund's first capital event.",
+      "acceptance_criteria": "Prior contributions equal the prior workbook's contributions to date within $0.01 for every investor.",
+      "severity": "critical",
+      "group": "ce_cross_event",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "CE-XEV-PLUG-CONSISTENCY",
+      "name": "Plug Pattern Consistent With the Prior Event",
+      "analysis_type": "text",
+      "scope": "document",
+      "description": "Clients differ in how they place the rounding residual (one investor, or spread across the largest), but each fund should do it the same way every event. The plug pattern per component (single or spread, and which investors) must match the prior event's workbook. Needs the prior event's workbook; not applicable to the fund's first capital event.",
+      "acceptance_criteria": "Per component, the same plug style as the prior event; a move to other investors is flagged for review.",
+      "severity": "major",
+      "group": "ce_cross_event",
+      "bypassable": true,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
       ],
       "evaluator": "deterministic"
     }

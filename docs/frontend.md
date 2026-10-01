@@ -150,11 +150,13 @@ Output goes to `frontend/dist/`.
 The upload panel first asks for the **document type**, loaded from `GET /document-types`, and any options the type requires, such as the event type for capital-event workbooks. The choice then drives several things:
 - the file input's accepted formats
 - the rule pack, loaded from `GET /rules?document_type=...&event_type=...`
-- the upload request, which sends the `file`, `document_type` and `options_json` form fields
+- the upload request, which sends the `file`, `document_type` and `options_json` form fields, plus `prior_file` when the type takes a prior document
 
 A file whose format doesn't match the type is rejected with a visible message.
 
+Boolean options render as checkboxes. A type with a `prior_document` (the capital-event workbook) doesn't upload on drop. The user stages the current workbook, picks the prior-event workbook (or ticks the first-capital-event box, which hides that picker), and then clicks **Run validation**. Changing the document type clears the staged files.
+
 Workbook runs change what the tabs show:
-- The source tab lists the processed sheets and their roles, since there is no inline preview.
+- The source tab lists the processed sheets and their roles, since there is no inline preview. Sheets that are scanned only because formulas reference them show as "Referenced by formulas".
 - The visual tab is hidden.
 - Result locators read `Sheet "Allocation"`, and citations read `Allocation!H7`.

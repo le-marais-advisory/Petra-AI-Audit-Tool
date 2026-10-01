@@ -4,11 +4,10 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-from src.pipeline.workbook.cells import CENT, PENNY, is_text, to_date, to_money
+from src.pipeline.workbook.cells import CENT, PENNY, to_date, to_money
 from src.pipeline.workbook.checks._common import CheckContext, Outcome, check, differs, event_number, mag, money
 
 ZERO = Decimal("0")
-_CALL_FAMILY = {"capital_call", "net_event"}
 
 
 @check("CE-RF-FOOTING", needs=("allocation",))
@@ -129,9 +128,15 @@ def itd_prior_frozen(ctx: CheckContext, out: Outcome) -> str:
                 if not formula:
                     continue
                 live = any(_references(formula, t) for t in targets) if targets else "!" in formula
-                if live:
-                    out.fail(f"{column}{inv.row} ({inv.name}) in prior block '{block.label}' is a live formula "
-                             f"{formula[:60]} into the Allocation sheet.", sheet, f"{column}{inv.row}")
+                if not live:
+                    continue
+                message = (f"{column}{inv.row} ({inv.name}) in prior block '{block.label}' is a live formula "
+                           f"{formula[:60]} into the Allocation sheet")
+                if inv.values.get(column, ZERO):
+                    out.fail(message + ".", sheet, f"{column}{inv.row}")
+                else:
+                    # FA calibration: a live link that currently reads $0 is a warning, not a failure.
+                    out.review(message + " (currently $0).", sheet, f"{column}{inv.row}")
     return "Prior ITD event blocks hold frozen values; only the current block links to the Allocation sheet."
 
 
@@ -186,17 +191,26 @@ def itd_cumulative(ctx: CheckContext, out: Outcome) -> str:
 _DATE_IN_LABEL = re.compile(r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})")
 
 
+def _families(block) -> list[str]:
+    """Numbering families an event block may continue, in order of preference."""
+    if block.event_type == "capital_call":
+        return ["call"]
+    if block.event_type == "distribution":
+        return ["distribution"]
+    return ["distribution", "call"] if "distribution" in block.label.lower() else ["call", "distribution"]
+
+
 @check("CE-ITD-EVENT-SEQUENCE", needs=("itd",))
 def itd_event_sequence(ctx: CheckContext, out: Outcome) -> str:
     itd = ctx.data.itd
     sheet = itd.sheet
     header_row = itd.layout.event_header_row
-    last_by_family: dict[str, int] = {}
-    seen: dict[str, set[int]] = {}
+    last_by_family: dict[str, int | None] = {"call": None, "distribution": None}
+    seen: dict[str, set[int]] = {"call": set(), "distribution": set()}
     last_date = None
     for block in itd.event_blocks:
         if block.event_type in ("transfer", "other"):
-            continue
+            continue  # FA calibration: transfers do not touch the numbering
         cell = f"{block.first_column}{header_row}"
         number = event_number(block.label) or block.number
         match = _DATE_IN_LABEL.search(block.label)
@@ -204,14 +218,31 @@ def itd_event_sequence(ctx: CheckContext, out: Outcome) -> str:
         if number is None or (match and day is None):
             out.review(f"Event header '{block.label}' has no machine-readable number or date.", sheet, cell)
             continue
-        family = "call" if block.event_type in _CALL_FAMILY else "distribution"
-        previous = last_by_family.get(family)
-        if number in seen.setdefault(family, set()):
-            out.fail(f"'{block.label}' repeats event number {number}.", sheet, cell)
-        elif previous is not None and number != previous + 1:
-            out.fail(f"'{block.label}' follows #{previous} of the same type; expected #{previous + 1}.", sheet, cell)
-        seen[family].add(number)
-        last_by_family[family] = number
+        families = _families(block)
+        if block.event_type == "net_event":
+            # FA calibration: a net event continues the call counter, the distribution counter,
+            # or both, depending on the client.
+            matched = [f for f in families if last_by_family[f] is not None and number == last_by_family[f] + 1]
+            if not matched:
+                fresh = [f for f in families if last_by_family[f] is None]
+                matched = fresh[:1]
+            if not matched:
+                expected = " or ".join(f"#{last_by_family[f] + 1}" for f in families if last_by_family[f] is not None)
+                out.fail(f"'{block.label}' continues neither the call nor the distribution numbering "
+                         f"(expected {expected}).", sheet, cell)
+                matched = []
+        else:
+            family = families[0]
+            previous = last_by_family[family]
+            if number in seen[family]:
+                out.fail(f"'{block.label}' repeats event number {number}.", sheet, cell)
+            elif previous is not None and number != previous + 1:
+                out.fail(f"'{block.label}' follows #{previous} of the same type; expected #{previous + 1}.", sheet,
+                         cell)
+            matched = [family]
+        for family in matched:
+            seen[family].add(number)
+            last_by_family[family] = number
         if day is not None:
             if last_date is not None and day < last_date:
                 out.fail(f"'{block.label}' is dated before the event to its left ({last_date.isoformat()}).", sheet,

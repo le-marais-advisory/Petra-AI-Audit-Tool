@@ -69,7 +69,7 @@ Examples:
 | `event_types` | string[] \| null | No | Capital-event workbooks: the events the rule applies to (`null` = all) |
 | `required_roles` | string[] \| null | No | Workbook sheet roles the rule reads; if one is missing, the rule returns `needs_review` |
 | `evaluator` | `"llm"` \| `"deterministic"` \| `"hybrid"` | No | Workbooks: evaluated in code, or by the LLM with computed facts (default `"llm"`) |
-| `requires_documents` | string[] \| null | No | Reference inputs the rule needs (e.g. `fund_terms`); not yet supported |
+| `requires_documents` | string[] \| null | No | Reference inputs the rule needs (e.g. `fund_terms`); not yet supported, so such rules are kept in `rules/capital_event/deferred/` |
 
 ## Verdicts
 

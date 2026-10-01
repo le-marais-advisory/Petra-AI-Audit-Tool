@@ -36,6 +36,8 @@ class ValidationService:
         document_type: str = "financial_statements",
         options: dict | None = None,
         pdf_path: str | None = None,
+        prior_file_path: str | None = None,
+        prior_source_filename: str | None = None,
     ) -> dict:
         file_path = file_path or pdf_path
         if file_path is None:
@@ -46,4 +48,5 @@ class ValidationService:
         if document_type == "financial_statements":
             return self.pipeline.run(pdf_path=file_path, source_filename=source_filename, rules=selected_rules)
         pipeline = spec.pipeline_factory()
-        return pipeline.run(file_path, rules=selected_rules, options=options, source_filename=source_filename)
+        return pipeline.run(file_path, rules=selected_rules, options=options, source_filename=source_filename,
+                            prior_file_path=prior_file_path, prior_source_filename=prior_source_filename)

@@ -19,7 +19,8 @@ from tests.fixtures.generate_capital_event_fixtures import (
 
 DOC_TYPE = "capital_event_workbook"
 V1_IDS = set(DETERMINISTIC_RULE_IDS) | set(HYBRID_RULE_IDS)
-DEFERRED = {"CE-FMT-VISUAL-INTEGRITY"}
+# Deferred: the vision rule, and rules that need the fund terms (FA calibration).
+DEFERRED = {"CE-FMT-VISUAL-INTEGRITY", "CE-ALLOC-FEE-TIERS", "CE-ALLOC-COMPONENT-PARTICIPATION"}
 
 # Rules that only make sense for some event types.
 EXCLUDED_BY_EVENT = {
@@ -125,3 +126,12 @@ def test_custom_payload_is_still_validated_and_filtered():
     payload = '{"rules": [{"id": "CE-ALLOC-REFOOT", "name": "x", "document_types": ["capital_event_workbook"], "evaluator": "deterministic", "required_roles": ["allocation"]}, {"id": "NUM-CROSSFOOT", "name": "y", "query": "q"}]}'
     ids = [r["id"] for r in RuleService().load_rules(rules_json_str=payload, document_type=DOC_TYPE)]
     assert ids == ["CE-ALLOC-REFOOT"]
+
+
+def test_deferred_fund_terms_rules_are_parked_with_their_requirement():
+    import json
+    from pathlib import Path
+
+    deferred = {r["id"]: r for r in json.loads(Path("rules/capital_event/deferred/deferred_rules.json").read_text())["rules"]}
+    for rule_id in ("CE-ALLOC-FEE-TIERS", "CE-ALLOC-COMPONENT-PARTICIPATION"):
+        assert "fund_terms" in deferred[rule_id]["requires_documents"]

@@ -55,7 +55,7 @@ Capital-event workbook tests (TDD; written ahead of the implementation in `src/p
 - `tests/test_capital_event_fixtures.py` — generator self-checks (cached values, tie-outs, golden layouts)
 - `tests/test_document_types.py`, `tests/test_capital_event_rule_pack.py` — document-type registry, upload API, rule pack filtering
 - `tests/test_workbook_{loader,layout,extract,checks,facts,pipeline}.py` — loader/inventory/roles/skeleton, layout validator, typed extraction, deterministic checks, hybrid facts, offline pipeline
-- Verdicts that depend on pending FA calibration answers are skipped with the calibration item number
+- Fixtures with `with_prior=True` also generate the prior-event workbook used by the cross-event (`CE-XEV-*`) rules
 
 ### Evals (live LLM)
 
@@ -173,7 +173,8 @@ Capital-event workbooks run through `src/pipeline/workbook/pipeline.py`:
 3. Keep only the sheets the user-selected event type needs (`selection.py`, `config/document_types/capital_event.yaml`).
 4. Map each kept sheet's layout with the LLM (`skeleton.py`, `layout_mapper.py`) and validate it against the cells (`layout_validator.py`).
 5. Extract typed data (`extract.py`).
-6. Evaluate rules:
+6. Read the prior-event workbook if one was uploaded (`prior_file`, or the `first_event` option for the first event). Cross-event rules live in `checks/cross_event.py`. Sheets referenced by formulas on the kept sheets are scanned too (role `reference`).
+7. Evaluate rules:
    - deterministic rules run in `checks/`
    - hybrid rules go to the LLM with a computed-facts block (`facts.py`)
 

@@ -90,14 +90,19 @@ DETERMINISTIC_RULE_IDS = (
     "CE-TIE-ITD-COMMITMENTS",
     "CE-ID-INVESTOR-KEYS",
     "CE-DIST-ROC-LIMIT",
+    # Cross-event rules: compare with the prior event's workbook (FA calibration).
+    "CE-XEV-HISTORY-UNCHANGED",
+    "CE-XEV-ROLL-FORWARD",
+    "CE-XEV-PLUG-CONSISTENCY",
 )
+
+CROSS_EVENT_RULE_IDS = ("CE-XEV-HISTORY-UNCHANGED", "CE-XEV-ROLL-FORWARD", "CE-XEV-PLUG-CONSISTENCY")
 
 HYBRID_RULE_IDS = (
     "CE-WB-SHEETS-PRESENT",
     "CE-WB-MERGE-TABS",
     "CE-WB-NO-PLACEHOLDERS",
-    "CE-ALLOC-FEE-TIERS",
-    "CE-ALLOC-COMPONENT-PARTICIPATION",
+    "CE-ALLOC-REFERENCE-INTEGRITY",
     "CE-ALLOC-STALE-COMPONENTS",
     "CE-ALLOC-SIGNAGE",
     "CE-ITD-EVENT-BLOCK",
@@ -190,11 +195,11 @@ class DefectSpec:
     event_types: tuple[str, ...]
     verdicts: dict[str, str | None]  # overrides applied on top of the clean baseline
     facts: dict[str, dict[str, Any]] = field(default_factory=dict)
-    pending_calibration: int | None = None  # FA calibration item number, when relevant
+    with_prior: bool = False  # build the prior event's workbook alongside (cross-event rules)
 
 
-def _d(name, description, event_types=("capital_call",), verdicts=None, facts=None, pending=None) -> DefectSpec:
-    return DefectSpec(name, description, tuple(event_types), dict(verdicts or {}), dict(facts or {}), pending)
+def _d(name, description, event_types=("capital_call",), verdicts=None, facts=None, with_prior=False) -> DefectSpec:
+    return DefectSpec(name, description, tuple(event_types), dict(verdicts or {}), dict(facts or {}), with_prior)
 
 
 DEFECTS: dict[str, DefectSpec] = {
@@ -216,7 +221,8 @@ DEFECTS: dict[str, DefectSpec] = {
            verdicts={"CE-TIE-ITD-COMMITMENTS": "fail"},
            facts={"CE-ITD-EVENT-BLOCK": {"unclassified_current_columns": 1}}),
         _d("itd_current_value_mismatch", "One current ITD block cell is typed and $10 off the Allocation sheet.",
-           verdicts={"CE-TIE-ITD-ALLOCATION": "fail", "CE-TIE-ITD-COMMITMENTS": "fail"}),
+           verdicts={"CE-TIE-ITD-ALLOCATION": "fail", "CE-TIE-ITD-COMMITMENTS": "fail",
+                     "CE-SUM-CHECKS-ZERO": "fail"}),  # the ITD check row shows the $10
         _d("formula_error", "A #REF! error left on the Allocation sheet.",
            verdicts={"CE-FMT-NO-FORMULA-ERRORS": "fail"}),
         _d("weekend_due_date", "Due date typed as a Saturday instead of the WORKDAY formula.",
@@ -225,13 +231,13 @@ DEFECTS: dict[str, DefectSpec] = {
            verdicts={"CE-DATE-ORDER": "fail"}),
         _d("investor_name_mismatch", "DX Investor Data spells one participating LP differently.",
            verdicts={"CE-ID-INVESTOR-KEYS": "fail"}),
-        _d("fee_tab_value_wrong", "One LP's fee on the fee tab is typed $100 above rate x commitment.",
-           verdicts={"CE-TIE-MGMT-FEE": "fail", "CE-ALLOC-PRO-RATA-PARITY": "fail"}),
+        _d("fee_pulled_from_wrong_row", "One LP's Allocation fee pulls another investor's row from the fee tab.",
+           verdicts={"CE-TIE-MGMT-FEE": "fail", "CE-ALLOC-VEHICLE-TIE": "fail", "CE-ALLOC-GROSS-TIE": "fail",
+                     "CE-SUM-CHECKS-ZERO": "fail"}),
         _d("stale_fee_period", "The fee tab column is still labelled for the prior quarter.",
            verdicts={"CE-TIE-MGMT-FEE": "fail"},
-           facts={"CE-DATE-CONSISTENCY": {"fee_period_mismatch": True}}),
-        _d("affiliate_charged_fee", "The affiliate LP is flagged fee-paying on the fee tab and charged a fee.",
-           verdicts={"CE-TIE-MGMT-FEE": "fail"}),
+           facts={"CE-DATE-CONSISTENCY": {"fee_period_mismatch": True},
+                  "CE-ALLOC-REFERENCE-INTEGRITY": {"period_mismatches": 1}}),
         _d("hidden_populated_row", "A participating LP row on the Allocation sheet is hidden.",
            verdicts={"CE-WB-NO-HIDDEN-DATA": "fail"}),
         _d("normal_view", "The Allocation sheet is saved in Normal view.",
@@ -267,24 +273,30 @@ DEFECTS: dict[str, DefectSpec] = {
         _d("carry_split_wrong", "The GP takes 25% of the carry component although the rate cell says 20%.",
            event_types=("distribution",),
            facts={"CE-DIST-CARRY-SPLIT": {"gp_share_matches_rate": False}}),
-        # --- calibration probes: patterns seen in the reference sample whose verdict
-        # depends on the pending FA answers (plan, rule calibration list).
-        _d("probe_multi_plug_tied_largest", "Two LPs tie for the largest commitment; residual plugs spread over three LPs.",
-           verdicts={"CE-ALLOC-PLUG-DISCIPLINE": None}, pending=1),
-        _d("probe_whole_dollar_fees", "Fees rounded to whole dollars while other components are in cents.",
-           verdicts={"CE-ALLOC-ROUNDING": None}, pending=2),
-        _d("probe_itd_overlay_rows", "ITD band carries overlay rows (Mgmt Fees, Late Interest) marking fee columns twice.",
-           facts={"CE-ITD-EVENT-BLOCK": {"overlay_rows": 2}}, pending=3),
-        _d("probe_transfer_block", "A non-event 'Transfers' block sits between two ITD events.",
-           verdicts={"CE-ITD-EVENT-SEQUENCE": None}, pending=4),
-        _d("probe_inactive_investor_na", "A transferred-out LP row on the Merge tab shows #N/A.",
-           verdicts={"CE-FMT-NO-FORMULA-ERRORS": None}, pending=11),
-        _d("probe_legacy_hidden_errors", "A hidden legacy sheet carries #REF! errors.",
-           verdicts={"CE-FMT-NO-FORMULA-ERRORS": None}, pending=14),
-        _d("probe_gp_zero_live_link", "Prior ITD blocks keep live Allocation links on the $0 GP row.",
-           verdicts={"CE-ITD-PRIOR-FROZEN": None}, pending=10),
-        _d("probe_tbd_placeholder", "A 'TBD' wire date on the portfolio tracker for the current deal.",
-           facts={"CE-WB-NO-PLACEHOLDERS": {"tbd_cells": 1}}, pending=12),
+        _d("zero_live_prior_link", "Prior ITD blocks keep live Allocation links on the $0 GP row.",
+           verdicts={"CE-ITD-PRIOR-FROZEN": "needs_review"}),  # FA: a warning when every value is $0
+        _d("referenced_hidden_sheet_error", "The Allocation references a hidden legacy sheet that carries #REF!.",
+           verdicts={"CE-FMT-NO-FORMULA-ERRORS": "fail"}),
+        _d("stale_label_on_active", "An active component column is still headed with the prior event's label.",
+           facts={"CE-ALLOC-STALE-COMPONENTS": {"active_with_prior_label": 1}}),
+        # --- cross-event defects: built together with the prior event's workbook.
+        _d("prior_block_edited", "A frozen prior-event ITD value was edited after the prior event was issued.",
+           verdicts={"CE-XEV-HISTORY-UNCHANGED": "fail", "CE-XEV-ROLL-FORWARD": "fail"}, with_prior=True),
+        _d("plug_pattern_changed", "Plugs are spread over the top LPs although the prior event used a single plug.",
+           verdicts={"CE-XEV-PLUG-CONSISTENCY": "fail"}, with_prior=True),
+        # --- accepted patterns (FA calibration): seen in the reference sample and confirmed
+        # as legitimate, so every rule must keep its clean verdict.
+        _d("ok_spread_plug", "Two LPs tie for the largest commitment; residual plugs spread over the top three LPs."),
+        _d("ok_whole_dollar_fees", "Fees rounded to whole dollars while other components are in cents."),
+        _d("ok_itd_overlay_rows", "ITD band carries overlay rows (Mgmt Fees, Late Interest) marking fee columns twice.",
+           facts={"CE-ITD-EVENT-BLOCK": {"overlay_rows": 2}}),
+        _d("ok_transfer_block", "A non-event 'Transfers' block sits between two ITD events."),
+        _d("ok_inactive_investor_na", "A transferred-out LP row on the Merge tab shows #N/A."),
+        _d("ok_hidden_legacy_errors", "A hidden legacy sheet that nothing references carries #REF! errors."),
+        _d("ok_tbd_pending", "A 'TBD' wire date on the portfolio tracker while cash has not moved yet.",
+           facts={"CE-WB-NO-PLACEHOLDERS": {"tbd_cells": 1, "tbd_referenced": 0}}),
+        _d("ok_stale_label_inactive", "An unused distribution column still carries the prior distribution's label.",
+           facts={"CE-ALLOC-STALE-COMPONENTS": {"stale_columns": 0, "active_with_prior_label": 0}}),
     ]
 }
 
@@ -294,10 +306,18 @@ class FixtureSpec:
     event_type: str = "capital_call"
     variant: str = "standard"
     defect: str | None = None
+    with_prior: bool = False  # also build the prior event's workbook (always on for cross-event defects)
+
+    @property
+    def has_prior(self) -> bool:
+        return self.with_prior or bool(self.defect and DEFECTS[self.defect].with_prior)
 
     @property
     def fixture_id(self) -> str:
-        return "__".join([self.event_type, self.variant, self.defect or "clean"])
+        parts = [self.event_type, self.variant, self.defect or "clean"]
+        if self.with_prior and not (self.defect and DEFECTS[self.defect].with_prior):
+            parts.append("with_prior")
+        return "__".join(parts)
 
     def __post_init__(self) -> None:
         if self.event_type not in EVENT_TYPES:
@@ -308,6 +328,8 @@ class FixtureSpec:
             defect = DEFECTS[self.defect]
             if self.event_type not in defect.event_types:
                 raise ValueError(f"defect {self.defect!r} does not apply to {self.event_type!r}")
+        if self.has_prior and (self.event_type != "capital_call" or self.variant != "standard"):
+            raise ValueError("prior-event workbooks are generated for the standard capital-call fixture only")
 
 
 @dataclass
@@ -320,6 +342,12 @@ class FixtureManifest:
     truth: dict[str, Any]
     expected_verdicts: dict[str, str | None]
     facts: dict[str, dict[str, Any]]
+    reference_sheets: list[str] = field(default_factory=list)  # other sheets the relevant ones reference
+    prior: "FixtureManifest | None" = None  # the prior event's workbook, when generated
+
+    @property
+    def options(self) -> dict[str, Any]:
+        return {"event_type": self.spec.event_type}
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -334,27 +362,28 @@ class FixtureManifest:
             "truth": self.truth,
             "expected_verdicts": self.expected_verdicts,
             "facts": self.facts,
+            "reference_sheets": self.reference_sheets,
+            "prior": self.prior.to_json() if self.prior else None,
         }
 
 
-def clean_verdicts(event_type: str) -> dict[str, str | None]:
+def clean_verdicts(event_type: str, with_prior: bool = False) -> dict[str, str | None]:
     verdicts: dict[str, str | None] = {rule_id: "pass" for rule_id in DETERMINISTIC_RULE_IDS}
-    # The Allocation and fee tabs carry no Investor ID column, so by the rule's current
-    # wording identity is compared by name only -> needs_review (calibration item 16).
-    verdicts["CE-ID-INVESTOR-KEYS"] = "needs_review"
     if event_type == "capital_call":
         verdicts["CE-DIST-ROC-LIMIT"] = "not_applicable"
     if event_type == "distribution":
         verdicts["CE-TIE-MGMT-FEE"] = "not_applicable"
-    if event_type == "net_event":
-        # Does 'Net Capital Call #4' share the call counter? (calibration item 4)
-        verdicts["CE-ITD-EVENT-SEQUENCE"] = None
+    if not with_prior:
+        # The prior event's workbook was not supplied (and the run is not marked as the first event).
+        for rule_id in CROSS_EVENT_RULE_IDS:
+            verdicts[rule_id] = "needs_review"
     return verdicts
 
 
 def default_specs() -> list[FixtureSpec]:
     """Clean fixtures for every event type x layout variant, plus every defect."""
     specs = [FixtureSpec(event_type=e, variant=v) for e in EVENT_TYPES for v in VARIANTS]
+    specs.append(FixtureSpec(with_prior=True))
     for defect in DEFECTS.values():
         specs.append(FixtureSpec(event_type=defect.event_types[0], variant="standard", defect=defect.name))
     return specs
@@ -438,7 +467,7 @@ def _investors(variant: LayoutVariant, defect: str | None) -> list[Investor]:
         ("Tamsin Rourke", "1250000"),
         ("Wexford Lane Capital, LLC", "900000"),
     ]
-    if defect == "probe_multi_plug_tied_largest":
+    if defect == "ok_spread_plug":
         main[0] = ("Northgate Family Trust", "25000000")
     investors = [Investor(n, "Main Fund", Decimal(c)) for n, c in main]
     investors.append(Investor("Brightwater Affiliates Fund, LP", "Main Fund", Decimal("4000000"), affiliate=True))
@@ -636,14 +665,24 @@ def _num(value: Decimal | int | float) -> float | int:
 
 
 class _Builder:
-    def __init__(self, spec: FixtureSpec) -> None:
+    def __init__(self, spec: FixtureSpec, stage: str = "current") -> None:
+        """``stage="prior"`` builds the prior event's workbook (Capital Call #3) for ``spec``."""
         self.spec = spec
+        self.stage = stage
         self.variant = VARIANTS[spec.variant]
-        self.defect = spec.defect
+        self.defect = spec.defect if stage == "current" else None
         self.investors = _investors(self.variant, self.defect)
-        self.vehicles = list(dict.fromkeys(i.vehicle for i in self.investors))
         self.prior_events, self.current = _events(spec.event_type, self.defect)
         self.holidays = {d for _, d in HOLIDAYS_2026}
+        self.notice_date = NOTICE_DATE
+        if stage == "prior":
+            # The prior event is the last prior capital call; late closers had not closed yet.
+            self.investors = [i for i in self.investors if not i.late_closer]
+            self.current = self.prior_events[-1]
+            self.prior_events = self.prior_events[:-1]
+            self.notice_date = _workday(self.current.date, -10, self.holidays)
+            assert _workday(self.notice_date, 10, self.holidays) == self.current.date
+        self.vehicles = list(dict.fromkeys(i.vehicle for i in self.investors))
         self.sheets: list[SheetBuilder] = []
         self.layouts: dict[str, dict[str, Any]] = {}
         self.truth: dict[str, Any] = {}
@@ -653,7 +692,7 @@ class _Builder:
             self.merge_names = {"Main Fund": "Example Growth Fund III" if self.variant.name == "shifted" else "Merge"}
         else:
             self.merge_names = {v: f"Merge - {v}" for v in self.vehicles}
-        self.whole_dollar_fees = self.defect == "probe_whole_dollar_fees"
+        self.whole_dollar_fees = self.defect == "ok_whole_dollar_fees"
 
     # -- helpers -----------------------------------------------------------------
 
@@ -667,11 +706,7 @@ class _Builder:
         return next(i for i in self.investors if i.name == name)
 
     def fee_for(self, inv: Investor) -> Decimal:
-        override = False if (self.defect == "affiliate_charged_fee" and inv.affiliate) else None
-        fee = _fee(inv, affiliate_override=override, whole_dollars=self.whole_dollar_fees)
-        if self.defect == "fee_tab_value_wrong" and inv.name == "Meridian Endowment Fund":
-            fee += Decimal("100")
-        return fee
+        return _fee(inv, whole_dollars=self.whole_dollar_fees)
 
     # -- event allocations ----------------------------------------------------------
 
@@ -695,6 +730,8 @@ class _Builder:
                 for inv in self.investors:
                     if eligible(inv):
                         amounts[key][inv.name] = self.fee_for(inv) if current else _fee(inv)
+                if current and self.defect == "fee_pulled_from_wrong_row":
+                    amounts[key]["Juniper Hollow Partners"] = self.fee_for(self.by_name("Meridian Endowment Fund"))
                 continue
             split = _vehicle_split(fund_driver, self.investors, self.vehicles)
             for vehicle in self.vehicles:
@@ -726,7 +763,7 @@ class _Builder:
                     skip_round = {"Oakmere Ventures, Ltd."}
                     unrounded.add((key, "Oakmere Ventures, Ltd."))
                 spread = current and main and key in ("investment", "expenses") \
-                    and self.defect == "probe_multi_plug_tied_largest"
+                    and self.defect in ("ok_spread_plug", "plug_pattern_changed")
                 vehicle_amounts, vehicle_offsets = _allocate_pro_rata(
                     driver, members, weights, None if spread else plug, skip_round)
                 if spread:
@@ -779,6 +816,12 @@ class _Builder:
                         contributed[name] += amount
                     else:
                         distributed[name] += amount
+        if self.defect == "prior_block_edited":
+            # Edited after the prior events were issued: one frozen cell, nothing re-derived from it.
+            edited = next(a for e, a in zip(self.prior_events, self.prior_allocations)
+                          if e.kind == "capital_call" and e.number == 2)
+            edited.amounts["investment"]["Northgate Family Trust"] += Decimal("1000")
+            contributed["Northgate Family Trust"] += Decimal("1000")
         self.prior_contributed = contributed
         self.prior_distributed = distributed
         self.current_alloc = self.allocate_event(self.current, contributed, current=True)
@@ -801,14 +844,15 @@ class _Builder:
         ordered = [by_name[n] for n in order]
 
         file_name = self._file_name()
-        target_dir = out_dir / self.spec.fixture_id
+        target_dir = out_dir / self.spec.fixture_id if self.stage == "current" else out_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         path = target_dir / file_name
         _write_workbook(ordered, path)
 
         sheet_roles = {s.name: s.role for s in ordered}
         relevant = [s.name for s in ordered if s.role in RELEVANT_ROLES[self.spec.event_type]]
-        verdicts = clean_verdicts(self.spec.event_type)
+        references = _referenced_sheets(ordered, relevant)
+        verdicts = clean_verdicts(self.spec.event_type, with_prior=self.spec.has_prior)
         facts = _clean_facts(self.spec.event_type)
         if self.defect:
             verdicts.update(DEFECTS[self.defect].verdicts)
@@ -823,6 +867,9 @@ class _Builder:
             truth=_jsonable(self.truth),
             expected_verdicts=verdicts,
             facts=facts,
+            reference_sheets=references,
+            prior=(_Builder(self.spec, stage="prior").build(target_dir / "prior")
+                   if self.stage == "current" and self.spec.has_prior else None),
         )
 
     def _file_name(self) -> str:
@@ -963,7 +1010,7 @@ class _Builder:
         overlay_rows: dict[str, int] = {}
         for cat, label in zip(band, band_labels):
             sheet.put(band_rows[cat], 1, label)
-        if self.defect == "probe_itd_overlay_rows":
+        if self.defect == "ok_itd_overlay_rows":
             overlay_rows = {"late_interest": 6, "mgmt_fees": 7}
             sheet.put(6, 1, "Late Interest")
             sheet.put(7, 1, "Mgmt Fees")
@@ -985,7 +1032,7 @@ class _Builder:
         first_block_col = c
         blocks_plan = []
         itd_blocks = self._itd_blocks()
-        if self.defect == "probe_transfer_block":
+        if self.defect == "ok_transfer_block":
             itd_blocks.insert(2, (EventDef("transfer", 0, dt.date(2024, 9, 30), {"investment": Decimal("0")}),
                                   Allocation({"investment": {i.name: Decimal("0") for i in self.investors}}, {}),
                                   False))
@@ -1170,7 +1217,7 @@ class _Builder:
             sheet.put(vb["total_row"], 1, f"Total {vehicle}" if len(self.vehicles) > 1 else "Total Partnership")
 
         # Prior-block live links on the $0 GP row (calibration probe) / on an LP (defect).
-        if self.defect in ("live_prior_itd_link", "probe_gp_zero_live_link"):
+        if self.defect in ("live_prior_itd_link", "zero_live_prior_link"):
             plan = blocks_plan[0]
             key = "investment"
             col = plan["cols"][key]
@@ -1282,7 +1329,7 @@ class _Builder:
         word = "Distribution" if event.kind == "distribution" else "Capital Call"
         notice_fmt = "General" if self.defect == "fmt_serial_date" else DATE_LONG_FMT
         sheet.put(rows["notice"], 2, f"{word} - Notice Date")
-        notice_coord = sheet.put(rows["notice"], 3, NOTICE_DATE, fmt=notice_fmt)
+        notice_coord = sheet.put(rows["notice"], 3, self.notice_date, fmt=notice_fmt)
         due_label = "Payment Date" if event.kind == "distribution" else "Due Date"
         sheet.put(rows["due"], 2, f"{word} - {due_label}")
         if self.defect == "weekend_due_date":
@@ -1290,7 +1337,7 @@ class _Builder:
             due_coord = sheet.put(rows["due"], 3, due_date, fmt=DATE_LONG_FMT)
         else:
             days = -3 if self.defect == "due_before_notice" else 10
-            due_date = _workday(NOTICE_DATE, days, holidays)
+            due_date = _workday(self.notice_date, days, holidays)
             due_coord = sheet.put(rows["due"], 3, formula=f"WORKDAY({notice_coord},{days},{self.holiday_range})",
                                   cached=_serial(due_date), fmt=DATE_LONG_FMT)
         self.due_date = due_date
@@ -1340,6 +1387,10 @@ class _Builder:
             text = event.header_for(comp)
             if comp.key not in active:
                 text = f"{comp.header} (not used {current_label})"
+                if self.defect == "ok_stale_label_inactive" and comp.key == "roc":
+                    text = f"{comp.header} (Distribution #1)"  # left over from the prior distribution
+            elif self.defect == "stale_label_on_active" and comp.key == "investment":
+                text = f"{comp.header} (Capital Call #3)"
             comp_headers[comp.key] = text
             sheet.put(header, self.comp_col[comp.key], text)
         self.comp_headers = comp_headers
@@ -1348,6 +1399,8 @@ class _Builder:
         call_total_label = current_label if call_side_active else f"Capital Call (not used {current_label})"
         dist_total_label = current_label if (dist_side_active and not call_side_active) else (
             "Distribution Total" if dist_side_active else f"Distribution (not used {current_label})")
+        if self.defect == "ok_stale_label_inactive":
+            dist_total_label = "Distribution #1"
         self.call_total_header = sheet.put(header, cols["call_total"], call_total_label)
         self.dist_total_header = sheet.put(header, cols["dist_total"], dist_total_label)
         self.event_label_coord = self.call_total_header if call_side_active else self.dist_total_header
@@ -1370,7 +1423,7 @@ class _Builder:
         for comp in (*CALL_COMPONENTS, *DIST_COMPONENTS):
             if comp.key in active:
                 if comp.key == "mgmt_fee":
-                    drivers[comp.key] = sum(alloc.amounts["mgmt_fee"].values())
+                    drivers[comp.key] = self.fee_tab_total()
                 else:
                     drivers[comp.key] = event.drivers[comp.key]
             else:
@@ -1379,6 +1432,10 @@ class _Builder:
             col = self.comp_col[comp_key]
             if comp_key == "mgmt_fee" and comp_key in active:
                 sheet.put(fund_driver_row, col, formula=f"{q(fee_sheet)}!${fee_amount_col}${self._fee_total_row()}",
+                          cached=_num(amount), fmt=MONEY_FMT)
+            elif comp_key == "investment" and comp_key in active and self.tracker_current_row():
+                # As in the reference sample, the investment driver pulls the current deal from the tracker.
+                sheet.put(fund_driver_row, col, formula=f"{q('Portfolio Investment Tracker')}!$E${self.tracker_current_row()}",
                           cached=_num(amount), fmt=MONEY_FMT)
             else:
                 sheet.put(fund_driver_row, col, _num(amount), fmt=MONEY_FMT)
@@ -1468,7 +1525,11 @@ class _Builder:
                     row_amounts[comp.key] = amount
                     offset = alloc.offsets.get(comp.key, {}).get(inv.name)
                     basis_ref = cpct_ref if comp.side == "distribution" and "contributed_pct" in cols else pct_ref
-                    if comp.key == "mgmt_fee" and comp.key in active:
+                    if comp.key == "mgmt_fee" and comp.key in active and self.defect == "fee_pulled_from_wrong_row" \
+                            and inv.name == "Juniper Hollow Partners":
+                        wrong_row = self._fee_rows()["lp_rows"]["Meridian Endowment Fund"]
+                        formula = f"{q(fee_sheet)}!${fee_amount_col}${wrong_row}"
+                    elif comp.key == "mgmt_fee" and comp.key in active:
                         formula = (f"SUMIFS({q(fee_sheet)}!${fee_amount_col}:${fee_amount_col},{q(fee_sheet)}!"
                                    f"${fee_name_col}:${fee_name_col},${sheet.col(cols['investor'])}{sheet.row(rr)})")
                     elif comp.key == "carry" and comp.key in active and inv.is_gp:
@@ -1609,6 +1670,10 @@ class _Builder:
                 f"ROUND({sheet.coord(rows['grand_total'], col)}-{sheet.coord(fund_driver_row, col)},2)"),
                 cached=_num(r2(total - driver_value)), fmt=MONEY_FMT)
 
+        if self.defect == "referenced_hidden_sheet_error":
+            memo = r2(self.lps()[0].commitment * Decimal("0.0021"))
+            sheet.put(rows["notice"], cols["error_cell"], formula=f"{q('3rd Close Rebalance')}!$B$4", cached=_num(memo),
+                      fmt=MONEY_FMT)
         if self.defect == "formula_error":
             sheet.put(self.ablocks[0]["lp_subtotal"], cols["error_cell"], formula="#REF!", cached="#REF!")
 
@@ -1676,7 +1741,7 @@ class _Builder:
             "investors": truth_investors,
             "drivers": {sheet.col(self.comp_col[k]): str(a) for k, a in drivers.items() if k in active},
             "event_gross": str(sum(drivers[k] for k in active)),
-            "notice_date": NOTICE_DATE.isoformat(),
+            "notice_date": self.notice_date.isoformat(),
             "due_date": due_date.isoformat(),
         }
 
@@ -1695,7 +1760,7 @@ class _Builder:
         title = f"{word}{self.due_date:%B} {self.due_date.day}, {self.due_date.year}"
         title_coord = sheet.put(3, 2, formula=f"\"{word}\"&TEXT({a}!{self.due_coord},\"mmmm d, yyyy\")", cached=title)
         sheet.put(5, 3, "Notice Date")
-        notice_cell = sheet.put(5, 4, formula=f"{a}!{self.notice_coord}", cached=_serial(NOTICE_DATE), fmt=DATE_LONG_FMT)
+        notice_cell = sheet.put(5, 4, formula=f"{a}!{self.notice_coord}", cached=_serial(self.notice_date), fmt=DATE_LONG_FMT)
         sheet.put(6, 3, "Payment Date" if event.kind == "distribution" else "Due Date")
         due_cell = sheet.put(6, 4, formula=f"{a}!{self.due_coord}", cached=_serial(self.due_date), fmt=DATE_LONG_FMT)
         sheet.put(8, 2, "Total Commitments" if v.alt_headers else "Total Fund Commitments")
@@ -1803,7 +1868,7 @@ class _Builder:
                     sheet.put(r, 2, short)
                 else:
                     sheet.put(r, 2, formula=f"A{r}", cached=inv.name)
-                sheet.put(r, 3, formula=f"{a}!{_abs(self.notice_coord)}", cached=_serial(NOTICE_DATE), fmt=DATE_LONG_FMT)
+                sheet.put(r, 3, formula=f"{a}!{_abs(self.notice_coord)}", cached=_serial(self.notice_date), fmt=DATE_LONG_FMT)
                 sheet.put(r, 4, formula=f"{a}!{_abs(self.due_coord)}", cached=_serial(self.due_date), fmt=DATE_LONG_FMT)
                 sheet.put(r, 5, inv.investor_id)
                 sheet.put(r, 6, inv.fund_id)
@@ -1831,7 +1896,7 @@ class _Builder:
                                                  f"{a}!${a_inv}:${a_inv},$A{r})"), cached=0, fmt=MONEY_FMT)
                 r += 1
             last_row = r - 1
-            if self.defect == "probe_inactive_investor_na" and vehicle == "Main Fund":
+            if self.defect == "ok_inactive_investor_na" and vehicle == "Main Fund":
                 sheet.put(r, 1, "Harlan Transfer Trust (transferred)")
                 sheet.put(r, 5, formula="INDEX('DX Investor Data'!E:E,MATCH(A%d,'DX Investor Data'!D:D,0))" % r,
                           cached="#N/A")
@@ -2014,12 +2079,7 @@ class _Builder:
         tracker = SheetBuilder("Portfolio Investment Tracker", "other")
         for i, h in enumerate(["Deal #", "Event", "Deal", "Amount Called", "Wire Date"], start=2):
             tracker.put(5, i, h)
-        deals = [(1, "CC#1", "Northwind Robotics", Decimal("20000000"), dt.date(2024, 1, 25)),
-                 (2, "CC#2", "Solace Diagnostics", Decimal("10000000"), dt.date(2024, 6, 27)),
-                 (3, "CC#3", "Tidepool Logistics", Decimal("5000000"), dt.date(2026, 3, 11))]
-        if self.current.kind == "capital_call":
-            wire = "TBD" if self.defect == "probe_tbd_placeholder" else dt.date(2026, 6, 12)
-            deals.append((4, "CC#4", "Ember Grid Storage", Decimal("8500000"), wire))
+        deals = self._deals()
         for r, (n, ev, deal, amount, wire) in enumerate(deals, start=6):
             tracker.put(r, 2, n)
             tracker.put(r, 3, ev)
@@ -2036,9 +2096,27 @@ class _Builder:
         for r, inv in enumerate(self.lps()[:4], start=4):
             legacy.put(r, 1, inv.name)
             legacy.put(r, 2, _num(r2(inv.commitment * Decimal("0.0021"))), fmt=MONEY_FMT)
-        if self.defect == "probe_legacy_hidden_errors":
+        if self.defect in ("ok_hidden_legacy_errors", "referenced_hidden_sheet_error"):
             legacy.put(9, 2, formula="#REF!*2", cached="#REF!")
         self.sheets.append(legacy)
+
+    def _deals(self) -> list[tuple]:
+        deals = [(1, "CC#1", "Northwind Robotics", Decimal("20000000"), dt.date(2024, 1, 25)),
+                 (2, "CC#2", "Solace Diagnostics", Decimal("10000000"), dt.date(2024, 6, 27)),
+                 (3, "CC#3", "Tidepool Logistics", Decimal("5000000"), dt.date(2026, 3, 11))]
+        if self.stage == "current" and self.current.kind == "capital_call":
+            wire = "TBD" if self.defect == "ok_tbd_pending" else dt.date(2026, 6, 12)
+            deals.append((4, "CC#4", "Ember Grid Storage", Decimal("8500000"), wire))
+        return deals
+
+    def tracker_current_row(self) -> int | None:
+        """Tracker row of the current event's deal (capital calls only)."""
+        if self.current.kind != "capital_call":
+            return None
+        return 6 + len(self._deals()) - 1
+
+    def fee_tab_total(self) -> Decimal:
+        return sum((self.fee_for(i) for i in self.investors if not i.is_gp), Decimal("0"))
 
     # -- Cell-level defects -------------------------------------------------------------------
 
@@ -2065,12 +2143,29 @@ def _spread_residual(driver: Decimal, amounts: dict[str, Decimal], members: list
 C_BY_KEY = {c.key: c for c in (*CALL_COMPONENTS, *DIST_COMPONENTS)}
 
 
+def _referenced_sheets(sheets: list[SheetBuilder], relevant: list[str]) -> list[str]:
+    """Sheets outside ``relevant`` that formulas on the relevant sheets reference."""
+    names = [s.name for s in sheets]
+    found: list[str] = []
+    for sheet in sheets:
+        if sheet.name not in relevant:
+            continue
+        for cell in sheet.cells.values():
+            if not cell.formula:
+                continue
+            for name in names:
+                if name not in relevant and name not in found and (f"{q(name)}!" in cell.formula):
+                    found.append(name)
+    return [n for n in names if n in found]
+
+
 def _clean_facts(event_type: str) -> dict[str, dict[str, Any]]:
     facts: dict[str, dict[str, Any]] = {
-        "CE-WB-NO-PLACEHOLDERS": {"placeholder_count": 0, "tbd_cells": 0},
+        "CE-WB-NO-PLACEHOLDERS": {"placeholder_count": 0, "tbd_cells": 0, "tbd_referenced": 0},
         "CE-ITD-EVENT-BLOCK": {"unclassified_current_columns": 0, "overlay_rows": 0},
         "CE-DATE-CONSISTENCY": {"fee_period_mismatch": False, "distinct_event_numbers": [4 if event_type != "distribution" else 2]},
-        "CE-ALLOC-STALE-COMPONENTS": {"stale_columns": 0},
+        "CE-ALLOC-STALE-COMPONENTS": {"stale_columns": 0, "active_with_prior_label": 0},
+        "CE-ALLOC-REFERENCE-INTEGRITY": {"period_mismatches": 0},
     }
     if event_type == "distribution":
         facts["CE-DIST-CARRY-SPLIT"] = {"gp_share_matches_rate": True}

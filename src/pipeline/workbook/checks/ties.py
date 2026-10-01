@@ -1,9 +1,9 @@
 """Cross-sheet tie-outs: management fees, ITD vs Allocation, investor identity, return of capital."""
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
-from src.pipeline.workbook.cells import CENT, PENNY, norm_text
+from src.pipeline.workbook.cells import CENT, PENNY
 from src.pipeline.workbook.checks._common import (
     CheckContext,
     NotApplicable,
@@ -13,14 +13,9 @@ from src.pipeline.workbook.checks._common import (
     mag,
     money,
     quarter_key,
-    round_digits,
 )
 
 ZERO = Decimal("0")
-
-
-def _round(value: Decimal, digits: int) -> Decimal:
-    return value.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
 
 
 @check("CE-TIE-MGMT-FEE", needs=("allocation",))
@@ -54,41 +49,25 @@ def tie_mgmt_fee(ctx: CheckContext, out: Outcome) -> str:
         if differs(total, driver, PENNY):
             out.fail(f"Fee tab total {money(total)} ({column}) does not equal the Allocation fee driver "
                      f"{money(driver)}.", sheet, f"{comp.column}{alloc.layout.fund_driver_row}")
-        rate = fee.rates[index] if index < len(fee.rates) else (fee.rates[0] if fee.rates else None)
-        fraction = fee.period_fractions[index] if index < len(fee.period_fractions) else (
-            fee.period_fractions[0] if fee.period_fractions else Decimal("0.25"))
         for inv in alloc.investors:
             charged = inv.amounts.get(comp.column, ZERO)
             row = rows.get(inv.name)
-            exempt = inv.is_gp or inv.affiliate is True or (row is not None and (
-                row.is_gp or norm_text(row.affiliate_flag) in ("y", "yes", "gp")))
             coord = f"{comp.column}{inv.row}"
-            if exempt and charged:
-                out.fail(f"{inv.name} is a GP / affiliate but is charged a management fee of {money(charged)}.",
-                         sheet, coord)
-                continue
             if row is None:
                 if charged:
                     out.fail(f"{inv.name} is charged {money(charged)} but has no row on the fee tab.", sheet, coord)
                 continue
-            # (1) per-investor tie.
+            # (1) the Allocation pulls each investor's fee from the fee tab. The fee calculation
+            # itself is checked against the fund terms (FA calibration).
             tab_fee = row.fees.get(column, ZERO)
             if differs(charged, tab_fee, CENT):
-                out.fail(f"{inv.name}: Allocation fee {money(charged)} vs fee tab {money(tab_fee)}.", sheet, coord)
-            # (3) recompute rate x basis x period fraction.
-            if rate is None or exempt:
-                continue
-            basis = row.commitment if row.commitment is not None else inv.commitment
-            digits = round_digits(row.formulas.get(column))
-            expected = _round(basis * rate * fraction, digits if digits is not None else 2)
-            if differs(tab_fee, expected, CENT):
-                out.fail(f"{inv.name}: fee tab shows {money(tab_fee)} but {rate:.4%} x {money(basis)} x {fraction} = "
-                         f"{money(expected)}.", fee_sheet, f"{column}{row.row}")
+                out.fail(f"{inv.name}: Allocation fee {money(charged)} does not match the fee tab "
+                         f"({money(tab_fee)} at {column}{row.row}).", sheet, coord)
     for name, row in rows.items():
         if name not in alloc_by_name and any(row.fees.values()):
             out.review(f"{name} carries a fee on the fee tab but is not on the Allocation sheet.", fee_sheet,
                        f"{fee_cols[0]}{row.row}")
-    return "Per-LP fees tie to the current-period fee tab, recompute as rate x basis x period, and totals tie."
+    return "Per-LP fees pull correctly from the current-period fee tab and the totals tie to the fee driver."
 
 
 def _pair_components(itd_block, alloc):
@@ -210,12 +189,10 @@ def investor_keys(ctx: CheckContext, out: Outcome) -> str:
                      dx.sheet, f"{dx.layout.columns.fund_id}{dx_row.row}")
         if fee is not None and inv.name not in fee_names:
             out.fail(f"{inv.name} is missing from the fee tab (exact name match).", fee.sheet, None)
-    no_id_tabs = [alloc.sheet.name] + ([fee.sheet.name] if fee is not None and not fee.layout.columns.vehicle and False else [])
-    if fee is not None:
-        no_id_tabs.append(fee.sheet.name)
-    out.review(f"{', '.join(no_id_tabs)} carry no Investor ID column, so identity on those tabs could only be "
-               "compared by exact name.")
-    return ""
+    # FA calibration: investor IDs typically live only on the Merge tab, so the other tabs
+    # are matched by exact name.
+    return (f"All {len(in_scope)} participating investors tie by exact name across the tabs, and their Merge "
+            "Investor and Fund IDs match the investor data tab.")
 
 
 @check("CE-DIST-ROC-LIMIT", needs=("allocation",))

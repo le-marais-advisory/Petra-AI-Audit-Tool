@@ -15,7 +15,7 @@ from tests.fixtures.generate_capital_event_fixtures import EVENT_TYPES, VARIANTS
 
 pytestmark = pytest.mark.eval
 
-CASES = [(e, v) for e in EVENT_TYPES for v in VARIANTS] + [("capital_call", "standard", "probe_itd_overlay_rows")]
+CASES = [(e, v) for e in EVENT_TYPES for v in VARIANTS] + [("capital_call", "standard", "ok_itd_overlay_rows")]
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: "__".join(c))

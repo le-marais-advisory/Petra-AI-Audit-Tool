@@ -43,7 +43,7 @@ def _rows(span: list[int]) -> range:
 
 @pytest.mark.parametrize("spec", default_specs(), ids=lambda s: s.fixture_id)
 def test_every_formula_has_a_cached_value(capital_event_fixtures, spec):
-    manifest = capital_event_fixtures.get(spec.event_type, spec.variant, spec.defect)
+    manifest = capital_event_fixtures.get(spec.event_type, spec.variant, spec.defect, spec.with_prior)
     wb, wv = _load(manifest.path)
     missing = [
         f"{ws.title}!{cell.coordinate}"
@@ -57,7 +57,7 @@ def test_every_formula_has_a_cached_value(capital_event_fixtures, spec):
 
 @pytest.mark.parametrize("spec", default_specs(), ids=lambda s: s.fixture_id)
 def test_manifest_shape(capital_event_fixtures, spec):
-    manifest = capital_event_fixtures.get(spec.event_type, spec.variant, spec.defect)
+    manifest = capital_event_fixtures.get(spec.event_type, spec.variant, spec.defect, spec.with_prior)
     wb, _ = _load(manifest.path)
     assert set(manifest.sheet_roles) == set(wb.sheetnames)
     assert set(manifest.sheet_roles.values()) <= set(ROLES)
@@ -211,8 +211,52 @@ def test_each_defect_changes_the_workbook(capital_event_fixtures, name):
     assert snapshot(wb_c, wv_c) != snapshot(wb_b, wv_b)
 
 
-@pytest.mark.parametrize("name", sorted(DEFECTS))
-def test_only_calibration_probes_leave_verdicts_unasserted(name):
-    defect = DEFECTS[name]
-    unasserted = [rule for rule, verdict in defect.verdicts.items() if verdict is None]
-    assert bool(unasserted) <= (defect.pending_calibration is not None)
+@pytest.mark.parametrize("spec", default_specs(), ids=lambda s: s.fixture_id)
+def test_every_verdict_is_asserted(capital_event_fixtures, spec):
+    # The FA calibration answers are in: no expected verdict is left open.
+    manifest = capital_event_fixtures.get(spec.event_type, spec.variant, spec.defect, spec.with_prior)
+    assert all(v is not None for v in manifest.expected_verdicts.values())
+
+
+def _itd_values(manifest):
+    itd = next(lay for lay in manifest.layouts.values() if lay["role"] == "itd")
+    _, wv = _load(manifest.path)
+    ws = wv[itd["sheet"]]
+    rows = [r for v in itd["vehicles"] for r in _rows(v["investor_rows"])]
+    values = {}
+    for block in itd["event_blocks"]:
+        for index, comp in enumerate(block["components"]):
+            for r in rows:
+                values[(block["label"], index, ws[f"{itd['investor_column']}{r}"].value)] = _num(ws[f"{comp['column']}{r}"].value)
+    contributed = {ws[f"{itd['investor_column']}{r}"].value: _num(ws[f"{itd['cumulative_columns']['total_contributions']}{r}"].value)
+                   for r in rows}
+    return values, contributed
+
+
+def _allocation_prior_contributions(manifest):
+    alloc = next(lay for lay in manifest.layouts.values() if lay["role"] == "allocation")
+    _, wv = _load(manifest.path)
+    ws = wv[alloc["sheet"]]
+    return {ws[f"{alloc['columns']['investor']}{r}"].value: abs(_num(ws[f"{alloc['roll_forward']['prior_contributions']}{r}"].value))
+            for v in alloc["vehicles"] for r in _rows(v["investor_rows"])}
+
+
+def test_prior_workbook_pairs_with_the_current_one(capital_event_fixtures):
+    manifest = capital_event_fixtures.get(with_prior=True)
+    prior = manifest.prior
+    assert prior is not None and prior.path.exists() and prior.path != manifest.path
+    current_values, _ = _itd_values(manifest)
+    prior_values, prior_contributed = _itd_values(prior)
+    # Every event block of the prior workbook reappears, unchanged, in the current one.
+    assert all(abs(current_values[key] - value) <= TOL for key, value in prior_values.items())
+    # Prior contributions on the current Allocation = contributions to date on the prior ITD.
+    current_prior = _allocation_prior_contributions(manifest)
+    assert all(abs(current_prior[name] - value) <= Decimal("0.01") for name, value in prior_contributed.items())
+
+
+def test_edited_history_differs_in_exactly_one_cell(capital_event_fixtures):
+    manifest = capital_event_fixtures.get(defect="prior_block_edited")
+    current_values, _ = _itd_values(manifest)
+    prior_values, _ = _itd_values(manifest.prior)
+    changed = [key for key, value in prior_values.items() if abs(current_values[key] - value) > TOL]
+    assert changed == [("Capital Call #2 - 06.25.2024", 0, "Northgate Family Trust")]

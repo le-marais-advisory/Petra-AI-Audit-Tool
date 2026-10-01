@@ -47,6 +47,8 @@ class ValidationJobService:
         document_type: str = "financial_statements",
         options: dict | None = None,
         pdf_path: str | None = None,
+        prior_file_path: str | None = None,
+        prior_source_filename: str | None = None,
     ) -> ValidationJob:
         file_path = file_path or pdf_path
         job = ValidationJob(job_id=uuid.uuid4().hex)
@@ -56,7 +58,8 @@ class ValidationJobService:
             target, args = self._run_job, (job.job_id, file_path, source_filename, rules_json_str)
         else:
             target, args = self._run_document_job, (
-                job.job_id, file_path, source_filename, rules_json_str, document_type, options or {})
+                job.job_id, file_path, source_filename, rules_json_str, document_type, options or {},
+                prior_file_path, prior_source_filename)
         thread = threading.Thread(
             target=target,
             args=args,
@@ -286,6 +289,8 @@ class ValidationJobService:
         rules_json_str: str | None,
         document_type: str,
         options: dict,
+        prior_file_path: str | None = None,
+        prior_source_filename: str | None = None,
     ) -> None:
         """Run a non-PDF document type through its registered pipeline."""
         job = self.get_job(job_id)
@@ -323,6 +328,8 @@ class ValidationJobService:
                 source_filename=source_filename,
                 on_progress=on_progress,
                 is_cancelled=lambda: bool(job.cancel_requested),
+                prior_file_path=prior_file_path,
+                prior_source_filename=prior_source_filename,
             )
             with job.lock:
                 job.status = "cancelled" if job.cancel_requested else "completed"
@@ -336,10 +343,12 @@ class ValidationJobService:
                 job.message = "Analysis failed"
                 job.error = str(exc)
         finally:
-            try:
-                Path(file_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            for path in (file_path, prior_file_path):
+                try:
+                    if path:
+                        Path(path).unlink(missing_ok=True)
+                except Exception:
+                    pass
             self._job_slots.release()
 
 

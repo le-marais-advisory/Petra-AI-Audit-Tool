@@ -5,7 +5,13 @@ AnalysisRuleResult shape the LLM analyzers produce, with sheet/cell citations.
 """
 from __future__ import annotations
 
-from src.pipeline.workbook.checks import allocation, rollforward_itd, ties, workbook_checks  # noqa: F401  (register)
+from src.pipeline.workbook.checks import (  # noqa: F401  (importing registers the checks)
+    allocation,
+    cross_event,
+    rollforward_itd,
+    ties,
+    workbook_checks,
+)
 from src.pipeline.workbook.checks._common import DETERMINISTIC_CHECKS, CheckContext, result, run_check
 from src.pipeline.workbook.extract import WorkbookData
 from src.pipeline.workbook.loader import WorkbookModel

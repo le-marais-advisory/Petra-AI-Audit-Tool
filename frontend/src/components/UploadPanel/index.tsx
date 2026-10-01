@@ -1,24 +1,34 @@
 import { StatusPill } from "@/components/StatusPill";
 import { cn } from "@/utils/cn";
-import { acceptAttribute } from "@/utils/documentTypes";
+import { acceptAttribute, booleanOptions } from "@/utils/documentTypes";
 
 import { getEnumOptions, useUploadPanelBehavior, type UploadPanelProps } from "./behaviors";
 
 
 export function UploadPanel(props: UploadPanelProps) {
   const {
+    canRun,
     handleDragEnter,
     handleDragLeave,
     handleDragOver,
     handleDrop,
     handleInputChange,
+    handlePriorChange,
+    handleRun,
     inputRef,
     isDisabled,
     isDragActive,
+    needsPrior,
+    prior,
+    priorError,
+    priorFile,
+    priorInputRef,
+    stagedFile,
   } = useUploadPanelBehavior(props);
   const { documentType, documentTypes } = props;
   const formats = (documentType?.accepted_formats || ["pdf"]).map((format) => `.${format}`).join(" / ");
   const enumOptions = getEnumOptions(documentType);
+  const checkboxes = booleanOptions(documentType);
 
   return (
     <article className="section-panel p-6">
@@ -57,7 +67,7 @@ export function UploadPanel(props: UploadPanelProps) {
               <select
                 className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 disabled={props.isBusy}
-                value={props.documentOptions[option.name] || ""}
+                value={String(props.documentOptions[option.name] ?? "")}
                 onChange={(event) => props.onDocumentOptionChange(option.name, event.target.value)}
               >
                 <option value="">Select…</option>
@@ -67,6 +77,19 @@ export function UploadPanel(props: UploadPanelProps) {
                   </option>
                 ))}
               </select>
+            </label>
+          ))}
+
+          {checkboxes.map((option) => (
+            <label key={option.name} className="flex items-center gap-2 self-center text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300"
+                disabled={props.isBusy}
+                checked={props.documentOptions[option.name] === true}
+                onChange={(event) => props.onDocumentOptionChange(option.name, event.target.checked)}
+              />
+              {option.title}
             </label>
           ))}
 
@@ -112,14 +135,69 @@ export function UploadPanel(props: UploadPanelProps) {
             </svg>
           </div>
 
-          <h3 className="mt-4 text-base font-semibold text-slate-900">Drop a {formats} file here</h3>
+          <h3 className="mt-4 text-base font-semibold text-slate-900">
+            {stagedFile ? stagedFile.name : prior ? `Drop the current ${formats} workbook here` : `Drop a ${formats} file here`}
+          </h3>
           <p className="mt-2 max-w-md text-sm text-slate-500">
-            or click to select a file. The uploaded document is processed ephemerally and discarded after analysis.
+            {stagedFile
+              ? "Current workbook selected. Drop or choose another file to replace it."
+              : "or click to select a file. The uploaded document is processed ephemerally and discarded after analysis."}
           </p>
 
-          <span className="mt-5 rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white">Choose file</span>
+          <span className="mt-5 rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white">
+            {stagedFile ? "Replace file" : "Choose file"}
+          </span>
         </label>
       )}
+
+      {prior && !props.uploadHint ? (
+        <div className="mt-4 space-y-3">
+          {needsPrior ? (
+            <div className="rounded-[1.25rem] border border-slate-200 bg-white px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{prior.label}</p>
+                  <p className="mt-1 max-w-xl text-xs text-slate-500">{prior.description}</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  disabled={props.isBusy}
+                  onClick={() => priorInputRef.current?.click()}
+                >
+                  {priorFile ? "Replace" : "Choose prior workbook"}
+                </button>
+                <input
+                  ref={priorInputRef}
+                  accept={prior.accepted_formats.map((format) => `.${format}`).join(",")}
+                  className="hidden"
+                  type="file"
+                  onChange={handlePriorChange}
+                />
+              </div>
+              {priorFile ? <p className="mt-2 text-sm text-slate-700">{priorFile.name}</p> : null}
+              {priorError ? <p className="mt-2 text-sm text-rose-700">{priorError}</p> : null}
+            </div>
+          ) : (
+            <p className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-5 py-3 text-sm text-slate-600">
+              First capital event: no prior workbook is needed, and the cross-event checks will be marked not applicable.
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!canRun}
+              onClick={() => {
+                void handleRun();
+              }}
+            >
+              Run validation
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <StatusPill status={props.status} />

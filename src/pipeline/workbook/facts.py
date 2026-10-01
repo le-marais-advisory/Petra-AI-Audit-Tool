@@ -59,6 +59,100 @@ def render_facts(rule_id: str, facts: dict[str, Any]) -> str:
     )
 
 
+def _current_event_references(data: WorkbookData) -> list[str]:
+    """Ways a document name may refer to the current event: its label, due date, summary title."""
+    refs: list[str] = []
+    alloc = data.allocation
+    if alloc is not None:
+        if alloc.event.label:
+            refs.append(alloc.event.label)
+        due = alloc.event.due_date
+        if due is not None:
+            refs += [f"{due:%B} {due.day}, {due.year}", due.isoformat(), f"{due:%m.%d.%Y}", f"{due.month}.{due.day}.{due:%y}"]
+    if data.summary is not None and data.summary.title:
+        refs.append(data.summary.title)
+    return list(dict.fromkeys(refs))
+
+
+_EXTERNAL_REF_RE = re.compile(r"(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_.]*))!(\$?[A-Z]{1,3}\$?\d*(?::\$?[A-Z]{1,3}\$?\d*)?)")
+
+
+def _external_refs(formula: str):
+    for quoted, bare, target in _EXTERNAL_REF_RE.findall(formula or ""):
+        yield (quoted.replace("''", "'") if quoted else bare), target.replace("$", "")
+
+
+def _referenced_cells(model: WorkbookModel, data: WorkbookData) -> set[tuple[str, str]]:
+    """(sheet, cell) targets of single-cell references from the processed sheets."""
+    targets: set[tuple[str, str]] = set()
+    for name in data.processed_sheets:
+        for cell in model.sheet(name).cells.values():
+            for sheet, target in _external_refs(cell.formula):
+                if ":" not in target and re.fullmatch(r"[A-Z]{1,3}\d+", target):
+                    targets.add((sheet, target))
+    return targets
+
+
+def _column_header(model: WorkbookModel, sheet_name: str, column: str, below_row: int | None = None) -> str | None:
+    """The nearest text above ``below_row`` in ``column`` (or the first text in the column)."""
+    if not model.has_sheet(sheet_name):
+        return None
+    cells = [c for c in model.sheet(sheet_name).column_cells(column) if is_text(c.value)]
+    if below_row is not None:
+        cells = [c for c in cells if c.row < below_row]
+        return str(cells[-1].value).strip() if cells else None
+    return str(cells[0].value).strip() if cells else None
+
+
+@_facts("CE-ALLOC-REFERENCE-INTEGRITY")
+def _reference_integrity(model, data, options):
+    """Every reference from the Allocation sheet to another tab, with what it points at."""
+    alloc = data.allocation
+    if alloc is None:
+        return {}
+    # An event may bill several fee periods at once (e.g. 3Q and 4Q in one call).
+    current_periods = sorted({p for c in alloc.active_components if c.component_type == "mgmt_fee"
+                              for p in [quarter_key(c.header)] if p})
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for cell in alloc.sheet.cells.values():
+        for sheet_name, target in _external_refs(cell.formula):
+            if sheet_name == alloc.sheet.name:
+                continue
+            column = re.match(r"[A-Z]+", target).group() if re.match(r"[A-Z]+", target) else target
+            key = (sheet_name, target if re.fullmatch(r"[A-Z]{1,3}\d+", target) else column)
+            entry = grouped.setdefault(key, {"target_sheet": sheet_name, "target_cell": key[1], "source_cells": []})
+            entry["source_cells"].append(cell.coord)
+    references, mismatches = [], []
+    for (sheet_name, target), entry in grouped.items():
+        if not model.has_sheet(sheet_name):
+            entry["problem"] = "target sheet does not exist"
+            references.append(entry)
+            continue
+        target_sheet = model.sheet(sheet_name)
+        single = re.fullmatch(r"([A-Z]{1,3})(\d+)", target)
+        column = single.group(1) if single else target
+        row = int(single.group(2)) if single else None
+        entry["target_value"] = target_sheet.value(target) if single else None
+        entry["target_row_labels"] = ([str(c.value) for c in target_sheet.row_cells(row) if is_text(c.value)][:6]
+                                      if row else [])
+        entry["target_column_header"] = _column_header(model, sheet_name, column, row)
+        entry["source_cells"] = sorted(entry["source_cells"])[:6] + (
+            [f"... {len(entry['source_cells']) - 6} more"] if len(entry["source_cells"]) > 6 else [])
+        period = quarter_key(entry["target_column_header"])
+        if current_periods and period and period not in current_periods:
+            stale = {"target_sheet": sheet_name, "target_column": column, "period": period,
+                     "current_periods": current_periods}
+            if stale not in mismatches:  # a driver cell and its per-LP column point at the same stale column
+                mismatches.append(stale)
+        references.append(entry)
+    return {
+        "current_event_label": alloc.event.label,
+        "current_fee_periods": current_periods,
+        "references": sorted(references, key=lambda r: (r["target_sheet"], r["target_cell"])),
+        "period_mismatches": mismatches,
+    }
+
+
 # --- structure ---------------------------------------------------------------------------------
 
 
@@ -86,7 +180,7 @@ def _merge_tabs(model, data, options):
     for merge in data.merges:
         rows = merge.rows
         names = [r.file_name for r in rows if is_text(r.file_name)]
-        expected_suffix = f"_{label}" if label else None
+        event_refs = _current_event_references(data)
         tabs.append({
             "sheet": merge.sheet.name,
             "vehicle": merge.vehicle,
@@ -98,20 +192,24 @@ def _merge_tabs(model, data, options):
             "file_names_not_starting_with_own_ids": [
                 r.file_name for r in rows if is_text(r.file_name)
                 and not str(r.file_name).startswith(f"{r.fund_id}_{r.investor_id}_")][:10],
-            "file_names_without_current_event_label": [
-                n for n in names if expected_suffix and label not in str(n)][:10],
+            "file_names_without_current_event_reference": [
+                n for n in names if event_refs and not any(ref.lower() in str(n).lower() for ref in event_refs)][:10],
         })
     return {
         "vehicles_on_allocation": [v.name for v in data.allocation.vehicles] if data.allocation else [],
         "current_event_label": label,
+        "current_event_references": _current_event_references(data),
         "merge_tabs": tabs,
+        "note": "DX Fund ID / DX Investor ID are the Fund ID / Investor ID. A file name must start with the row's own "
+                "Fund ID and Investor ID and reference the current event (its label or due date).",
     }
 
 
 @_facts("CE-WB-NO-PLACEHOLDERS")
 def _placeholders(model, data, options):
     placeholders, tbd = [], []
-    for name in data.processed_sheets:
+    referenced = _referenced_cells(model, data)
+    for name in data.scanned_sheets:
         sheet = model.sheet(name)
         for cell in sheet.cells.values():
             if not isinstance(cell.value, str):
@@ -120,10 +218,14 @@ def _placeholders(model, data, options):
             if _PLACEHOLDER_RE.search(text):
                 placeholders.append({"sheet": name, "cell": cell.coord, "text": text[:120]})
             if _TBD_RE.search(text):
-                tbd.append({"sheet": name, "cell": cell.coord, "text": text[:120]})
+                row_labels = [str(c.value) for c in sheet.row_cells(cell.row) if isinstance(c.value, str)][:6]
+                tbd.append({"sheet": name, "cell": cell.coord, "text": text[:120], "row_labels": row_labels,
+                            "referenced_by_event_formulas": (name, cell.coord) in referenced})
     placeholder_tabs = [s.name for s in model.sheets if re.fullmatch(r"\s*\{[^}]*\}\s*", s.name)]
     return {"placeholders": placeholders, "tbd_cells": tbd, "placeholder_sheet_names": placeholder_tabs,
-            "scanned_sheets": data.processed_sheets}
+            "scanned_sheets": data.scanned_sheets,
+            "note": "A 'TBD' on a status or date field that no event formula references (e.g. a wire date awaiting "
+                    "cash movement) is legitimately pending, not a placeholder."}
 
 
 # --- allocation -------------------------------------------------------------------------------
@@ -218,13 +320,19 @@ def _stale(model, data, options):
             "vehicle_totals": [_num(v.totals.get(comp.column)) for v in alloc.vehicles],
             "nonzero_cells": sum(1 for a in cells if a),
         }
+        number = event_number(comp.header)
+        entry["header_names_other_event"] = bool(number and current and number != event_number(current))
         if comp in alloc.active_components:
             active.append(entry)
         else:
-            number = event_number(comp.header)
-            entry["header_names_other_event"] = bool(number and current and number != event_number(current))
             inactive.append(entry)
-    return {"current_event_label": current, "active_components": active, "inactive_components": inactive}
+    prior_active = []
+    if data.prior is not None and data.prior.allocation is not None:
+        prior_active = sorted({c.component_type for c in data.prior.allocation.active_components})
+    return {"current_event_label": current, "active_components": active, "inactive_components": inactive,
+            "component_types_active_in_prior_event": prior_active,
+            "note": "A leftover label on an unused (inactive, all-zero) column is fine; it only matters when the "
+                    "column carries amounts or is used in this event."}
 
 
 @_facts("CE-ALLOC-SIGNAGE")

@@ -8,13 +8,14 @@ it return needs_review.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel
 
-from src.pipeline.workbook.cells import col_idx, is_text, norm_text, rows_between, to_date, to_decimal, to_money
+from src.pipeline.workbook.cells import is_text, norm_text, rows_between, to_date, to_decimal, to_money
 from src.pipeline.workbook.layout import (
     AllocationLayout,
     ComponentColumn,
@@ -556,14 +557,43 @@ class WorkbookData:
     holidays: list[dt.date] = field(default_factory=list)
     has_holiday_calendar: bool = False
     extraction_errors: dict[str, str] = field(default_factory=dict)  # role -> reason
+    # Sheets outside the processed set that the processed sheets' formulas reference (e.g. an
+    # investment tracker, or a hidden working sheet). They are scanned by sheet-wide rules.
+    reference_sheets: list[str] = field(default_factory=list)
+    prior: "WorkbookData | None" = None  # the prior event's workbook, when supplied
 
     @property
     def processed_sheets(self) -> list[str]:
         return list(self.layouts)
 
+    @property
+    def scanned_sheets(self) -> list[str]:
+        """Sheets that sheet-wide rules (errors, placeholders) scan."""
+        return self.processed_sheets + [s for s in self.reference_sheets if s not in self.layouts]
 
-def extract_workbook_data(model: WorkbookModel, layouts: dict[str, BaseModel]) -> WorkbookData:
-    data = WorkbookData(model=model, layouts=dict(layouts))
+
+_SHEET_REF_RE = re.compile(r"'((?:[^']|'')+)'!|(?<![A-Za-z0-9_.'])([A-Za-z_][A-Za-z0-9_.]*)!")
+
+
+def referenced_sheets(model: WorkbookModel, sheet_names: list[str]) -> list[str]:
+    """Other sheets referenced by formulas on ``sheet_names``, in workbook order."""
+    known = {s.name for s in model.sheets}
+    found: set[str] = set()
+    for name in sheet_names:
+        for cell in model.sheet(name).cells.values():
+            if not cell.formula or "!" not in cell.formula:
+                continue
+            for quoted, bare in _SHEET_REF_RE.findall(cell.formula):
+                target = quoted.replace("''", "'") if quoted else bare
+                if target in known and target not in sheet_names:
+                    found.add(target)
+    return [s.name for s in model.sheets if s.name in found]
+
+
+def extract_workbook_data(model: WorkbookModel, layouts: dict[str, BaseModel],
+                          prior: "WorkbookData | None" = None) -> WorkbookData:
+    data = WorkbookData(model=model, layouts=dict(layouts), prior=prior)
+    data.reference_sheets = referenced_sheets(model, list(layouts))
     for name, layout in layouts.items():
         try:
             if isinstance(layout, AllocationLayout):

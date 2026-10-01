@@ -2,7 +2,7 @@ import { stripExtension } from "@/utils/documentTypes";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiPostBlob } from "@/services/apiClient";
-import type { DocumentAnalysis } from "@/types/api";
+import type { DocumentAnalysis, DocumentOptions } from "@/types/api";
 
 
 export interface ExportModalProps {
@@ -12,7 +12,7 @@ export interface ExportModalProps {
   sourceFilename: string | null;
   pageCount: number;
   documentType?: string;
-  options?: Record<string, string>;
+  options?: DocumentOptions;
   analysis: DocumentAnalysis | null;
 }
 

@@ -37,6 +37,7 @@ from src.providers.analysis_result import AnalysisRuleResult
 logger = logging.getLogger("petra.pipeline")
 
 DOCUMENT_TYPE = "capital_event_workbook"
+PRIOR_ROLES = {"allocation", "itd"}  # what the cross-event rules read from the prior workbook
 _PROMPT_PATH = Path(__file__).resolve().parents[3] / "config" / "workbook_analysis_system_prompt.md"
 
 LayoutMapper = Callable[[WorkbookModel, str, str], BaseModel | None]
@@ -101,6 +102,8 @@ class WorkbookPipeline:
         source_filename: str | None = None,
         on_progress: ProgressCallback | None = None,
         is_cancelled: Callable[[], bool] | None = None,
+        prior_file_path: str | None = None,
+        prior_source_filename: str | None = None,
     ) -> dict:
         t0 = time.perf_counter()
         options = dict(options or {})
@@ -119,7 +122,11 @@ class WorkbookPipeline:
 
         progress("Mapping sheet layouts", 1, total_steps)
         layouts, layout_errors = self._map_layouts(model, roles, selected, event_type)
-        data = extract_workbook_data(model, layouts)
+        prior = None
+        if prior_file_path and not options.get("first_event"):
+            progress("Reading the prior event's workbook", 1, total_steps)
+            prior = self._prior_data(prior_file_path, prior_source_filename)
+        data = extract_workbook_data(model, layouts, prior=prior)
         for role, reason in layout_errors.items():
             data.extraction_errors.setdefault(role, reason)
         if model.formulas_missing_cache:
@@ -146,8 +153,22 @@ class WorkbookPipeline:
         elapsed = time.perf_counter() - t0
         logger.info("Workbook pipeline complete: file=%s sheets=%d rules=%d elapsed=%s", source_filename,
                     len(selected), len(rules), timedelta(seconds=elapsed))
-        return self._build_result(model, roles, selected, rules, results, durations, options, source_filename, elapsed,
-                                  cancelled())
+        return self._build_result(model, roles, selected, data.reference_sheets, rules, results, durations, options,
+                                  source_filename, elapsed, cancelled())
+
+    def _prior_data(self, path: str, source_filename: str | None) -> WorkbookData | None:
+        """Data from the prior event's workbook: only the sheets the cross-event rules compare."""
+        try:
+            model = load_workbook_model(path, file_name=source_filename or Path(path).name)
+            roles = self._assign_roles(model)
+            wanted = [s for s, r in roles.items() if r in PRIOR_ROLES]
+            layouts, errors = self._map_layouts(model, roles, wanted, None)
+            data = extract_workbook_data(model, layouts)
+            data.extraction_errors.update(errors)
+            return data
+        except Exception:
+            logger.exception("Could not read the prior event's workbook %s", source_filename)
+            return None
 
     def _map_layouts(self, model, roles, selected, event_type) -> tuple[dict[str, BaseModel], dict[str, str]]:
         mappable = [s for s in selected if roles.get(s, "other") != "other"]
@@ -226,14 +247,16 @@ class WorkbookPipeline:
 
     # -- result ------------------------------------------------------------------------------------
 
-    def _build_result(self, model, roles, selected, rules, results, durations, options, source_filename, elapsed,
-                      cancelled) -> dict:
+    def _build_result(self, model, roles, selected, reference_sheets, rules, results, durations, options,
+                      source_filename, elapsed, cancelled) -> dict:
         pages = []
-        for name in selected:
+        units = [(name, roles.get(name, "other")) for name in selected]
+        units += [(name, "reference") for name in reference_sheets if name not in selected]
+        for name, role in units:
             sheet = model.sheet(name)
             text = build_skeleton(sheet)
             pages.append({"page": sheet.index, "label": name, "text": text, "tables": [], "char_count": len(text),
-                          "page_type": [roles.get(name, "other")]})
+                          "page_type": [role]})
         index_by_name = {s.name: s.index for s in model.sheets}
         default_page = pages[0]["page"] if pages else 1
         assessments, page_results = [], []

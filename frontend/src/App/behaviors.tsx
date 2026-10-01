@@ -6,8 +6,10 @@ import { fetchRules } from "@/services/rules";
 import { cancelValidationJob, createValidationJob, getValidationJob } from "@/services/validationJobs";
 import {
   FALLBACK_DOCUMENT_TYPES,
+  fileMatchesFormats,
   fileMatchesType,
   isWorkbookType,
+  priorDocumentNeeded,
   uploadBlocker,
 } from "@/utils/documentTypes";
 import type {
@@ -83,7 +85,7 @@ export function useAppBehavior() {
     () => documentTypes.find((type) => type.id === documentTypeId) || null,
     [documentTypes, documentTypeId],
   );
-  const eventType = documentOptions.event_type || undefined;
+  const eventType = typeof documentOptions.event_type === "string" ? documentOptions.event_type : undefined;
   const uploadHint = uploadBlocker(documentType, documentOptions);
 
   const stopPolling = useCallback(() => {
@@ -139,8 +141,16 @@ export function useAppBehavior() {
     setStatus(nextId ? READY_STATUS : DEFAULT_STATUS);
   }, []);
 
-  const handleDocumentOptionChange = useCallback((name: string, value: string) => {
-    setDocumentOptions((current) => ({ ...current, [name]: value }));
+  const handleDocumentOptionChange = useCallback((name: string, value: string | boolean) => {
+    setDocumentOptions((current) => {
+      const next = { ...current };
+      if (value === "" || value === false) {
+        delete next[name];  // unset options are left out of options_json
+      } else {
+        next[name] = value;
+      }
+      return next;
+    });
   }, []);
 
   const selectedRules = useMemo(
@@ -219,10 +229,27 @@ export function useAppBehavior() {
   );
 
   const beginUpload = useCallback(
-    async (file: File) => {
+    async (file: File, priorFile?: File | null) => {
       const blocker = uploadBlocker(documentType, documentOptions);
       if (blocker || !documentType) {
         setStatus({ label: blocker || "Select a document type first.", tone: "error", isLoading: false });
+        return;
+      }
+      const prior = documentType.prior_document;
+      if (prior && priorDocumentNeeded(documentType, documentOptions) && !priorFile) {
+        setStatus({
+          label: `Add the ${prior.label.toLowerCase()} or mark this as the fund's first capital event.`,
+          tone: "error",
+          isLoading: false,
+        });
+        return;
+      }
+      if (prior && priorFile && !fileMatchesFormats(priorFile, prior.accepted_formats)) {
+        setStatus({
+          label: `${priorFile.name} is not a valid ${prior.label.toLowerCase()} (expected ${prior.accepted_formats.map((f) => `.${f}`).join(", ")}).`,
+          tone: "error",
+          isLoading: false,
+        });
         return;
       }
       if (!fileMatchesType(file, documentType)) {
@@ -261,7 +288,13 @@ export function useAppBehavior() {
       setIsBusy(true);
 
       try {
-        const job = await createValidationJob(file, selectedRules, documentTypeId, documentOptions);
+        const job = await createValidationJob(
+          file,
+          selectedRules,
+          documentTypeId,
+          documentOptions,
+          priorDocumentNeeded(documentType, documentOptions) ? priorFile : null,
+        );
         setCurrentJobId(job.job_id);
         setStatus(createWorkingStatus(job.message || `Analyzing ${file.name}`));
         await pollJob(job.job_id);

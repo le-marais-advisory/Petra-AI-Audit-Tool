@@ -41,6 +41,9 @@ class DocumentTypeSpec:
     pipeline_factory: Callable[[], Any]
     options_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "required": []})
     config: dict[str, Any] = field(default_factory=dict)
+    # A second upload the type needs (e.g. the prior event's workbook): label, accepted
+    # formats, and the boolean option that waives it. None when the type takes one file.
+    prior_document: dict[str, Any] | None = None
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
@@ -49,6 +52,7 @@ class DocumentTypeSpec:
             "description": self.description,
             "accepted_formats": list(self.accepted_formats),
             "options_schema": self.options_schema,
+            "prior_document": self.prior_document,
         }
 
 
@@ -100,10 +104,21 @@ def _registry() -> dict[str, DocumentTypeSpec]:
                     },
                     "event_label": {"type": "string", "title": "Event label (optional cross-check)"},
                     "notice_date": {"type": "string", "format": "date", "title": "Notice date (optional cross-check)"},
+                    "first_event": {
+                        "type": "boolean",
+                        "title": "This is the fund's first capital event (no prior workbook)",
+                    },
                 },
                 "required": ["event_type"],
             },
             config=capital,
+            prior_document={
+                "label": "Prior event workbook",
+                "description": "The workbook of the most recent prior capital event, used to check that history "
+                               "and the roll-forward carried over and that plugs are allocated consistently.",
+                "accepted_formats": ["xlsx", "xlsm"],
+                "waived_by_option": "first_event",
+            },
         ),
     ]
     return {spec.id: spec for spec in specs}
@@ -138,6 +153,8 @@ def validate_options(spec: DocumentTypeSpec, options: dict[str, Any] | None) -> 
     if unknown:
         raise InvalidOptionsError(f"Unknown option(s) for {spec.label}: {', '.join(sorted(unknown))}")
     for name, value in options.items():
+        if properties[name].get("type") == "boolean" and not isinstance(value, bool):
+            raise InvalidOptionsError(f"Option {name!r} must be true or false, got {value!r}")
         allowed = properties[name].get("enum")
         if allowed is not None and value not in allowed:
             raise InvalidOptionsError(f"Option {name!r} must be one of {allowed}, got {value!r}")
@@ -161,9 +178,18 @@ def detect_format(content: bytes, filename: str | None) -> str | None:
     return None
 
 
-def ensure_format(spec: DocumentTypeSpec, content: bytes, filename: str | None) -> str:
+def ensure_format(spec: DocumentTypeSpec, content: bytes, filename: str | None, prior: bool = False) -> str:
+    formats = spec.prior_document["accepted_formats"] if prior and spec.prior_document else spec.accepted_formats
     detected = detect_format(content, filename)
-    if detected is None or detected not in spec.accepted_formats:
-        accepted = ", ".join(f".{f}" for f in spec.accepted_formats)
-        raise UnsupportedFormatError(f"{spec.label} accepts {accepted} files only.")
+    if detected is None or detected not in formats:
+        accepted = ", ".join(f".{f}" for f in formats)
+        what = spec.prior_document["label"] if prior and spec.prior_document else spec.label
+        raise UnsupportedFormatError(f"{what} accepts {accepted} files only.")
     return detected
+
+
+def prior_document_required(spec: DocumentTypeSpec, options: dict[str, Any]) -> bool:
+    """Whether the run needs the prior document (i.e. it has one and the option waiving it is off)."""
+    if spec.prior_document is None:
+        return False
+    return not options.get(spec.prior_document["waived_by_option"], False)

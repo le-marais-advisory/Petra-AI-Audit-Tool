@@ -7,9 +7,13 @@ export async function createValidationJob(
   selectedRules: RuleDefinition[],
   documentType: string,
   options: DocumentOptions,
+  priorFile?: File | null,
 ): Promise<ValidationJobResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  if (priorFile) {
+    formData.append("prior_file", priorFile);
+  }
   formData.append("document_type", documentType);
   formData.append("options_json", JSON.stringify(options));
   formData.append("rules_json", JSON.stringify({ rules: selectedRules }));

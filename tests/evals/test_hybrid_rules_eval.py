@@ -25,6 +25,8 @@ def _run(capital_event_fixtures, case) -> dict:
             source_filename=manifest.path.name,
             document_type="capital_event_workbook",
             options={"event_type": fx["event_type"]},
+            prior_file_path=str(manifest.prior.path) if manifest.prior else None,
+            prior_source_filename=manifest.prior.path.name if manifest.prior else None,
         )
         _results[case["id"]] = {a["rule_id"]: a for a in result["analysis"]["rule_assessments"]}
     return _results[case["id"]]
@@ -32,7 +34,5 @@ def _run(capital_event_fixtures, case) -> dict:
 
 @pytest.mark.parametrize("case,rule_id,expected", PARAMS, ids=[f"{c['id']}/{r}" for c, r, _ in PARAMS])
 def test_hybrid_verdict(capital_event_fixtures, case, rule_id, expected):
-    if isinstance(expected, dict) and "pending" in expected:
-        pytest.skip(f"awaiting FA calibration item {expected['pending']}")
     assessment = _run(capital_event_fixtures, case)[rule_id]
     assert assessment["verdict"] == expected, assessment.get("summary")

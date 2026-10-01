@@ -17,6 +17,15 @@ export interface DocumentTypeOptionProperty {
   format?: string;
 }
 
+/** A second upload a document type needs, e.g. the prior event's workbook. */
+export interface PriorDocumentDefinition {
+  label: string;
+  description?: string;
+  accepted_formats: string[];
+  /** Boolean option that waives the prior document (e.g. "first_event"). */
+  waived_by_option: string;
+}
+
 export interface DocumentTypeDefinition {
   id: string;
   label: string;
@@ -28,13 +37,14 @@ export interface DocumentTypeDefinition {
     properties: Record<string, DocumentTypeOptionProperty>;
     required?: string[];
   };
+  prior_document?: PriorDocumentDefinition | null;
 }
 
 export interface DocumentTypesResponse {
   document_types: DocumentTypeDefinition[];
 }
 
-export type DocumentOptions = Record<string, string>;
+export type DocumentOptions = Record<string, string | boolean>;
 
 export interface RuleDefinition {
   id: string;

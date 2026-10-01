@@ -35,9 +35,29 @@ export function acceptAttribute(type: DocumentTypeDefinition | null): string {
   return (type?.accepted_formats || ["pdf"]).map((format) => `.${format}`).join(",");
 }
 
-export function fileMatchesType(file: File, type: DocumentTypeDefinition | null): boolean {
+export function fileMatchesFormats(file: File, formats: string[]): boolean {
   const name = file.name.toLowerCase();
-  return (type?.accepted_formats || ["pdf"]).some((format) => name.endsWith(`.${format}`));
+  return formats.some((format) => name.endsWith(`.${format}`));
+}
+
+export function fileMatchesType(file: File, type: DocumentTypeDefinition | null): boolean {
+  return fileMatchesFormats(file, type?.accepted_formats || ["pdf"]);
+}
+
+/** Whether this run needs the prior document (the type takes one and it is not waived). */
+export function priorDocumentNeeded(type: DocumentTypeDefinition | null, options: DocumentOptions): boolean {
+  const prior = type?.prior_document;
+  return Boolean(prior && !options[prior.waived_by_option]);
+}
+
+/** Boolean options of the type, rendered as checkboxes (e.g. "first capital event"). */
+export function booleanOptions(type: DocumentTypeDefinition | null) {
+  if (!type) {
+    return [];
+  }
+  return Object.entries(type.options_schema.properties)
+    .filter(([, property]) => property.type === "boolean")
+    .map(([name, property]) => ({ name, title: property.title || name.replace(/_/g, " ") }));
 }
 
 export function isWorkbookType(type: DocumentTypeDefinition | null): boolean {

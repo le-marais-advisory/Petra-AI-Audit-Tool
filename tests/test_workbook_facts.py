@@ -25,6 +25,7 @@ def facts_for():
         model = loader.load_workbook_model(manifest.path)
         layouts = {n: layout.parse_layout(r) for n, r in manifest.layouts.items() if n in manifest.relevant_sheets}
         data = extract_mod.extract_workbook_data(model, layouts)
+        assert data.reference_sheets == manifest.reference_sheets
         return facts_mod.build_facts(rule_id, model, data, options={"event_type": manifest.spec.event_type})
 
     return run
@@ -41,8 +42,6 @@ def _expectation(capital_event_fixtures, spec, rule_id):
     expected = manifest.facts.get(rule_id)
     if expected is None:
         pytest.skip(f"{rule_id} has no facts expectation for {spec.fixture_id}")
-    if spec.defect and DEFECTS[spec.defect].pending_calibration:
-        pytest.skip(f"awaiting FA calibration item {DEFECTS[spec.defect].pending_calibration}")
     return manifest, expected
 
 
@@ -51,8 +50,12 @@ def test_placeholder_facts(facts_for, capital_event_fixtures, spec):
     manifest, expected = _expectation(capital_event_fixtures, spec, "CE-WB-NO-PLACEHOLDERS")
     facts = facts_for(manifest, "CE-WB-NO-PLACEHOLDERS")
     assert len(facts["placeholders"]) == expected["placeholder_count"]
+    scanned = manifest.relevant_sheets + manifest.reference_sheets
     for hit in facts["placeholders"]:
-        assert hit["sheet"] in manifest.relevant_sheets and hit["cell"] and hit["text"]
+        assert hit["sheet"] in scanned and hit["cell"] and hit["text"]
+    # FA: a TBD on a pending status/date field that no event formula uses is not a placeholder.
+    assert len(facts["tbd_cells"]) == expected["tbd_cells"]
+    assert sum(1 for t in facts["tbd_cells"] if t["referenced_by_event_formulas"]) == expected["tbd_referenced"]
 
 
 @pytest.mark.parametrize("spec", _specs_for("CE-ITD-EVENT-BLOCK"), ids=lambda s: s.fixture_id)
@@ -88,6 +91,9 @@ def test_stale_component_facts(facts_for, capital_event_fixtures, spec):
     facts = facts_for(manifest, "CE-ALLOC-STALE-COMPONENTS")
     stale = [c for c in facts["inactive_components"] if c["nonzero_cells"]]
     assert len(stale) == expected["stale_columns"]
+    # FA: a leftover label only matters on a column that is actually used.
+    labelled = [c for c in facts["active_components"] if c["header_names_other_event"]]
+    assert len(labelled) == expected["active_with_prior_label"]
     active = {c["header"] for c in facts["active_components"]}
     assert active and not active & {c["header"] for c in facts["inactive_components"]}
 
@@ -109,3 +115,15 @@ def test_facts_render_as_prompt_text(facts_for, capital_event_fixtures):
     text = facts_mod.render_facts("CE-WB-NO-PLACEHOLDERS", facts_for(manifest, "CE-WB-NO-PLACEHOLDERS"))
     assert "{Investor Short Name}" in text
     assert "COMPUTED FACTS" in text
+
+
+@pytest.mark.parametrize("spec", _specs_for("CE-ALLOC-REFERENCE-INTEGRITY"), ids=lambda s: s.fixture_id)
+def test_reference_integrity_facts(facts_for, capital_event_fixtures, spec):
+    manifest, expected = _expectation(capital_event_fixtures, spec, "CE-ALLOC-REFERENCE-INTEGRITY")
+    facts = facts_for(manifest, "CE-ALLOC-REFERENCE-INTEGRITY")
+    for ref in facts["references"]:
+        assert ref["target_sheet"] and ref["target_cell"] and ref["source_cells"]
+    targets = {ref["target_sheet"] for ref in facts["references"]}
+    if spec.event_type == "capital_call":
+        assert {"Mgmt Fee Calc", "Portfolio Investment Tracker"} <= targets
+    assert len(facts["period_mismatches"]) == expected["period_mismatches"]

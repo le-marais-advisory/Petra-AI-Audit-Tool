@@ -333,6 +333,56 @@
         "fund_terms",
         "event_input"
       ]
+    },
+    {
+      "id": "CE-ALLOC-FEE-TIERS",
+      "name": "Management Fee Rate vs. Tier Header",
+      "analysis_type": "text",
+      "scope": "page",
+      "query": "This rule applies ONLY to the Allocation sheet. If this sheet is not the Allocation sheet, return not_applicable. If the sheet has no management-fee rate column, return not_applicable.\n\nInvestors are grouped under tier-header rows such as 'Non-Affiliate Commitment 2.0% Mgmt Fee:', 'Non-Affiliate Commitment 1.75% Mgmt Fee:', 'Affiliate Commitments:'. An investor belongs to the tier above it until the next tier header or subtotal row. For each investor, compare its inline 'Mgmt Fee Rate' with the rate named in its tier header. Affiliate rows and the GP / carry block (which shows 'Carried Interest Rate' instead of 'Mgmt Fee Rate') must carry a 0% management-fee rate.\n\nPass criteria: Every investor's inline rate equals its tier-header rate, and affiliate / GP rows carry 0%.\n\nFail criteria: An affiliate or GP row carries a non-zero management-fee rate, or an investor sits under a tier header whose rate contradicts its inline rate with no annotation explaining the difference.\n\nneeds_review when an inline rate differs from its tier header and a side-letter override could explain it (the inline rate is the source of truth, the header is the cross-check).",
+      "description": "Each investor's inline management-fee rate agrees with its tier-header group; affiliates and GP members pay no management fee.",
+      "acceptance_criteria": "Inline rates match tier headers (or are flagged as possible side-letter overrides); affiliate/GP rates are 0%.",
+      "severity": "major",
+      "group": "ce_allocation",
+      "section": "Allocation",
+      "bypassable": true,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms"
+      ],
+      "deferred_reason": "FA calibration: needs the fund terms (LPA / side letters)."
+    },
+    {
+      "id": "CE-ALLOC-COMPONENT-PARTICIPATION",
+      "name": "Component Participation Rules",
+      "analysis_type": "text",
+      "scope": "page",
+      "query": "This rule applies ONLY to the Allocation sheet. If this sheet is not the Allocation sheet, return not_applicable.\n\nCheck who carries an amount in each active component column against the default participation rules: management fees - LPs only (GP / affiliate rows at $0); organizational expenses - LPs only (GP excluded); investment / investment reserves - LPs AND GP, pari passu by commitment; return of capital - only investors who have contributed capital; catch-up - GP only; carry distribution - GP receives its carried-interest share, LPs the remainder. An LP at $0 on a component where its peers participate is an exclusion.\n\nPass criteria: Participation in every active component follows the default rules, or each deviation is explained by a visible annotation (e.g. a side-letter exclusion note or a fund-specific participation override).\n\nFail criteria: The GP / an affiliate is charged a management fee; the GP is missing from an investment component that other investors fund pari passu; or catch-up is spread across LPs.\n\nneeds_review when an individual LP is at $0 on a component with no visible explanation (a side-letter excluded_components term may apply) or when a component's type cannot be determined from its header.",
+      "description": "Checks that each component is borne by the right investor pool (e.g. no mgmt fee on GP, GP included in investment calls pari passu).",
+      "acceptance_criteria": "Component participation matches the default rules or is explicitly annotated.",
+      "severity": "major",
+      "group": "ce_allocation",
+      "section": "Allocation",
+      "bypassable": true,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
+      ],
+      "evaluator": "llm",
+      "requires_documents": [
+        "fund_terms"
+      ],
+      "deferred_reason": "FA calibration: needs the fund terms (LPA / side letters)."
     }
   ]
 }
