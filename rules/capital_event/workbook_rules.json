@@ -622,7 +622,7 @@
         "Allocation",
         "Mgmt Fee Calc"
       ],
-      "description": "The fee tab is the source of the management fees: each LP's fee on the Allocation sheet must equal its fee on the fee tab, the fee tab total must equal the Allocation fee driver, and the fee tab must be for the current period. The fee calculation itself (rate x basis, exempt investors) is checked against the fund terms (deferred CE-REF-MGMT-FEE-MATH).",
+      "description": "When the event carries a management-fee component, the fee tab is the source of the management fees: each LP's fee on the Allocation sheet must equal its fee on the fee tab, the fee tab total must equal the Allocation fee driver, and the fee tab must be for the current period. The fee calculation itself (rate x basis, exempt investors) is checked against the fund terms (deferred CE-REF-MGMT-FEE-MATH). Not applicable when the event has no management-fee component.",
       "acceptance_criteria": "Allocation fees = fee tab fees per LP; fee tab total = fee driver; the fee tab period matches the Allocation fee component.",
       "severity": "critical",
       "group": "cross_tie_outs",
@@ -635,8 +635,29 @@
         "net_event"
       ],
       "required_roles": [
-        "allocation",
-        "mgmt_fee"
+        "allocation"
+      ],
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "CE-TIE-SUPPORT-TABS",
+      "name": "Support Tabs Tie Out (Investor by Investor and in Total)",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Allocation"
+      ],
+      "description": "Support tabs (a fee calculation, a distribution waterfall, an expense or other allocation breakout) feed Allocation columns through per-investor lookups such as SUMIFS keyed by the investor. For every such column, each investor's Allocation amount must equal that investor's amount on the support tab, and the support tab's investor rows must total the Allocation column, so no support amount is left unpulled. The ITD, Summary and Merge tabs have their own tie-out rules. Not applicable when no Allocation column is fed from a support tab.",
+      "acceptance_criteria": "Every support-fed Allocation column equals the support tab investor by investor and in total; no support-tab investor amount is left off the Allocation.",
+      "severity": "critical",
+      "group": "cross_tie_outs",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation"
       ],
       "evaluator": "deterministic"
     },

@@ -86,6 +86,7 @@ DETERMINISTIC_RULE_IDS = (
     "CE-WB-PAGE-BREAK-VIEW",
     "CE-WB-FILE-NAMING",
     "CE-TIE-MGMT-FEE",
+    "CE-TIE-SUPPORT-TABS",
     "CE-TIE-ITD-ALLOCATION",
     "CE-TIE-ITD-COMMITMENTS",
     "CE-ID-INVESTOR-KEYS",
@@ -232,8 +233,8 @@ DEFECTS: dict[str, DefectSpec] = {
         _d("investor_name_mismatch", "DX Investor Data spells one participating LP differently.",
            verdicts={"CE-ID-INVESTOR-KEYS": "fail"}),
         _d("fee_pulled_from_wrong_row", "One LP's Allocation fee pulls another investor's row from the fee tab.",
-           verdicts={"CE-TIE-MGMT-FEE": "fail", "CE-ALLOC-VEHICLE-TIE": "fail", "CE-ALLOC-GROSS-TIE": "fail",
-                     "CE-SUM-CHECKS-ZERO": "fail"}),
+           verdicts={"CE-TIE-MGMT-FEE": "fail", "CE-TIE-SUPPORT-TABS": "fail", "CE-ALLOC-VEHICLE-TIE": "fail",
+                     "CE-ALLOC-GROSS-TIE": "fail", "CE-SUM-CHECKS-ZERO": "fail"}),
         _d("fee_link_shifted", "One LP's fee lookup reads the fee tab's commitment column; its cached value is "
            "still right, as in the reference sample's GP row.",
            facts={"CE-ALLOC-REFERENCE-INTEGRITY": {"period_mismatches": 0, "link_pattern_exceptions": 1}}),
@@ -294,6 +295,17 @@ DEFECTS: dict[str, DefectSpec] = {
         _d("ok_itd_overlay_rows", "ITD band carries overlay rows (Mgmt Fees, Late Interest) marking fee columns twice.",
            facts={"CE-ITD-EVENT-BLOCK": {"overlay_rows": 2}}),
         _d("ok_transfer_block", "A non-event 'Transfers' block sits between two ITD events."),
+        # FA item 15: a call does not always carry a management fee.
+        _d("ok_call_without_fee", "The current call has no management-fee component; the fee tab stays from "
+           "prior events.", verdicts={"CE-TIE-MGMT-FEE": "not_applicable", "CE-TIE-SUPPORT-TABS": "not_applicable"}),
+        # FA item 15: a distribution may break the carry out on a waterfall support tab.
+        _d("ok_waterfall_support_tab", "The Allocation carry column pulls each investor's carry from a "
+           "'Distribution Waterfall' support tab with SUMIFS.", event_types=("distribution",),
+           verdicts={"CE-TIE-SUPPORT-TABS": "pass"}),
+        _d("waterfall_row_not_pulled", "The waterfall spells one LP differently, so the Allocation's SUMIFS "
+           "pulls $0 carry for that LP.", event_types=("distribution",),
+           verdicts={"CE-TIE-SUPPORT-TABS": "fail", "CE-ALLOC-VEHICLE-TIE": "fail", "CE-ALLOC-GROSS-TIE": "fail",
+                     "CE-SUM-CHECKS-ZERO": "fail"}),
         _d("ok_inactive_investor_na", "A transferred-out LP row on the Merge tab shows #N/A.",
            facts={"CE-WB-MERGE-TABS": {"inactive_ignored": 1}}),
         _d("ok_hidden_legacy_errors", "A hidden legacy sheet that nothing references carries #REF! errors."),
@@ -377,6 +389,7 @@ def clean_verdicts(event_type: str, with_prior: bool = False) -> dict[str, str |
         verdicts["CE-DIST-ROC-LIMIT"] = "not_applicable"
     if event_type == "distribution":
         verdicts["CE-TIE-MGMT-FEE"] = "not_applicable"
+        verdicts["CE-TIE-SUPPORT-TABS"] = "not_applicable"  # no fee tab; see ok_waterfall_support_tab
     if not with_prior:
         # The prior event's workbook was not supplied (and the run is not marked as the first event).
         for rule_id in CROSS_EVENT_RULE_IDS:
@@ -426,6 +439,8 @@ C_PLACEMENT = ComponentType("placement", "Placement Fees", "placement_fee", "cal
 C_ROC = ComponentType("roc", "Return of Capital", "return_of_capital", "distribution", "non_recallable_distributions")
 C_GAIN = ComponentType("gain", "Realized Gain", "realized_gain", "distribution", "non_recallable_distributions")
 C_CARRY = ComponentType("carry", "Realized Carry", "carry", "distribution", "non_recallable_distributions")
+
+WATERFALL_SHEET = "Distribution Waterfall"
 
 CALL_COMPONENTS = (C_INVESTMENT, C_EXPENSES, C_FEE, C_PLACEMENT)
 DIST_COMPONENTS = (C_ROC, C_GAIN, C_CARRY)
@@ -519,6 +534,9 @@ def _events(event_type: str, defect: str | None) -> tuple[list[EventDef], EventD
                            "Q3 2026")
     if defect == "itd_event_number_gap":
         current.number = 5
+    if defect == "ok_call_without_fee":
+        del current.drivers["mgmt_fee"]
+        current.fee_period = None
     return prior, current
 
 
@@ -697,6 +715,9 @@ class _Builder:
         else:
             self.merge_names = {v: f"Merge - {v}" for v in self.vehicles}
         self.whole_dollar_fees = self.defect == "ok_whole_dollar_fees"
+        # FA item 15: the carry is broken out on a waterfall support tab the Allocation pulls from.
+        self.waterfall = self.defect in ("ok_waterfall_support_tab", "waterfall_row_not_pulled")
+        self.waterfall_rows: list[dict[str, Any]] = []
 
     # -- helpers -----------------------------------------------------------------
 
@@ -776,6 +797,10 @@ class _Builder:
                 offsets[key].update(vehicle_offsets)
             if current and key == "investment" and self.defect == "concentrated_plug":
                 self._move(amounts, offsets, key, "Juniper Hollow Partners", "Silverline Retirement Plan", Decimal("500"))
+            if current and key == "carry" and self.defect == "waterfall_row_not_pulled":
+                # The waterfall spells the investor differently, so the Allocation's SUMIFS finds nothing.
+                self.unpulled_carry = amounts[key]["Juniper Hollow Partners"]
+                amounts[key]["Juniper Hollow Partners"] = Decimal("0")
             if current and key == "roc" and self.defect == "over_returned_capital":
                 self._move(amounts, offsets, key, "Harborview Capital Partners, LLC", "Vireo Late Close Partners",
                            Decimal("-5000"))
@@ -838,12 +863,13 @@ class _Builder:
         self._build_merge_tabs()
         self._build_investor_data()
         self._build_fee_tab()
+        self._build_waterfall()
         self._build_other_sheets()
         self._apply_cell_defects()
 
         order = [self.names["holiday_calendar"], self.names["summary"], self.names["allocation"], self.names["itd"],
                  *self.merge_names.values(), self.names["investor_data"], "Notes", "Portfolio Investment Tracker",
-                 self.names["mgmt_fee"], "3rd Close Rebalance"]
+                 self.names["mgmt_fee"], *([WATERFALL_SHEET] if self.waterfall else []), "3rd Close Rebalance"]
         by_name = {s.name: s for s in self.sheets}
         ordered = [by_name[n] for n in order]
 
@@ -1540,6 +1566,17 @@ class _Builder:
                     elif comp.key == "mgmt_fee" and comp.key in active:
                         formula = (f"SUMIFS({q(fee_sheet)}!${fee_amount_col}:${fee_amount_col},{q(fee_sheet)}!"
                                    f"${fee_name_col}:${fee_name_col},${sheet.col(cols['investor'])}{sheet.row(rr)})")
+                    elif comp.key == "carry" and comp.key in active and self.waterfall:
+                        rate_ref = _abs(self.carry_rate_coord)
+                        unpulled = self.defect == "waterfall_row_not_pulled" and inv.name == "Juniper Hollow Partners"
+                        self.waterfall_rows.append({
+                            "name": inv.name + (" LP" if unpulled else ""), "vehicle": vehicle, "is_gp": inv.is_gp,
+                            "amount": self.unpulled_carry if unpulled else amount,
+                            "offset": offset, "driver": f"{sheet.col(col)}${sheet.row(vdriver_row)}",
+                            "basis": basis_ref, "rate": rate_ref})
+                        formula = (f"SUMIFS({q(WATERFALL_SHEET)}!$E:$E,{q(WATERFALL_SHEET)}!$B:$B,"
+                                   f"${sheet.col(cols['investor'])}{sheet.row(rr)})")
+                        offset = None  # the waterfall carries the rounding plug
                     elif comp.key == "carry" and comp.key in active and inv.is_gp:
                         rate_ref = "0.25" if self.defect == "carry_split_wrong" else _abs(self.carry_rate_coord)
                         formula = f"ROUND({driver_ref}*{rate_ref},2)"
@@ -1972,6 +2009,37 @@ class _Builder:
             "columns": {"fund_name": "A", "fund_id": "B", "investor_name": "D", "investor_id": "E"},
         }
 
+    # -- Distribution waterfall support tab ---------------------------------------------------
+
+    def _build_waterfall(self) -> None:
+        if not self.waterfall:
+            return
+        sheet = SheetBuilder(WATERFALL_SHEET, "other")
+        a = q(self.alloc_sheet.name)
+        sheet.put(2, 2, "Carried Interest Waterfall")
+        for i, h in enumerate(["Investor", "Vehicle", "Distribution Basis", "Carried Interest"], start=2):
+            sheet.put(4, i, h)
+        first = 5
+        gp_rows = {e["vehicle"]: first + idx for idx, e in enumerate(self.waterfall_rows) if e["is_gp"]}
+        for idx, entry in enumerate(self.waterfall_rows):
+            r = first + idx
+            sheet.put(r, 2, entry["name"])
+            sheet.put(r, 3, entry["vehicle"])
+            basis = self.alloc_sheet.get(entry["basis"].replace("$", ""))
+            sheet.put(r, 4, formula=f"{a}!{entry['basis']}", cached=basis.cached, fmt=PCT_FMT)
+            if entry["is_gp"]:
+                formula = f"ROUND({a}!{entry['driver']}*{a}!{entry['rate']},2)"
+            else:
+                formula = f"ROUND(({a}!{entry['driver']}-$E${gp_rows[entry['vehicle']]})*{a}!{entry['basis']},2)"
+            if entry["offset"]:
+                formula += f"{'+' if entry['offset'] > 0 else '-'}{_fmt_offset(abs(entry['offset']))}"
+            sheet.put(r, 5, formula=formula, cached=_num(entry["amount"]), fmt=MONEY_FMT)
+        total = first + len(self.waterfall_rows) + 1
+        sheet.put(total, 2, "Total")
+        sheet.put(total, 5, formula=f"SUM(E{first}:E{total - 2})",
+                  cached=_num(sum((e["amount"] for e in self.waterfall_rows), Decimal("0"))), fmt=MONEY_FMT)
+        self.sheets.append(sheet)
+
     # -- Mgmt fee tab -----------------------------------------------------------------------
 
     def _fee_rows(self) -> dict[str, Any]:
@@ -2152,18 +2220,21 @@ C_BY_KEY = {c.key: c for c in (*CALL_COMPONENTS, *DIST_COMPONENTS)}
 
 
 def _referenced_sheets(sheets: list[SheetBuilder], relevant: list[str]) -> list[str]:
-    """Sheets outside ``relevant`` that formulas on the relevant sheets reference."""
+    """Sheets outside ``relevant`` linked to them: referenced by a relevant sheet, or a visible
+    sheet that references the Allocation or Summary (FA: support tabs linked to/from them)."""
     names = [s.name for s in sheets]
-    found: list[str] = []
+    hubs = [s.name for s in sheets if s.name in relevant and s.role in ("allocation", "summary")]
+
+    def refs(sheet: SheetBuilder) -> set[str]:
+        return {n for n in names if n != sheet.name
+                for cell in sheet.cells.values() if cell.formula and f"{q(n)}!" in cell.formula}
+
+    found: set[str] = set()
     for sheet in sheets:
-        if sheet.name not in relevant:
-            continue
-        for cell in sheet.cells.values():
-            if not cell.formula:
-                continue
-            for name in names:
-                if name not in relevant and name not in found and (f"{q(name)}!" in cell.formula):
-                    found.append(name)
+        if sheet.name in relevant:
+            found |= refs(sheet) - set(relevant)
+        elif sheet.state == "visible" and refs(sheet) & set(hubs):
+            found.add(sheet.name)
     return [n for n in names if n in found]
 
 

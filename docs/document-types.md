@@ -23,12 +23,12 @@ Event types are defined in `config/document_types/capital_event.yaml`. Each one 
 | `itd` | Inception-to-date capital activity: one column block per event, plus the X classification band |
 | `summary` | One-page event summary, including its check cell(s) |
 | `merge` | Mail-merge / notice data with investor IDs, fund IDs and file names. There is one per vehicle, often named after the fund |
-| `mgmt_fee` | Management-fee calculation tab |
+| `mgmt_fee` | Management-fee calculation tab. Processed when present; a call does not always carry a fee |
 | `investor_data` | Investor register exported from the document system |
 | `holiday_calendar` | Bank holidays used to compute due dates |
 | `other` | Everything else: notes, trackers, and legacy or hidden working sheets. These are never processed |
 
-To add an event type, add an entry to the YAML file. To limit a rule to certain events, set its `event_types`.
+The fund accountants confirmed the three event types: capital call, distribution and net event. To add an event type, add an entry to the YAML file. To limit a rule to certain events, set its `event_types`.
 
 ### Prior-event workbook
 
@@ -44,9 +44,19 @@ From the prior workbook, the pipeline reads only the Allocation and ITD sheets. 
 
 These rules return `not_applicable` on a first event, and `needs_review` when no prior workbook was supplied (for example, in a CLI run without one).
 
-### Referenced sheets
+### Linked sheets and support tabs
 
-Unreferenced hidden or legacy sheets are skipped. A sheet that a formula on a processed sheet references (for example `'Portfolio Investment Tracker'!E12`) is a **reference sheet**, hidden or not. The workbook-wide scans (formula errors and placeholders) cover it too. Reference sheets appear in the result with `page_type: ["reference"]`.
+Unreferenced hidden or legacy sheets are skipped. These sheets are **linked sheets** (`page_type: ["reference"]` in the result):
+- any sheet that a formula on a processed sheet references (for example `'Portfolio Investment Tracker'!E12`), hidden or not
+- any visible sheet whose formulas reference the Allocation or Summary
+
+The workbook-wide scans (formula errors and placeholders) cover linked sheets too. Hidden sheets that only read the Allocation are allocation breakouts saved from earlier events, so they are skipped.
+
+Support tabs, such as a fee calculation, a distribution waterfall or an expense breakout, usually feed Allocation columns through per-investor lookups (`SUMIFS`, `SUMIF`, `INDEX`/`MATCH`, `VLOOKUP`). `CE-TIE-SUPPORT-TABS` (`checks/support.py`) finds each Allocation column fed this way and re-evaluates its lookup against the support tab's cached values:
+- **Investor by investor:** a hardcoded or mislinked cell is caught.
+- **In total:** an amount on the support tab that no Allocation investor pulls is caught.
+
+The ITD, Summary and Merge tabs have their own tie-out rules, so this rule does not cover them.
 
 ### How a workbook run works
 

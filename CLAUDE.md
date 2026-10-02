@@ -173,7 +173,7 @@ Capital-event workbooks run through `src/pipeline/workbook/pipeline.py`:
 3. Keep only the sheets the user-selected event type needs (`selection.py`, `config/document_types/capital_event.yaml`).
 4. Map each kept sheet's layout with the LLM (`skeleton.py`, `layout_mapper.py`) and validate it against the cells (`layout_validator.py`).
 5. Extract typed data (`extract.py`).
-6. Read the prior-event workbook if one was uploaded (`prior_file`, or the `first_event` option for the first event). Cross-event rules live in `checks/cross_event.py`. Sheets referenced by formulas on the kept sheets are scanned too (role `reference`).
+6. Read the prior-event workbook if one was uploaded (`prior_file`, or the `first_event` option for the first event). Cross-event rules live in `checks/cross_event.py`. Linked sheets are scanned too (role `reference`): those referenced by the kept sheets, plus visible sheets linking to the Allocation or Summary. Support tabs the Allocation pulls from are tied out in `checks/support.py`.
 7. Evaluate rules:
    - deterministic rules run in `checks/`
    - hybrid rules go to the LLM with a computed-facts block (`facts.py`)

@@ -7,8 +7,11 @@
 # Sheet roles: allocation, itd, summary, merge, mgmt_fee, investor_data,
 # holiday_calendar, other.
 #
-# The initial list is pending confirmation by the Petra fund accountants
-# (calibration item 15).
+# The list was confirmed by the Petra fund accountants (calibration item 15). The fee tab
+# is processed when present, but a call does not always carry a management fee. Support
+# tabs (a distribution waterfall, expense breakouts) are not a role: any visible tab linked
+# to or from the Allocation or Summary is scanned, and CE-TIE-SUPPORT-TABS ties the ones the
+# Allocation pulls from.
 
 event_types:
   - id: capital_call

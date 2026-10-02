@@ -18,7 +18,7 @@ const ROLE_LABELS: Record<string, string> = {
   mgmt_fee: "Management fee",
   investor_data: "Investor data",
   holiday_calendar: "Holiday calendar",
-  reference: "Referenced by formulas",
+  reference: "Linked sheet (scanned)",
   other: "Other",
 };
 

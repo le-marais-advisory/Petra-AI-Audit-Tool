@@ -128,6 +128,13 @@ def test_custom_payload_is_still_validated_and_filtered():
     assert ids == ["CE-ALLOC-REFOOT"]
 
 
+def test_fee_tab_is_optional(pack):
+    # FA item 15: a call does not always carry a management fee, so no rule may require the fee tab;
+    # CE-TIE-MGMT-FEE is not applicable without a fee component and reviews a fee with no fee tab.
+    for rule in pack:
+        assert "mgmt_fee" not in (rule.get("required_roles") or []), rule["id"]
+
+
 def test_deferred_fund_terms_rules_are_parked_with_their_requirement():
     import json
     from pathlib import Path

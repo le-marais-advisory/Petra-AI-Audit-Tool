@@ -157,6 +157,6 @@ A file whose format doesn't match the type is rejected with a visible message.
 Boolean options render as checkboxes. A type with a `prior_document` (the capital-event workbook) doesn't upload on drop. The user stages the current workbook, picks the prior-event workbook (or ticks the first-capital-event box, which hides that picker), and then clicks **Run validation**. Changing the document type clears the staged files.
 
 Workbook runs change what the tabs show:
-- The source tab lists the processed sheets and their roles, since there is no inline preview. Sheets that are scanned only because formulas reference them show as "Referenced by formulas".
+- The source tab lists the processed sheets and their roles, since there is no inline preview. Sheets scanned only because they are linked to the processed sheets show as "Linked sheet (scanned)".
 - The visual tab is hidden.
 - Result locators read `Sheet "Allocation"`, and citations read `Allocation!H7`.

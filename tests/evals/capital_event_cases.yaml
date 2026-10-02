@@ -49,6 +49,20 @@ cases:
       CE-ALLOC-SIGNAGE: pass
       CE-TIE-SUMMARY: pass
 
+  - id: call_without_fee  # FA item 15: a call does not always carry a management fee
+    fixture: {event_type: capital_call, defect: ok_call_without_fee}
+    expected:
+      CE-WB-SHEETS-PRESENT: pass
+      CE-ALLOC-STALE-COMPONENTS: pass
+      CE-DATE-CONSISTENCY: pass
+
+  - id: distribution_waterfall  # FA item 15: carry broken out on a waterfall support tab
+    fixture: {event_type: distribution, defect: ok_waterfall_support_tab}
+    expected:
+      CE-WB-SHEETS-PRESENT: pass
+      CE-ALLOC-REFERENCE-INTEGRITY: pass
+      CE-DIST-CARRY-SPLIT: pass
+
   - id: placeholder_left
     fixture: {event_type: capital_call, defect: placeholder_left}
     expected:

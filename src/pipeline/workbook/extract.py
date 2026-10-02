@@ -575,25 +575,41 @@ class WorkbookData:
 _SHEET_REF_RE = re.compile(r"'((?:[^']|'')+)'!|(?<![A-Za-z0-9_.'])([A-Za-z_][A-Za-z0-9_.]*)!")
 
 
-def referenced_sheets(model: WorkbookModel, sheet_names: list[str]) -> list[str]:
-    """Other sheets referenced by formulas on ``sheet_names``, in workbook order."""
+def _sheet_refs(model: WorkbookModel, name: str) -> set[str]:
     known = {s.name for s in model.sheets}
+    refs: set[str] = set()
+    for cell in model.sheet(name).cells.values():
+        if not cell.formula or "!" not in cell.formula:
+            continue
+        for quoted, bare in _SHEET_REF_RE.findall(cell.formula):
+            target = quoted.replace("''", "'") if quoted else bare
+            if target in known and target != name:
+                refs.add(target)
+    return refs
+
+
+def referenced_sheets(model: WorkbookModel, sheet_names: list[str], hubs: list[str] | None = None) -> list[str]:
+    """Other sheets linked to the processed ones, in workbook order.
+
+    That is every sheet a formula on ``sheet_names`` references (hidden or not), plus every
+    visible sheet whose formulas reference a ``hubs`` sheet (the Allocation and Summary):
+    support tabs such as a fee or waterfall breakout. Hidden sheets that only read the
+    Allocation are allocation breakouts saved from earlier events and are skipped.
+    """
     found: set[str] = set()
     for name in sheet_names:
-        for cell in model.sheet(name).cells.values():
-            if not cell.formula or "!" not in cell.formula:
-                continue
-            for quoted, bare in _SHEET_REF_RE.findall(cell.formula):
-                target = quoted.replace("''", "'") if quoted else bare
-                if target in known and target not in sheet_names:
-                    found.add(target)
+        found |= _sheet_refs(model, name) - set(sheet_names)
+    for sheet in model.sheets:
+        if hubs and sheet.name not in sheet_names and sheet.is_visible and _sheet_refs(model, sheet.name) & set(hubs):
+            found.add(sheet.name)
     return [s.name for s in model.sheets if s.name in found]
 
 
 def extract_workbook_data(model: WorkbookModel, layouts: dict[str, BaseModel],
                           prior: "WorkbookData | None" = None) -> WorkbookData:
     data = WorkbookData(model=model, layouts=dict(layouts), prior=prior)
-    data.reference_sheets = referenced_sheets(model, list(layouts))
+    hubs = [n for n, layout in layouts.items() if isinstance(layout, (AllocationLayout, SummaryLayout))]
+    data.reference_sheets = referenced_sheets(model, list(layouts), hubs)
     for name, layout in layouts.items():
         try:
             if isinstance(layout, AllocationLayout):

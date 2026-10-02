@@ -41,6 +41,7 @@ EXPECTED = {
     "CE-ITD-CUMULATIVE": "pass",
     "CE-TIE-ITD-ALLOCATION": "pass",
     "CE-TIE-MGMT-FEE": "pass",
+    "CE-TIE-SUPPORT-TABS": "pass",  # 3Q and 4Q fees tie to Mgmt Fee Calc investor by investor and in total
     "CE-SUM-CHECKS-ZERO": "pass",
     "CE-DATE-VALIDITY": "pass",
     "CE-DATE-ORDER": "pass",

@@ -9,6 +9,7 @@ from src.pipeline.workbook.checks import (  # noqa: F401  (importing registers t
     allocation,
     cross_event,
     rollforward_itd,
+    support,
     ties,
     workbook_checks,
 )
