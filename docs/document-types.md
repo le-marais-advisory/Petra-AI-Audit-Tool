@@ -51,7 +51,7 @@ Unreferenced hidden or legacy sheets are skipped. These sheets are **linked shee
 - any sheet that a formula on a processed sheet references (for example `'Portfolio Investment Tracker'!E12`), hidden or not
 - any visible sheet whose formulas reference the Allocation or Summary
 
-The workbook-wide scans (formula errors and placeholders) cover linked sheets too. Hidden sheets that only read the Allocation are allocation breakouts saved from earlier events, so they are skipped.
+The workbook-wide scans (formula errors and placeholders) cover linked sheets too. Hidden sheets that only read the Allocation are allocation breakouts saved from earlier events, so they are skipped, as the fund accountants confirmed.
 
 Support tabs, such as a fee calculation, a distribution waterfall or an expense breakout, usually feed Allocation columns through per-investor lookups (`SUMIFS`, `SUMIF`, `INDEX`/`MATCH`, `VLOOKUP`). `CE-TIE-SUPPORT-TABS` (`checks/support.py`) finds each Allocation column fed this way and re-evaluates its lookup against the support tab's cached values:
 - **Investor by investor:** a hardcoded or mislinked cell is caught.
