@@ -104,6 +104,41 @@ def _column_header(model: WorkbookModel, sheet_name: str, column: str, below_row
     return str(cells[0].value).strip() if cells else None
 
 
+def _link_pattern_exceptions(alloc) -> list[dict[str, Any]]:
+    """Investor rows whose links to other tabs differ from the rest of their column.
+
+    Within one Allocation column every investor row should read the same columns of the
+    target tab (e.g. SUMIFS over the fee column, keyed by the investor). A row that reads
+    another column is a broken pull even when its cached value happens to be right.
+    """
+    by_column: dict[str, dict[int, frozenset]] = {}
+    rows = {inv.row for inv in alloc.investors}
+    for cell in alloc.sheet.cells.values():
+        if cell.row not in rows:
+            continue
+        targets = frozenset((sheet, re.match(r"[A-Z]+", target).group()) for sheet, target in _external_refs(cell.formula)
+                            if sheet != alloc.sheet.name and re.match(r"[A-Z]+", target))
+        if targets:
+            by_column.setdefault(re.match(r"[A-Z]+", cell.coord).group(), {})[cell.row] = targets
+    exceptions = []
+    for column, per_row in sorted(by_column.items()):
+        if len(per_row) < 3:
+            continue
+        counts: dict[frozenset, int] = {}
+        for targets in per_row.values():
+            counts[targets] = counts.get(targets, 0) + 1
+        usual, n = max(counts.items(), key=lambda kv: kv[1])
+        if n * 2 <= len(per_row):
+            continue  # no clear pattern to compare against
+        fmt = lambda ts: sorted(f"{s}!{c}" for s, c in ts)
+        for row, targets in sorted(per_row.items()):
+            if targets != usual:
+                exceptions.append({"cell": f"{column}{row}", "reads": fmt(targets), "column_usually_reads": fmt(usual),
+                                   "value": _num(alloc.sheet.value(f"{column}{row}"))
+                                   if isinstance(alloc.sheet.value(f"{column}{row}"), (int, float, Decimal)) else None})
+    return exceptions
+
+
 @_facts("CE-ALLOC-REFERENCE-INTEGRITY")
 def _reference_integrity(model, data, options):
     """Every reference from the Allocation sheet to another tab, with what it points at."""
@@ -113,6 +148,7 @@ def _reference_integrity(model, data, options):
     # An event may bill several fee periods at once (e.g. 3Q and 4Q in one call).
     current_periods = sorted({p for c in alloc.active_components if c.component_type == "mgmt_fee"
                               for p in [quarter_key(c.header)] if p})
+    roll_forward = {col: name for name, col in alloc.layout.roll_forward.model_dump().items() if col}
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for cell in alloc.sheet.cells.values():
         for sheet_name, target in _external_refs(cell.formula):
@@ -136,20 +172,45 @@ def _reference_integrity(model, data, options):
         entry["target_row_labels"] = ([str(c.value) for c in target_sheet.row_cells(row) if is_text(c.value)][:6]
                                       if row else [])
         entry["target_column_header"] = _column_header(model, sheet_name, column, row)
+        source_columns = {re.match(r"[A-Z]+", c).group() for c in entry["source_cells"]}
+        if not single:
+            entry["kind"] = "lookup"  # whole-column range, e.g. INDEX/MATCH keyed by the investor
+        elif source_columns & roll_forward.keys():
+            entry["kind"] = "roll_forward"
+        else:
+            entry["kind"] = "figure"
+        rf = sorted({roll_forward[c] for c in source_columns if c in roll_forward})
+        if rf:
+            entry["source_roll_forward_columns"] = rf
         entry["source_cells"] = sorted(entry["source_cells"])[:6] + (
             [f"... {len(entry['source_cells']) - 6} more"] if len(entry["source_cells"]) > 6 else [])
         period = quarter_key(entry["target_column_header"])
-        if current_periods and period and period not in current_periods:
-            stale = {"target_sheet": sheet_name, "target_column": column, "period": period,
-                     "current_periods": current_periods}
-            if stale not in mismatches:  # a driver cell and its per-LP column point at the same stale column
-                mismatches.append(stale)
+        for source_column in sorted(source_columns):
+            # A fee column's own header names its period; a link into another period's column is wrong even
+            # when that period is also billed in this event (e.g. the 4Q driver reading the 3Q total).
+            source_period = quarter_key(alloc.sheet.value(f"{source_column}{alloc.layout.header_row}"))
+            if period and ((current_periods and period not in current_periods)
+                           or (source_period and source_period != period)):
+                stale = {"source_column": source_column, "source_period": source_period,
+                         "target_sheet": sheet_name, "target_column": column, "period": period,
+                         "current_periods": current_periods}
+                if stale not in mismatches:  # a driver cell and its per-LP column point at the same stale column
+                    mismatches.append(stale)
         references.append(entry)
     return {
         "current_event_label": alloc.event.label,
         "current_fee_periods": current_periods,
+        "link_pattern_exceptions": _link_pattern_exceptions(alloc),
         "references": sorted(references, key=lambda r: (r["target_sheet"], r["target_cell"])),
         "period_mismatches": mismatches,
+        "note": "kind 'lookup' is a per-investor lookup over a whole column (the matched row is the investor's "
+                "own row). kind 'roll_forward' feeds an Allocation roll-forward column (prior contributions, prior "
+                "recallable, commitment), which is expected to read the cumulative inception-to-date totals of "
+                "prior events, so a cumulative ITD total there is correct, not a prior-period figure. Only kind "
+                "'figure' references must point at the current event's own figures. period_mismatches (including "
+                "a column whose header names one period linking to another period's column) and "
+                "link_pattern_exceptions (an investor row reading different target columns than the rest of its "
+                "column) are computed by code; each one is a FAIL even when the cached value happens to be right.",
     }
 
 
@@ -173,18 +234,24 @@ def _sheets_present(model, data, options):
     }
 
 
+def _inactive_merge_row(row) -> bool:
+    """FA calibration: no commitment and nothing in this event (e.g. a transferred-out LP)."""
+    return not (row.commitment or ZERO) and not (row.event_total or ZERO) and not any(row.amounts.values())
+
+
 @_facts("CE-WB-MERGE-TABS")
 def _merge_tabs(model, data, options):
     label = data.allocation.event.label if data.allocation else None
     tabs = []
     for merge in data.merges:
-        rows = merge.rows
+        rows = [r for r in merge.rows if not _inactive_merge_row(r)]
         names = [r.file_name for r in rows if is_text(r.file_name)]
         event_refs = _current_event_references(data)
         tabs.append({
             "sheet": merge.sheet.name,
             "vehicle": merge.vehicle,
             "investor_rows": len(rows),
+            "inactive_investors_ignored": [r.name for r in merge.rows if _inactive_merge_row(r)],
             "has_file_name_column": merge.layout.columns.file_name is not None,
             "rows_missing_investor_id": [r.name for r in rows if r.investor_id in (None, "")],
             "rows_missing_fund_id": [r.name for r in rows if r.fund_id in (None, "")],
@@ -201,7 +268,9 @@ def _merge_tabs(model, data, options):
         "current_event_references": _current_event_references(data),
         "merge_tabs": tabs,
         "note": "DX Fund ID / DX Investor ID are the Fund ID / Investor ID. A file name must start with the row's own "
-                "Fund ID and Investor ID and reference the current event (its label or due date).",
+                "Fund ID and Investor ID and reference the current event (its label or due date). Inactive investors "
+                "(no commitment and nothing in this event, e.g. transferred out) are excluded from every list above "
+                "and must not affect the verdict, even if their rows show errors such as #N/A.",
     }
 
 
@@ -396,13 +465,16 @@ def _itd_block(model, data, options):
     prior_last = max((ci(b.total_column or b.last_column) for b in itd.prior_blocks), default=0)
     return {
         "current_block": {"label": block.label, "first_column": block.first_column, "columns": columns},
+        "columns_without_primary_x": [c["column"] for c in columns if not c["classifications"]],
+        "columns_with_multiple_primary_x": [c["column"] for c in columns if len(c["classifications"]) > 1],
         "label_is_unique": labels.count(block.label) == 1,
         "appended_after_prior_blocks": ci(block.first_column) > prior_last,
         "event_labels": labels,
         "overlay_rows": [o.name for o in itd.layout.overlay_rows],
         "note": "Participation differs by component (e.g. affiliates pay no management fee, never-funded investors "
                 "receive no return of capital). A column is fully populated when investors_missing_from_itd_block "
-                "is empty.",
+                "is empty. Any column listed in columns_without_primary_x or columns_with_multiple_primary_x is a "
+                "FAIL.",
     }
 
 

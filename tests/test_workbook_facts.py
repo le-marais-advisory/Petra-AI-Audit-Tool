@@ -64,12 +64,26 @@ def test_itd_event_block_facts(facts_for, capital_event_fixtures, spec):
     facts = facts_for(manifest, "CE-ITD-EVENT-BLOCK")
     block = facts["current_block"]
     assert block["label"] == manifest.truth["itd"]["current_block_label"]
-    unclassified = [c for c in block["columns"] if not c["classifications"]]
+    unclassified = [c["column"] for c in block["columns"] if not c["classifications"]]
     assert len(unclassified) == expected["unclassified_current_columns"]
+    assert facts["columns_without_primary_x"] == unclassified
+    assert facts["columns_with_multiple_primary_x"] == []
     for column in block["columns"]:
         assert column["component_type"]
     assert facts["label_is_unique"] is True
     assert facts["appended_after_prior_blocks"] is True
+
+
+@pytest.mark.parametrize("spec", _specs_for("CE-WB-MERGE-TABS"), ids=lambda s: s.fixture_id)
+def test_merge_tab_facts_ignore_inactive_investors(facts_for, capital_event_fixtures, spec):
+    manifest, expected = _expectation(capital_event_fixtures, spec, "CE-WB-MERGE-TABS")
+    facts = facts_for(manifest, "CE-WB-MERGE-TABS")
+    ignored = [n for tab in facts["merge_tabs"] for n in tab["inactive_investors_ignored"]]
+    assert len(ignored) == expected["inactive_ignored"]
+    # FA: a transferred-out LP's #N/A ID and file name do not count against the rule.
+    for tab in facts["merge_tabs"]:
+        assert tab["rows_missing_investor_id"] == []
+        assert tab["file_names_not_starting_with_own_ids"] == []
 
 
 @pytest.mark.parametrize("spec", _specs_for("CE-DATE-CONSISTENCY"), ids=lambda s: s.fixture_id)
@@ -123,7 +137,13 @@ def test_reference_integrity_facts(facts_for, capital_event_fixtures, spec):
     facts = facts_for(manifest, "CE-ALLOC-REFERENCE-INTEGRITY")
     for ref in facts["references"]:
         assert ref["target_sheet"] and ref["target_cell"] and ref["source_cells"]
+        assert ref["kind"] in {"lookup", "roll_forward", "figure"}
+        # A lookup spans a whole column; a figure or roll-forward link is one cell.
+        assert (ref["kind"] == "lookup") == (not ref["target_cell"][-1].isdigit())
+    tracker = [r for r in facts["references"] if r["target_sheet"] == "Portfolio Investment Tracker"]
+    assert all(r["kind"] == "figure" for r in tracker)
     targets = {ref["target_sheet"] for ref in facts["references"]}
     if spec.event_type == "capital_call":
         assert {"Mgmt Fee Calc", "Portfolio Investment Tracker"} <= targets
     assert len(facts["period_mismatches"]) == expected["period_mismatches"]
+    assert len(facts["link_pattern_exceptions"]) == expected.get("link_pattern_exceptions", 0)

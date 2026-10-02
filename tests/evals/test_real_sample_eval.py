@@ -53,7 +53,9 @@ EXPECTED = {
     "CE-ID-INVESTOR-KEYS": "pass",  # IDs on the Merge tab only; names match elsewhere
     "CE-WB-NO-PLACEHOLDERS": "pass",  # 'TBD' wire date pending cash movement
     "CE-WB-MERGE-TABS": "pass",  # DX IDs are the Fund / Investor IDs
-    "CE-ALLOC-REFERENCE-INTEGRITY": "pass",  # 3Q and 4Q fees both billed in this call
+    # Real findings: the 4Q fee driver (T5) links to the 3Q total, and the GP row's fee lookups
+    # (S107, T107) read the column to the left. The values coincide, so only the links are wrong.
+    "CE-ALLOC-REFERENCE-INTEGRITY": "fail",
     # A warning, not a failure: live links in prior ITD blocks on the $0 GP row.
     "CE-ITD-PRIOR-FROZEN": "needs_review",
     # Confirmed findings in the sample.

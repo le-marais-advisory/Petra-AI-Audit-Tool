@@ -84,6 +84,11 @@ cases:
     expected:
       CE-ALLOC-STALE-COMPONENTS: fail
 
+  - id: fee_link_shifted  # right cached value, wrong fee-tab column
+    fixture: {event_type: capital_call, defect: fee_link_shifted}
+    expected:
+      CE-ALLOC-REFERENCE-INTEGRITY: fail
+
   - id: stale_fee_period
     fixture: {event_type: capital_call, defect: stale_fee_period}
     expected:

@@ -213,6 +213,35 @@ def test_subtotal_may_cover_blank_padding_rows(layout_mod, validator, loader, tm
     assert "investor_range_mismatch" in codes
 
 
+def test_fee_total_column_is_not_a_billing_period(layout_mod, validator, loader, tmp_path):
+    # The reference sample bills 3Q and 4Q fees with a "Total" column beside them.
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Mgmt Fee Calc"
+    for col, header in zip("ABCDE", ["Investor", "Commitment Amount", "Q3 2026 Mgmt Fees", "Q4 2026 Mgmt Fees",
+                                     "Total Mgmt Fees"]):
+        ws[f"{col}1"] = header
+    for row, name in enumerate(["Alpha LP", "Beta LLC"], start=2):
+        ws[f"A{row}"], ws[f"B{row}"] = name, 1000.0
+        ws[f"C{row}"], ws[f"D{row}"], ws[f"E{row}"] = f"=B{row}*0.005", f"=B{row}*0.005", f"=SUM(C{row}:D{row})"
+    ws["A4"] = "Total"
+    for col in "BCDE":
+        ws[f"{col}4"] = f"=SUM({col}2:{col}3)"
+    path = tmp_path / "fees.xlsx"
+    wb.save(path)
+    layout = {"role": "mgmt_fee", "sheet": "Mgmt Fee Calc", "header_row": 1, "investor_rows": [2, 3],
+              "columns": {"investor": "A", "commitment": "B"},
+              "fee_columns": [{"column": "C", "period_label": "Q3 2026"}, {"column": "D", "period_label": "Q4 2026"}],
+              "subtotal_rows": {"limited_partners": 4}}
+    model = loader.load_workbook_model(path)
+    assert "fee_total_column" not in {i.code for i in validator.validate_layout(model, layout_mod.parse_layout(layout))}
+    layout["fee_columns"].append({"column": "E", "period_label": ""})
+    codes = {i.code for i in validator.validate_layout(model, layout_mod.parse_layout(layout))}
+    assert "fee_total_column" in codes
+
+
 def test_date_cells_must_hold_dates(layout_mod, validator, loader, capital_event_fixtures):
     manifest = capital_event_fixtures.get()
     model = loader.load_workbook_model(manifest.path)

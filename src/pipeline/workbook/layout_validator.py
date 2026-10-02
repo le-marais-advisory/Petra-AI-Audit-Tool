@@ -5,6 +5,8 @@ corrections, and a ``cell`` pointing at the evidence where one exists.
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 
 from pydantic import BaseModel
@@ -273,6 +275,10 @@ def _validate_merge(c: _Checker, layout: MergeLayout) -> None:
                      "merge rows")
 
 
+_SAME_ROW_SUM_RE = re.compile(r"=SUM\(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?(?:,\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?)*\)")
+_ROW_REF_RE = re.compile(r"\$?([A-Z]{1,3})\$?(\d+)")
+
+
 def _validate_fee(c: _Checker, layout: MgmtFeeLayout) -> None:
     row = layout.header_row
     c.header_contains(layout.columns.investor, row, ("investor", "partner", "name"), "columns.investor")
@@ -283,6 +289,15 @@ def _validate_fee(c: _Checker, layout: MgmtFeeLayout) -> None:
             cell = f"{fee.column}{row}"
             if norm_text(fee.period_label) not in norm_text(c.text(cell)):
                 c.add("header_mismatch", f"fee column period {fee.period_label!r} not in header {c.text(cell)!r}", cell)
+    for fee in layout.fee_columns:
+        # A "Total" column summing the period columns on the same row is not a billing period.
+        row_formulas = [c.sheet.cell(f"{fee.column}{r}") for r in layout.investor_rows[:3]]
+        if row_formulas and all(cell is not None and cell.formula and _SAME_ROW_SUM_RE.fullmatch(cell.formula)
+                                and all(m[1] == str(cell.row) for m in _ROW_REF_RE.findall(cell.formula))
+                                for cell in row_formulas):
+            c.add("fee_total_column", f"fee column {fee.column} sums other columns on each investor row "
+                                      f"({row_formulas[0].formula}); it is a total, not a billing-period column",
+                  f"{fee.column}{layout.header_row}")
     sum_cols = [x for x in [layout.columns.commitment] if x] + [f.column for f in layout.fee_columns]
     c.investor_range(layout.investor_rows, layout.subtotal_rows.limited_partners, sum_cols, layout.columns.investor,
                      "fee investor rows")

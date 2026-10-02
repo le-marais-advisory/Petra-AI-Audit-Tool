@@ -234,6 +234,9 @@ DEFECTS: dict[str, DefectSpec] = {
         _d("fee_pulled_from_wrong_row", "One LP's Allocation fee pulls another investor's row from the fee tab.",
            verdicts={"CE-TIE-MGMT-FEE": "fail", "CE-ALLOC-VEHICLE-TIE": "fail", "CE-ALLOC-GROSS-TIE": "fail",
                      "CE-SUM-CHECKS-ZERO": "fail"}),
+        _d("fee_link_shifted", "One LP's fee lookup reads the fee tab's commitment column; its cached value is "
+           "still right, as in the reference sample's GP row.",
+           facts={"CE-ALLOC-REFERENCE-INTEGRITY": {"period_mismatches": 0, "link_pattern_exceptions": 1}}),
         _d("stale_fee_period", "The fee tab column is still labelled for the prior quarter.",
            verdicts={"CE-TIE-MGMT-FEE": "fail"},
            facts={"CE-DATE-CONSISTENCY": {"fee_period_mismatch": True},
@@ -291,7 +294,8 @@ DEFECTS: dict[str, DefectSpec] = {
         _d("ok_itd_overlay_rows", "ITD band carries overlay rows (Mgmt Fees, Late Interest) marking fee columns twice.",
            facts={"CE-ITD-EVENT-BLOCK": {"overlay_rows": 2}}),
         _d("ok_transfer_block", "A non-event 'Transfers' block sits between two ITD events."),
-        _d("ok_inactive_investor_na", "A transferred-out LP row on the Merge tab shows #N/A."),
+        _d("ok_inactive_investor_na", "A transferred-out LP row on the Merge tab shows #N/A.",
+           facts={"CE-WB-MERGE-TABS": {"inactive_ignored": 1}}),
         _d("ok_hidden_legacy_errors", "A hidden legacy sheet that nothing references carries #REF! errors."),
         _d("ok_tbd_pending", "A 'TBD' wire date on the portfolio tracker while cash has not moved yet.",
            facts={"CE-WB-NO-PLACEHOLDERS": {"tbd_cells": 1, "tbd_referenced": 0}}),
@@ -1529,6 +1533,10 @@ class _Builder:
                             and inv.name == "Juniper Hollow Partners":
                         wrong_row = self._fee_rows()["lp_rows"]["Meridian Endowment Fund"]
                         formula = f"{q(fee_sheet)}!${fee_amount_col}${wrong_row}"
+                    elif comp.key == "mgmt_fee" and comp.key in active and self.defect == "fee_link_shifted" \
+                            and inv.name == "Juniper Hollow Partners":
+                        formula = (f"SUMIFS({q(fee_sheet)}!$E:$E,{q(fee_sheet)}!"
+                                   f"${fee_name_col}:${fee_name_col},${sheet.col(cols['investor'])}{sheet.row(rr)})")
                     elif comp.key == "mgmt_fee" and comp.key in active:
                         formula = (f"SUMIFS({q(fee_sheet)}!${fee_amount_col}:${fee_amount_col},{q(fee_sheet)}!"
                                    f"${fee_name_col}:${fee_name_col},${sheet.col(cols['investor'])}{sheet.row(rr)})")
@@ -2165,7 +2173,8 @@ def _clean_facts(event_type: str) -> dict[str, dict[str, Any]]:
         "CE-ITD-EVENT-BLOCK": {"unclassified_current_columns": 0, "overlay_rows": 0},
         "CE-DATE-CONSISTENCY": {"fee_period_mismatch": False, "distinct_event_numbers": [4 if event_type != "distribution" else 2]},
         "CE-ALLOC-STALE-COMPONENTS": {"stale_columns": 0, "active_with_prior_label": 0},
-        "CE-ALLOC-REFERENCE-INTEGRITY": {"period_mismatches": 0},
+        "CE-ALLOC-REFERENCE-INTEGRITY": {"period_mismatches": 0, "link_pattern_exceptions": 0},
+        "CE-WB-MERGE-TABS": {"inactive_ignored": 0},
     }
     if event_type == "distribution":
         facts["CE-DIST-CARRY-SPLIT"] = {"gp_share_matches_rate": True}
