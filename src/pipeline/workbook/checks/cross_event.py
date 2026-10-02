@@ -105,6 +105,79 @@ def roll_forward(ctx: CheckContext, out: Outcome) -> str:
     return "Prior contributions on the Allocation sheet carry over exactly from the prior event's workbook."
 
 
+_ITD_CATEGORIES = {
+    "investment_contributions": ("investment_contributions",),
+    "cost_contributions": ("cost_contributions",),
+    "total_contributions": ("investment_contributions", "cost_contributions"),
+    "recallable_distributions": ("recallable_distributions",),
+    "non_recallable_distributions": ("non_recallable_distributions",),
+    "total_distributions": ("recallable_distributions", "non_recallable_distributions"),
+}
+
+
+def _label(category: str) -> str:
+    return "ITD " + category.replace("_", " ")
+
+
+@check("CE-XEV-ITD-ROLL-FORWARD", needs=("itd",))
+def itd_roll_forward(ctx: CheckContext, out: Outcome) -> str:
+    """FA (QC practice): prior ITD balance + this event = new ITD balance, per investor and category.
+
+    E.g. 150k ITD distributions before, a 25k distribution now, but 200k ITD distributions in the
+    new workbook: 25k is double counted or entered wrong somewhere.
+    """
+    prior = _prior(ctx, out, ("itd",))
+    if prior is None:
+        return ""
+    itd, before_itd = ctx.data.itd, prior.itd
+    block = itd.current_block
+    if block is None:
+        out.review("The current ITD event block could not be identified, so the roll-forward could not be checked.")
+        return ""
+    prior_labels = {b.label for b in before_itd.event_blocks}
+    for other in itd.prior_blocks:
+        if other.event_type != "transfer" and other.label not in prior_labels:
+            out.fail(f"'{other.label}' is in the current ITD sheet but not in the prior workbook: either the prior "
+                     "workbook uploaded is not the most recent one, or the event was entered twice.", itd.sheet,
+                     f"{other.first_column}{itd.layout.event_header_row}")
+    columns = {c.column for c in block.components}
+    cum = itd.layout.cumulative_columns.model_dump()
+    before = {i.name: i for i in before_itd.investors}
+    rows = []  # (investor, category, delta, movement)
+    for inv in itd.investors:
+        old = before.get(inv.name)
+        for category, members in _ITD_CATEGORIES.items():
+            now = inv.cumulative.get(category)
+            if now is None or not cum.get(category):
+                continue
+            was = (old.cumulative.get(category) if old else ZERO) or ZERO
+            movement = sum((inv.values.get(col, ZERO) for col in columns
+                            if set(itd.marks.get(col, [])) & set(members)), ZERO)
+            rows.append((inv, category, now - was, movement, was, now))
+    for name, old in before.items():
+        if name not in {i.name for i in itd.investors} and any(
+                mag(old.cumulative.get(c)) > CENT for c in _ITD_CATEGORIES):
+            out.fail(f"{name} carries ITD balances in the prior workbook but is missing from the current ITD sheet.",
+                     before_itd.sheet, f"{before_itd.layout.investor_column}{old.row}")
+    # Workbooks differ in sign convention (distributions negative or positive): use the one most rows follow.
+    signs = {}
+    for category in _ITD_CATEGORIES:
+        moved = [(d, m) for _, c, d, m, _, _ in rows if c == category and m]
+        same = sum(1 for d, m in moved if abs(d - m) <= CENT)
+        flipped = sum(1 for d, m in moved if abs(d + m) <= CENT)
+        signs[category] = -1 if flipped > same else 1
+    checked = 0
+    for inv, category, delta, movement, was, now in rows:
+        checked += 1
+        expected = movement * signs[category]
+        if abs(delta - expected) > CENT:
+            out.fail(f"{inv.name}: {_label(category)} went from {money(was)} to {money(now)} ({money(delta)}), but "
+                     f"the current event ('{block.label}') moves it by {money(expected)}; {money(delta - expected)} is "
+                     "double counted or entered wrong.", itd.sheet, f"{cum[category]}{inv.row}")
+    return (f"Every ITD balance equals the prior workbook's balance plus the current event ({checked} investor "
+            "balances checked).")
+
+
 def _pattern(data: WorkbookData) -> dict[str, tuple[str, frozenset[str]]]:
     """component type -> ('single' | 'spread', plugged investors), over all vehicles."""
     alloc = data.allocation

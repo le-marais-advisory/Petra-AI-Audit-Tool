@@ -888,6 +888,25 @@
       "evaluator": "deterministic"
     },
     {
+      "id": "CE-XEV-ITD-ROLL-FORWARD",
+      "name": "ITD Balances Roll Forward from the Prior Workbook",
+      "analysis_type": "text",
+      "scope": "document",
+      "description": "For every investor and every ITD category (investment, cost and total contributions; recallable, non-recallable and total distributions), the ITD balance in the current workbook must equal the balance in the most recent prior workbook plus the current event's amount in that category, as classified by the current ITD block's X marks. For example, 150,000 of ITD distributions in the prior workbook plus a 25,000 distribution now must show 200,000 is wrong: 175,000 is expected, so 25,000 is double counted or entered wrong. An ITD event block that is in the current workbook but not in the prior one (other than the current event and transfers) also fails: the prior workbook is not the most recent one, or an event was entered twice. Not applicable on the fund's first event; needs review when the prior workbook was not supplied.",
+      "acceptance_criteria": "Current ITD balance = prior workbook ITD balance + current event amount, per investor and category; no new non-current event blocks.",
+      "severity": "critical",
+      "group": "ce_cross_event",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "itd"
+      ],
+      "evaluator": "deterministic"
+    },
+    {
       "id": "CE-XEV-PLUG-CONSISTENCY",
       "name": "Plug Pattern Consistent With the Prior Event",
       "analysis_type": "text",

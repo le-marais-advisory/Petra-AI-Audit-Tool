@@ -67,6 +67,7 @@ EXPECTED = {
     # No prior event's workbook for the sample.
     "CE-XEV-HISTORY-UNCHANGED": "needs_review",
     "CE-XEV-ROLL-FORWARD": "needs_review",
+    "CE-XEV-ITD-ROLL-FORWARD": "needs_review",
     "CE-XEV-PLUG-CONSISTENCY": "needs_review",
 }
 

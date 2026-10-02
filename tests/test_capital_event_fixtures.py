@@ -208,6 +208,12 @@ def test_each_defect_changes_the_workbook(capital_event_fixtures, name):
                                                             cell.number_format)
         return out
 
+    if name == "prior_not_most_recent":
+        # Only the uploaded prior workbook differs: it is from an earlier event.
+        assert snapshot(wb_c, wv_c) == snapshot(wb_b, wv_b)
+        prior_c = capital_event_fixtures.get(event_type, "standard", None, True).prior
+        assert snapshot(*_load(prior_c.path)) != snapshot(*_load(broken.prior.path))
+        return
     assert snapshot(wb_c, wv_c) != snapshot(wb_b, wv_b)
 
 

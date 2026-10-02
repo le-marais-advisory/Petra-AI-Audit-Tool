@@ -161,3 +161,26 @@ def test_cross_event_failures_cite_both_workbooks_sheets(capital_event_fixtures)
     assert result.verdict == "fail"
     assert any("Northgate Family Trust" in f and "Capital Call #2" in f for f in result.findings)
     assert result.citations[0].sheet == "ITD Capital Activity"
+
+
+def _itd_roll_forward(manifest):
+    checks = importlib.import_module("src.pipeline.workbook.checks")
+    model, data = _with_prior(manifest)
+    return checks.run_deterministic_checks(model, data, [{"id": "CE-XEV-ITD-ROLL-FORWARD", "name": "x"}],
+                                           options={"event_type": "capital_call"})["CE-XEV-ITD-ROLL-FORWARD"]
+
+
+def test_itd_roll_forward_names_the_double_counted_amount(capital_event_fixtures):
+    # FA (QC practice): prior ITD + this event = new ITD; the gap is double counted or entered wrong.
+    result = _itd_roll_forward(capital_event_fixtures.get(defect="prior_block_edited"))
+    assert result.verdict == "fail"
+    assert any(f.startswith("Northgate Family Trust: ITD investment contributions") and "1,000.00 is double counted"
+               in f for f in result.findings)
+    assert all(c.sheet for c in result.citations)
+
+
+def test_itd_roll_forward_flags_a_prior_workbook_that_is_not_the_most_recent(capital_event_fixtures):
+    result = _itd_roll_forward(capital_event_fixtures.get(defect="prior_not_most_recent"))
+    assert result.verdict == "fail"
+    missing = [f for f in result.findings if "not in the prior workbook" in f]
+    assert any("Capital Call #3" in f for f in missing) and any("Distribution #1" in f for f in missing)

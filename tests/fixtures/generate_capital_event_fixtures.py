@@ -94,10 +94,12 @@ DETERMINISTIC_RULE_IDS = (
     # Cross-event rules: compare with the prior event's workbook (FA calibration).
     "CE-XEV-HISTORY-UNCHANGED",
     "CE-XEV-ROLL-FORWARD",
+    "CE-XEV-ITD-ROLL-FORWARD",
     "CE-XEV-PLUG-CONSISTENCY",
 )
 
-CROSS_EVENT_RULE_IDS = ("CE-XEV-HISTORY-UNCHANGED", "CE-XEV-ROLL-FORWARD", "CE-XEV-PLUG-CONSISTENCY")
+CROSS_EVENT_RULE_IDS = ("CE-XEV-HISTORY-UNCHANGED", "CE-XEV-ROLL-FORWARD", "CE-XEV-ITD-ROLL-FORWARD",
+                        "CE-XEV-PLUG-CONSISTENCY")
 
 HYBRID_RULE_IDS = (
     "CE-WB-SHEETS-PRESENT",
@@ -285,7 +287,13 @@ DEFECTS: dict[str, DefectSpec] = {
            facts={"CE-ALLOC-STALE-COMPONENTS": {"active_with_prior_label": 1}}),
         # --- cross-event defects: built together with the prior event's workbook.
         _d("prior_block_edited", "A frozen prior-event ITD value was edited after the prior event was issued.",
-           verdicts={"CE-XEV-HISTORY-UNCHANGED": "fail", "CE-XEV-ROLL-FORWARD": "fail"}, with_prior=True),
+           verdicts={"CE-XEV-HISTORY-UNCHANGED": "fail", "CE-XEV-ROLL-FORWARD": "fail",
+                     "CE-XEV-ITD-ROLL-FORWARD": "fail"}, with_prior=True),
+        _d("prior_not_most_recent", "The 'prior' workbook uploaded is from two events back (Capital Call #2), so "
+           "the ITD balances do not roll forward from it by the current event alone.",
+           verdicts={"CE-XEV-ITD-ROLL-FORWARD": "fail", "CE-XEV-ROLL-FORWARD": "fail",
+                     "CE-XEV-PLUG-CONSISTENCY": "not_applicable"},  # Capital Call #2 carried no plug
+           with_prior=True),
         _d("plug_pattern_changed", "Plugs are spread over the top LPs although the prior event used a single plug.",
            verdicts={"CE-XEV-PLUG-CONSISTENCY": "fail"}, with_prior=True),
         # --- accepted patterns (FA calibration): seen in the reference sample and confirmed
@@ -700,8 +708,12 @@ class _Builder:
         if stage == "prior":
             # The prior event is the last prior capital call; late closers had not closed yet.
             self.investors = [i for i in self.investors if not i.late_closer]
-            self.current = self.prior_events[-1]
-            self.prior_events = self.prior_events[:-1]
+            last = -1
+            if spec.defect == "prior_not_most_recent":
+                last = max(i for i, e in enumerate(self.prior_events[:-1]) if e.kind == "capital_call") - len(
+                    self.prior_events)
+            self.current = self.prior_events[last]
+            self.prior_events = self.prior_events[:last]
             self.notice_date = _workday(self.current.date, -10, self.holidays)
             assert _workday(self.notice_date, 10, self.holidays) == self.current.date
         self.vehicles = list(dict.fromkeys(i.vehicle for i in self.investors))

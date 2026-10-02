@@ -34,12 +34,13 @@ The fund accountants confirmed the three event types: capital call, distribution
 
 The type declares a `prior_document`. With each upload the user also sends the workbook from the most recent prior event (`prior_file`). For the fund's first capital event they set the `first_event` option instead, and no prior workbook is needed. Sending both is rejected.
 
-From the prior workbook, the pipeline reads only the Allocation and ITD sheets. Three deterministic **cross-event rules** compare it with the current workbook (`checks/cross_event.py`):
+This mirrors the QC team's manual review of both workbooks. From the prior workbook, the pipeline reads only the Allocation and ITD sheets. Four deterministic **cross-event rules** compare it with the current workbook (`checks/cross_event.py`):
 
 | Rule | Check |
 |---|---|
 | `CE-XEV-HISTORY-UNCHANGED` | Every ITD event block in the prior workbook reappears unchanged in the current one |
 | `CE-XEV-ROLL-FORWARD` | The current Allocation's prior contributions equal the prior workbook's ITD contributions to date |
+| `CE-XEV-ITD-ROLL-FORWARD` | For each investor and ITD category, current ITD balance = the prior workbook's balance + the current event's amount (per the current block's X marks). For example, 150k ITD distributions before and a 25k distribution now must give 175k; 200k means 25k is double counted. Event blocks that are not in the prior workbook (besides the current one) also fail: the prior workbook isn't the most recent, or an event was entered twice |
 | `CE-XEV-PLUG-CONSISTENCY` | The rounding-plug pattern (single or spread, and which investors) matches the prior event |
 
 These rules return `not_applicable` on a first event, and `needs_review` when no prior workbook was supplied (for example, in a CLI run without one).
