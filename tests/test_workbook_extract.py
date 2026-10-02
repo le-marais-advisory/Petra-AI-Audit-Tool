@@ -65,7 +65,10 @@ def test_allocation_event_and_drivers(extract, capital_event_fixtures, event_typ
     for col, amount in truth["drivers"].items():
         assert abs(_d(alloc.fund_drivers[col]) - _d(amount)) <= TOL, col
     assert abs(_d(alloc.event_gross) - _d(truth["event_gross"])) <= TOL
-    assert len(alloc.vehicles) == (2 if variant == "two_vehicles" else 1)
+    spec = VARIANTS[variant]
+    assert len(alloc.vehicles) == spec.vehicles + (1 if spec.lookthrough else 0)
+    assert {v.name for v in alloc.vehicles if v.additive} == set(truth["additive_vehicles"])
+    assert alloc.fund_driver_row_shared == (spec.shared_driver and spec.vehicles > 1)
 
 
 @pytest.mark.parametrize("event_type,variant", CLEAN)

@@ -127,7 +127,7 @@ class WorkbookPipeline:
             progress("Reading the prior event's workbook", 1, total_steps)
             prior = self._prior_data(prior_file_path, prior_source_filename)
         data = extract_workbook_data(model, layouts, prior=prior)
-        for role, reason in layout_errors.items():
+        for role, reason in _errors_by_role(layout_errors, roles).items():
             data.extraction_errors.setdefault(role, reason)
         if model.formulas_missing_cache:
             logger.warning("Workbook %s has formulas without cached values", source_filename)
@@ -164,13 +164,15 @@ class WorkbookPipeline:
             wanted = [s for s, r in roles.items() if r in PRIOR_ROLES]
             layouts, errors = self._map_layouts(model, roles, wanted, None)
             data = extract_workbook_data(model, layouts)
-            data.extraction_errors.update(errors)
+            data.extraction_errors.update(_errors_by_role(errors, roles))
             return data
         except Exception:
             logger.exception("Could not read the prior event's workbook %s", source_filename)
             return None
 
     def _map_layouts(self, model, roles, selected, event_type) -> tuple[dict[str, BaseModel], dict[str, str]]:
+        """Validated layouts by sheet, and the reason for every sheet that could not be mapped (by sheet,
+        so a second Merge tab's failure does not overwrite the first's)."""
         mappable = [s for s in selected if roles.get(s, "other") != "other"]
         layouts: dict[str, BaseModel] = {}
         errors: dict[str, str] = {}
@@ -178,20 +180,19 @@ class WorkbookPipeline:
             futures = {pool.submit(self._map_layout, model, s, roles[s], event_type): s for s in mappable}
             for future in as_completed(futures):
                 sheet = futures[future]
-                role = roles[sheet]
                 try:
                     layout = future.result()
                 except Exception as exc:
                     logger.exception("Layout mapping failed for %s", sheet)
-                    errors[role] = f"Layout mapping for '{sheet}' failed: {type(exc).__name__}: {exc}"
+                    errors[sheet] = f"Layout mapping for '{sheet}' failed: {type(exc).__name__}: {exc}"
                     continue
                 if layout is None:
-                    errors[role] = f"The layout of '{sheet}' could not be mapped and validated."
+                    errors[sheet] = f"The layout of '{sheet}' could not be mapped and validated."
                     continue
                 issues = validate_layout(model, layout)
                 if issues:
-                    errors[role] = (f"The layout of '{sheet}' was rejected by the validator: "
-                                    + "; ".join(f"{i.code}: {i.message}" for i in issues[:3]))
+                    errors[sheet] = (f"The layout of '{sheet}' was rejected by the validator: "
+                                     + "; ".join(f"{i.code}: {i.message}" for i in issues[:3]))
                     continue
                 layouts[sheet] = layout
         ordered = {s: layouts[s] for s in selected if s in layouts}
@@ -219,9 +220,10 @@ class WorkbookPipeline:
             (blocked if missing else runnable).append((rule, missing))
         for rule, missing in blocked:
             labels = ", ".join(ROLE_LABELS.get(r, r) for r in missing)
+            reasons = [data.extraction_errors[r] for r in missing if r in data.extraction_errors]
             yield rule["id"], _result(rule, "needs_review",
                                       f"The {labels} sheet layout could not be mapped or validated, so this rule "
-                                      "could not be evaluated."), 0.0
+                                      "could not be evaluated.", reasons), 0.0
 
         def evaluate(rule):
             started = time.perf_counter()
@@ -304,6 +306,14 @@ class WorkbookPipeline:
             m for m in response["analysis"]["overview"] if m["label"] in ("Selected Rules", "Rules Bypassed",
                                                                          "Slowest Rule")]
         return response
+
+
+def _errors_by_role(errors_by_sheet: dict[str, str], roles: dict[str, str]) -> dict[str, str]:
+    """Layout failures keyed by role, every failed sheet of the role listed."""
+    by_role: dict[str, list[str]] = {}
+    for sheet, reason in errors_by_sheet.items():
+        by_role.setdefault(roles.get(sheet, "other"), []).append(reason)
+    return {role: " ".join(reasons) for role, reasons in by_role.items()}
 
 
 def _role_present(data: WorkbookData, role: str) -> bool:

@@ -13,8 +13,9 @@ from decimal import Decimal
 from typing import Any, Callable
 
 from src.pipeline.workbook.cells import is_text, to_date
-from src.pipeline.workbook.checks._common import event_number, quarter_key
+from src.pipeline.workbook.checks._common import event_number, event_numbers, quarter_key, quarter_range
 from src.pipeline.workbook.extract import WorkbookData
+from src.pipeline.workbook.keys import Matcher
 from src.pipeline.workbook.loader import WorkbookModel
 
 ZERO = Decimal("0")
@@ -111,17 +112,19 @@ def _link_pattern_exceptions(alloc) -> list[dict[str, Any]]:
     target tab (e.g. SUMIFS over the fee column, keyed by the investor). A row that reads
     another column is a broken pull even when its cached value happens to be right.
     """
-    by_column: dict[str, dict[int, frozenset]] = {}
-    rows = {inv.row for inv in alloc.investors}
+    # Patterns are compared within one vehicle block: each vehicle may read its own support tabs.
+    by_column: dict[tuple[str, str], dict[int, frozenset]] = {}
+    vehicle_of_row = {inv.row: v.name for v in alloc.vehicles for inv in v.investors}
     for cell in alloc.sheet.cells.values():
-        if cell.row not in rows:
+        if cell.row not in vehicle_of_row:
             continue
         targets = frozenset((sheet, re.match(r"[A-Z]+", target).group()) for sheet, target in _external_refs(cell.formula)
                             if sheet != alloc.sheet.name and re.match(r"[A-Z]+", target))
         if targets:
-            by_column.setdefault(re.match(r"[A-Z]+", cell.coord).group(), {})[cell.row] = targets
+            key = (vehicle_of_row[cell.row], re.match(r"[A-Z]+", cell.coord).group())
+            by_column.setdefault(key, {})[cell.row] = targets
     exceptions = []
-    for column, per_row in sorted(by_column.items()):
+    for (_, column), per_row in sorted(by_column.items()):
         if len(per_row) < 3:
             continue
         counts: dict[frozenset, int] = {}
@@ -145,9 +148,10 @@ def _reference_integrity(model, data, options):
     alloc = data.allocation
     if alloc is None:
         return {}
-    # An event may bill several fee periods at once (e.g. 3Q and 4Q in one call).
+    # An event may bill several fee periods at once (e.g. 3Q and 4Q in one call, or a header such as
+    # "Q3 2025 - Q3 2026 Mgmt Fees" covering five quarters).
     current_periods = sorted({p for c in alloc.active_components if c.component_type == "mgmt_fee"
-                              for p in [quarter_key(c.header)] if p})
+                              for p in quarter_range(c.header)})
     roll_forward = {col: name for name, col in alloc.layout.roll_forward.model_dump().items() if col}
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for cell in alloc.sheet.cells.values():
@@ -188,9 +192,10 @@ def _reference_integrity(model, data, options):
         for source_column in sorted(source_columns):
             # A fee column's own header names its period; a link into another period's column is wrong even
             # when that period is also billed in this event (e.g. the 4Q driver reading the 3Q total).
-            source_period = quarter_key(alloc.sheet.value(f"{source_column}{alloc.layout.header_row}"))
+            source_periods = quarter_range(alloc.sheet.value(f"{source_column}{alloc.layout.header_row}"))
+            source_period = source_periods[0] if len(source_periods) == 1 else None
             if period and ((current_periods and period not in current_periods)
-                           or (source_period and source_period != period)):
+                           or (source_periods and period not in source_periods)):
                 stale = {"source_column": source_column, "source_period": source_period,
                          "target_sheet": sheet_name, "target_column": column, "period": period,
                          "current_periods": current_periods}
@@ -443,14 +448,21 @@ def _itd_block(model, data, options):
     if data.allocation is not None:
         from src.pipeline.workbook.checks.ties import _pair_components
 
-        pairs = dict(_pair_components(block, data.allocation)[0])
-    alloc_by_name = {i.name: i for i in data.allocation.investors} if data.allocation else {}
-    itd_by_name = {i.name: i for i in itd.investors}
+        pairs = dict(_pair_components(itd, block, data.allocation)[0])
     columns = []
+    matcher = Matcher(data.allocation.vehicles, itd.vehicles) if data.allocation else None
     for comp in block.components:
-        alloc_col = pairs.get(comp.column)
-        with_amount = [n for n, inv in alloc_by_name.items() if alloc_col and inv.amounts.get(alloc_col)]
-        missing = [n for n in with_amount if not (itd_by_name.get(n) and itd_by_name[n].values.get(comp.column))]
+        alloc_cols = pairs.get(comp.column) or []
+        with_amount, missing = [], []
+        if matcher is not None:
+            for ordinal, inv in matcher.pairs():
+                if any(inv.amounts.get(c) for c in alloc_cols):
+                    label = matcher.label(ordinal, inv.name)
+                    with_amount.append(label)
+                    target = matcher.find(ordinal, inv.name)
+                    if not (target and target.values.get(comp.column)):
+                        missing.append(label)
+        alloc_col = "+".join(alloc_cols) if alloc_cols else None
         columns.append({
             "column": comp.column,
             "header": itd.sheet.value(f"{comp.column}{itd.layout.subheader_row}"),
@@ -484,25 +496,77 @@ def _tie_summary(model, data, options):
     if summary is None or alloc is None:
         return {}
     grand_commitment = alloc.grand_totals.get(alloc.layout.columns.commitment)
-    by_type: dict[str, Decimal] = {}
-    for comp in alloc.active_components:
-        by_type[comp.component_type] = by_type.get(comp.component_type, ZERO) + \
-            sum((v.totals.get(comp.column, ZERO) for v in alloc.vehicles), ZERO)
-    lines = [{"label": l.label, "cell": l.amount_cell, "component_type": l.component_type, "amount": _num(l.amount)}
-             for l in summary.lines]
-    summary_by_type: dict[str, Decimal] = {}
-    for l in summary.lines:
-        summary_by_type[l.component_type] = summary_by_type.get(l.component_type, ZERO) + l.amount
+    commitment_col = alloc.layout.columns.commitment
+
+    def totals_by_type(vehicles) -> dict[str, Decimal]:
+        out: dict[str, Decimal] = {}
+        for comp in alloc.active_components:
+            out[comp.component_type] = out.get(comp.component_type, ZERO) + \
+                sum((v.totals.get(comp.column, ZERO) for v in vehicles), ZERO)
+        return out
+
+    def lines_of(items):
+        return [{"label": l.label, "cell": l.amount_cell, "component_type": l.component_type, "amount": _num(l.amount)}
+                for l in items]
+
+    def by_type_of(items) -> dict[str, Decimal]:
+        out: dict[str, Decimal] = {}
+        for l in items:
+            out[l.component_type] = out.get(l.component_type, ZERO) + l.amount
+        return out
+
+    # Fund level: the additive vehicles only (a look-through block re-allocates the others).
+    by_type = totals_by_type(alloc.additive_vehicles)
+    summary_by_type = by_type_of(summary.lines)
+    per_vehicle = [{
+        "vehicle": v.name,
+        "additive": v.additive,
+        "commitments": _num(v.totals.get(commitment_col)),
+        "component_totals_by_type": {k: _num(x) for k, x in totals_by_type([v]).items()},
+        "cash_due_total": _num(v.totals.get(alloc.layout.columns.cash_due)) if alloc.layout.columns.cash_due else None,
+    } for v in alloc.vehicles]
+    sections = []
+    for index, section in enumerate(summary.sections):
+        # Align each Summary section to an Allocation vehicle by name, else by position.
+        vehicle = next((v for v in alloc.vehicles if section.vehicle and v.name and
+                        (section.vehicle.strip().lower() in v.name.strip().lower()
+                         or v.name.strip().lower() in section.vehicle.strip().lower())), None)
+        if vehicle is None and index < len(alloc.vehicles):
+            vehicle = alloc.vehicles[index]
+        vehicle_types = totals_by_type([vehicle]) if vehicle else {}
+        section_types = by_type_of(section.lines)
+        sections.append({
+            "vehicle": section.vehicle,
+            "matched_allocation_vehicle": vehicle.name if vehicle else None,
+            "summary_total_commitments": _num(section.fund_commitment),
+            "allocation_vehicle_commitments": _num(vehicle.totals.get(commitment_col)) if vehicle else None,
+            "summary_lines": lines_of(section.lines),
+            "allocation_vehicle_totals_by_type": {k: _num(x) for k, x in vehicle_types.items()},
+            "differences_by_type": {k: _num(section_types.get(k, ZERO) - vehicle_types.get(k, ZERO))
+                                    for k in set(vehicle_types) | set(section_types)},
+            "summary_event_total": _num(section.event_total),
+            "allocation_vehicle_cash_due": (_num(vehicle.totals.get(alloc.layout.columns.cash_due))
+                                            if vehicle and alloc.layout.columns.cash_due else None),
+            "summary_check_values": [_num(v) for v in section.check_values],
+        })
+    multi = len(alloc.vehicles) > 1
     return {
         "summary_total_commitments": _num(summary.fund_commitment),
         "allocation_total_commitments": _num(grand_commitment),
-        "summary_lines": lines,
+        "summary_lines": lines_of(summary.lines),
         "allocation_component_totals_by_type": {k: _num(v) for k, v in by_type.items()},
         "differences_by_type": {k: _num(summary_by_type.get(k, ZERO) - by_type.get(k, ZERO))
                                 for k in set(by_type) | set(summary_by_type)},
         "summary_event_total": _num(summary.event_total),
         "allocation_event_gross": _num(alloc.event_gross),
         "summary_check_values": [_num(v) for v in summary.check_values],
+        "allocation_vehicles": per_vehicle,
+        "summary_sections": sections,
+        "note": ("The Allocation has several vehicles. A Summary that repeats one block per vehicle ties when each "
+                 "section's figures equal its own vehicle's totals (summary_sections[*].differences_by_type all 0); "
+                 "the top-level summary_lines then describe the first vehicle only, so the fund-level "
+                 "differences_by_type is not a finding. A look-through vehicle (additive=false) is not part of the "
+                 "fund total.") if multi else "Single vehicle: the Summary figures must equal the Allocation totals.",
         "summary_title": summary.title,
         "summary_dates": {"notice": str(summary.notice_date) if summary.notice_date else None,
                           "due": str(summary.due_date) if summary.due_date else None},
@@ -519,6 +583,13 @@ def _date_consistency(model, data, options):
         if layout.event.label_cell:
             refs.append({"sheet": alloc.sheet.name, "cell": layout.event.label_cell, "kind": "event_label",
                          "value": alloc.event.label})
+        # On a net event the call and distribution event-total headers each name their own number.
+        for total in layout.event_total_columns:
+            cell = f"{total.column}{layout.header_row}"
+            text = alloc.sheet.value(cell)
+            if is_text(text) and event_numbers(text) and cell != layout.event.label_cell:
+                refs.append({"sheet": alloc.sheet.name, "cell": cell, "kind": "event_label", "value": str(text).strip(),
+                             "side": total.side})
         if layout.event.notice_date_cell:
             refs.append({"sheet": alloc.sheet.name, "cell": layout.event.notice_date_cell, "kind": "notice_date",
                          "value": str(alloc.event.notice_date)})
@@ -556,8 +627,15 @@ def _date_consistency(model, data, options):
                 refs.append({"sheet": merge.sheet.name, "cell": f"{cols.due_date}{row.row}", "kind": "due_date",
                              "value": str(to_date(row.due_date, allow_serial=True))})
     alloc_periods: list[str] = []
+    linked_periods: dict[str, str | None] = {}
     if alloc is not None:
-        alloc_periods = [quarter_key(c.header) for c in alloc.active_components if c.component_type == "mgmt_fee"]
+        from src.pipeline.workbook.checks.ties import linked_fee_periods
+
+        for comp in alloc.active_components:
+            if comp.component_type != "mgmt_fee":
+                continue
+            alloc_periods += quarter_range(comp.header)
+            linked_periods.update(linked_fee_periods(model, alloc, comp.column))
     tab_periods: list[str] = []
     fee = data.mgmt_fee
     if fee is not None:
@@ -566,17 +644,33 @@ def _date_consistency(model, data, options):
                          "kind": "fee_period", "value": label})
             tab_periods.append(quarter_key(label))
     alloc_set = {p for p in alloc_periods if p}
-    tab_set = {p for p in tab_periods if p}
+    # The periods the Allocation actually pulls (from its fee formulas) decide; the mapped fee tab's
+    # column list is the fallback when the fee cells are not linked.
+    linked_set = {p for p in linked_periods.values() if p}
+    tab_set = linked_set if linked_periods else {p for p in tab_periods if p}
     fee_periods = alloc_set | tab_set
+    for ref in refs:
+        if ref["kind"] == "event_label":
+            ref["numbers_by_family"] = event_numbers(ref["value"])
     numbers = sorted({n for r in refs if r["kind"] == "event_label" for n in [event_number(r["value"])] if n is not None})
+    by_family: dict[str, list[dict[str, Any]]] = {}
+    for ref in refs:
+        for family, number in ref.get("numbers_by_family", {}).items():
+            by_family.setdefault(family, []).append({"sheet": ref["sheet"], "cell": ref["cell"], "number": number})
     return {
         "references": refs,
         "event_numbers": numbers,
+        "event_numbers_by_family": by_family,
+        "event_numbers_consistent_by_family": {f: len({e["number"] for e in entries}) == 1
+                                               for f, entries in by_family.items()},
         "notice_dates": sorted({r["value"] for r in refs if r["kind"] == "notice_date"}),
         "due_dates": sorted({r["value"] for r in refs if r["kind"] in ("due_date", "header_date")}),
         "fee_periods": sorted(fee_periods),
-        "fee_periods_by_source": {"allocation_fee_components": sorted(alloc_set), "fee_tab_columns": sorted(tab_set)},
-        "fee_period_mismatch": bool(alloc_set and tab_set and alloc_set != tab_set),
+        "fee_periods_by_source": {"allocation_fee_components": sorted(alloc_set), "fee_tab_columns": sorted(tab_set),
+                                  "linked_fee_tab_columns": linked_periods},
+        # A fee-tab column the Allocation pulls must belong to the Allocation fee header's period(s);
+        # the header may name a range of quarters billed together.
+        "fee_period_mismatch": bool(alloc_set and tab_set and not tab_set <= alloc_set),
     }
 
 
@@ -591,7 +685,8 @@ def _net_event(model, data, options):
     call = [c for c in alloc.active_components if c.side == "call"]
     dist = [c for c in alloc.active_components if c.side == "distribution"]
     nets = []
-    for inv in alloc.investors:
+    # Fund level = the additive vehicles; a look-through block re-allocates amounts already counted.
+    for inv in alloc.fund_investors:
         c = sum((inv.amounts.get(x.column, ZERO) for x in call), ZERO)
         d = sum((inv.amounts.get(x.column, ZERO) for x in dist), ZERO)
         nets.append({"investor": inv.name, "call_side": _num(c), "distribution_side": _num(d),
@@ -599,7 +694,20 @@ def _net_event(model, data, options):
     call_total = sum((alloc.fund_drivers.get(x.column, ZERO) for x in call), ZERO)
     dist_total = sum((alloc.fund_drivers.get(x.column, ZERO) for x in dist), ZERO)
     cash_col = alloc.layout.columns.cash_due
+    per_vehicle = []
+    for v in alloc.vehicles:
+        v_call = sum((v.driver.get(x.column, ZERO) for x in call), ZERO)
+        v_dist = sum((v.driver.get(x.column, ZERO) for x in dist), ZERO)
+        v_nets = sum((sum((i.amounts.get(x.column, ZERO) for x in call), ZERO)
+                      - abs(sum((i.amounts.get(x.column, ZERO) for x in dist), ZERO)) for i in v.investors), ZERO)
+        per_vehicle.append({"vehicle": v.name, "additive": v.additive, "investors": len(v.investors),
+                            "call_total": _num(v_call), "distribution_total": _num(v_dist),
+                            "expected_net": _num(v_call - abs(v_dist)), "sum_of_per_investor_nets": _num(v_nets),
+                            "cash_due_total": _num(v.totals.get(cash_col)) if cash_col else None})
     return {
+        "vehicles": per_vehicle,
+        "fund_level_scope": ("sum of the additive vehicles' drivers and of their investors' rows"
+                             if len(alloc.vehicles) > 1 else "the fund driver row and every investor row"),
         "call_side_columns": [{"column": x.column, "header": x.header} for x in call],
         "distribution_side_columns": [{"column": x.column, "header": x.header} for x in dist],
         "separate_blocks": bool(call and dist) and not ({x.column for x in call} & {x.column for x in dist}),
@@ -610,7 +718,7 @@ def _net_event(model, data, options):
         "expected_net": _num(call_total - abs(dist_total)),
         "gross": _num(call_total + abs(dist_total)),
         "cash_due_grand_total": _num(alloc.grand_totals.get(cash_col)) if cash_col else None,
-        "investors_in_register": len(alloc.investors),
+        "investors_in_register": len(alloc.fund_investors),
         "per_investor_nets_sample": nets[:15],
     }
 

@@ -13,6 +13,7 @@ from src.pipeline.workbook.cells import CENT, PENNY
 from src.pipeline.workbook.checks._common import CheckContext, NotApplicable, Outcome, check, mag, money
 from src.pipeline.workbook.checks.allocation import _plugs, plug_eligibility
 from src.pipeline.workbook.extract import WorkbookData
+from src.pipeline.workbook.keys import Matcher
 
 ZERO = Decimal("0")
 
@@ -40,7 +41,7 @@ def history_unchanged(ctx: CheckContext, out: Outcome) -> str:
         return ""
     current_itd, prior_itd = ctx.data.itd, prior.itd
     current_blocks = {b.label: b for b in current_itd.event_blocks}
-    current_investors = {i.name: i for i in current_itd.investors}
+    matcher = Matcher(prior_itd.vehicles, current_itd.vehicles)  # (vehicle, name): an LP may sit in two vehicles
     compared = 0
     for block in prior_itd.event_blocks:
         if block.event_type == "transfer":
@@ -58,17 +59,18 @@ def history_unchanged(ctx: CheckContext, out: Outcome) -> str:
             out.fail(f"'{block.label}' has {len(target.components)} component column(s) now but had "
                      f"{len(block.components)} in the prior workbook.", current_itd.sheet,
                      f"{target.first_column}{current_itd.layout.event_header_row}")
-        for investor in prior_itd.investors:
-            now = current_investors.get(investor.name)
+        for ordinal, investor in matcher.pairs():
+            now = matcher.find(ordinal, investor.name)
+            label = matcher.label(ordinal, investor.name)
             for old_comp, new_comp in pairs:
                 before = investor.values.get(old_comp.column, ZERO)
                 after = now.values.get(new_comp.column, ZERO) if now else ZERO
                 compared += 1
                 if now is None and before:
-                    out.fail(f"{investor.name} ({money(before)} in '{block.label}') is missing from the current ITD "
+                    out.fail(f"{label} ({money(before)} in '{block.label}') is missing from the current ITD "
                              "sheet.", prior_itd.sheet, f"{old_comp.column}{investor.row}")
                 elif now is not None and abs(after - before) > PENNY:
-                    out.fail(f"{investor.name}: '{block.label}' {new_comp.component_type} changed from "
+                    out.fail(f"{label}: '{block.label}' {new_comp.component_type} changed from "
                              f"{money(before)} to {money(after)} since the prior workbook.", current_itd.sheet,
                              f"{new_comp.column}{now.row}")
     return f"Every prior event block reappears unchanged in the current ITD sheet ({compared} cells compared)."
@@ -84,22 +86,23 @@ def roll_forward(ctx: CheckContext, out: Outcome) -> str:
     if column is None:
         out.review("The Allocation sheet has no Prior Capital Contributions column.")
         return ""
-    contributed = {i.name: i.cumulative.get("total_contributions") for i in prior.itd.investors}
-    commitments = {i.name: i.cumulative.get("commitment") for i in prior.itd.investors}
-    for inv in alloc.investors:
+    matcher = Matcher(alloc.vehicles, prior.itd.vehicles)
+    for ordinal, inv in matcher.pairs():
         now = mag(inv.roll_forward.get("prior_contributions"))
-        if inv.name not in contributed:
+        label = matcher.label(ordinal, inv.name)
+        old = matcher.find(ordinal, inv.name)
+        if old is None:
             if now > CENT:
-                out.fail(f"{inv.name} shows {money(now)} of prior contributions but is not in the prior workbook.",
+                out.fail(f"{label} shows {money(now)} of prior contributions but is not in the prior workbook.",
                          alloc.sheet, f"{column}{inv.row}")
             continue
-        before = mag(contributed[inv.name])
+        before = mag(old.cumulative.get("total_contributions"))
         if abs(now - before) > CENT:
-            out.fail(f"{inv.name}: prior contributions {money(now)} do not equal the contributions to date in the "
+            out.fail(f"{label}: prior contributions {money(now)} do not equal the contributions to date in the "
                      f"prior workbook ({money(before)}).", alloc.sheet, f"{column}{inv.row}")
-        old_commitment = commitments.get(inv.name)
+        old_commitment = old.cumulative.get("commitment")
         if old_commitment is not None and abs(mag(old_commitment) - inv.commitment) > CENT:
-            out.review(f"{inv.name}: commitment changed from {money(old_commitment)} to {money(inv.commitment)} "
+            out.review(f"{label}: commitment changed from {money(old_commitment)} to {money(inv.commitment)} "
                        "since the prior event (transfer or new close?).", alloc.sheet,
                        f"{alloc.layout.columns.commitment}{inv.row}")
     return "Prior contributions on the Allocation sheet carry over exactly from the prior event's workbook."
@@ -142,52 +145,62 @@ def itd_roll_forward(ctx: CheckContext, out: Outcome) -> str:
                      f"{other.first_column}{itd.layout.event_header_row}")
     columns = {c.column for c in block.components}
     cum = itd.layout.cumulative_columns.model_dump()
-    before = {i.name: i for i in before_itd.investors}
-    rows = []  # (investor, category, delta, movement)
-    for inv in itd.investors:
-        old = before.get(inv.name)
+    matcher = Matcher(itd.vehicles, before_itd.vehicles)
+    derived = {c for c in _ITD_CATEGORIES if c in itd.derived_cumulatives}
+    for category in sorted(derived):
+        # E.g. a recycling fund's recallable column is the room left under the LPA cap, so the
+        # current event moves it by more than the event's own recallable amounts.
+        out.review(f"{_label(category)} ({cum[category]}) is derived by formula rather than accumulated from the "
+                   "event columns, so its roll-forward cannot be checked event by event; confirm the basis "
+                   "(e.g. a recycling cap) against the LPA.", itd.sheet, f"{cum[category]}{itd.layout.subheader_row}")
+    rows = []  # (investor, label, category, delta, movement, was, now)
+    for ordinal, inv in matcher.pairs():
+        old = matcher.find(ordinal, inv.name)
         for category, members in _ITD_CATEGORIES.items():
             now = inv.cumulative.get(category)
-            if now is None or not cum.get(category):
+            if now is None or not cum.get(category) or category in derived:
                 continue
             was = (old.cumulative.get(category) if old else ZERO) or ZERO
             movement = sum((inv.values.get(col, ZERO) for col in columns
                             if set(itd.marks.get(col, [])) & set(members)), ZERO)
-            rows.append((inv, category, now - was, movement, was, now))
-    for name, old in before.items():
-        if name not in {i.name for i in itd.investors} and any(
+            rows.append((inv, matcher.label(ordinal, inv.name), category, now - was, movement, was, now))
+    for t_ordinal, old in matcher.target_pairs():
+        if not matcher.source_has(t_ordinal, old.name) and any(
                 mag(old.cumulative.get(c)) > CENT for c in _ITD_CATEGORIES):
-            out.fail(f"{name} carries ITD balances in the prior workbook but is missing from the current ITD sheet.",
+            out.fail(f"{old.name} carries ITD balances in the prior workbook but is missing from the current ITD sheet.",
                      before_itd.sheet, f"{before_itd.layout.investor_column}{old.row}")
     # Workbooks differ in sign convention (distributions negative or positive): use the one most rows follow.
     signs = {}
     for category in _ITD_CATEGORIES:
-        moved = [(d, m) for _, c, d, m, _, _ in rows if c == category and m]
+        moved = [(d, m) for _, _, c, d, m, _, _ in rows if c == category and m]
         same = sum(1 for d, m in moved if abs(d - m) <= CENT)
         flipped = sum(1 for d, m in moved if abs(d + m) <= CENT)
         signs[category] = -1 if flipped > same else 1
     checked = 0
-    for inv, category, delta, movement, was, now in rows:
+    for inv, label, category, delta, movement, was, now in rows:
         checked += 1
         expected = movement * signs[category]
         if abs(delta - expected) > CENT:
-            out.fail(f"{inv.name}: {_label(category)} went from {money(was)} to {money(now)} ({money(delta)}), but "
+            out.fail(f"{label}: {_label(category)} went from {money(was)} to {money(now)} ({money(delta)}), but "
                      f"the current event ('{block.label}') moves it by {money(expected)}; {money(delta - expected)} is "
                      "double counted or entered wrong.", itd.sheet, f"{cum[category]}{inv.row}")
     return (f"Every ITD balance equals the prior workbook's balance plus the current event ({checked} investor "
             "balances checked).")
 
 
-def _pattern(data: WorkbookData) -> dict[str, tuple[str, frozenset[str]]]:
-    """component type -> ('single' | 'spread', plugged investors), over all vehicles."""
+def _pattern(data: WorkbookData) -> dict[tuple[str, int], tuple[str, frozenset[str]]]:
+    """(component type, vehicle ordinal) -> ('single' | 'spread', plugged investors).
+
+    Per vehicle: each block carries its own rounding residual, and a block whose residual
+    happens to be zero in one event has no plug to compare."""
     alloc = data.allocation
-    patterns: dict[str, tuple[str, frozenset[str]]] = {}
+    patterns: dict[tuple[str, int], tuple[str, frozenset[str]]] = {}
     for comp in alloc.active_components:
-        names = [inv.name for vehicle in alloc.vehicles for inv, _ in _plugs(alloc, vehicle, comp.column)]
-        if not names:
-            continue
-        per_vehicle = max(sum(1 for inv, _ in _plugs(alloc, v, comp.column)) for v in alloc.vehicles)
-        patterns[comp.component_type] = ("spread" if per_vehicle > 1 else "single", frozenset(names))
+        for ordinal, vehicle in enumerate(alloc.vehicles):
+            names = [inv.name for inv, _ in _plugs(alloc, vehicle, comp.column)]
+            if not names:
+                continue
+            patterns[(comp.component_type, ordinal)] = ("spread" if len(names) > 1 else "single", frozenset(names))
     return patterns
 
 
@@ -197,34 +210,41 @@ def plug_consistency(ctx: CheckContext, out: Outcome) -> str:
     if prior is None:
         return ""
     now, before = _pattern(ctx.data), _pattern(prior)
-    shared = sorted(set(now) & set(before))
+    # Vehicle blocks are aligned between the two workbooks by their investors.
+    alignment = Matcher(ctx.data.allocation.vehicles, prior.allocation.vehicles).alignment
+    shared = sorted((c, o) for (c, o) in now if (c, alignment.get(o)) in before)
     if not shared:
         raise NotApplicable("No component carries a rounding plug in both events.")
     sheet = ctx.data.allocation.sheet
     eligible = plug_eligibility(ctx.data.allocation)
-    current_names = {i.name: i for i in ctx.data.allocation.investors}
-    for component in shared:
-        (style_now, names_now), (style_before, names_before) = now[component], before[component]
+    vehicles = ctx.data.allocation.vehicles
+    for component, ordinal in shared:
+        (style_now, names_now) = now[(component, ordinal)]
+        (style_before, names_before) = before[(component, alignment[ordinal])]
+        vehicle = vehicles[ordinal]
+        label = f"{vehicle.name} / {component}" if len(vehicles) > 1 else component
+        current_names = {i.name: i for i in vehicle.investors}
         if style_now != style_before:
-            out.fail(f"{component}: the prior event used a {style_before} plug ({', '.join(sorted(names_before))}) but "
+            out.fail(f"{label}: the prior event used a {style_before} plug ({', '.join(sorted(names_before))}) but "
                      f"this event uses a {style_now} plug ({', '.join(sorted(names_now))}).", sheet,
-                     _first_plug_cell(ctx, component))
+                     _first_plug_cell(ctx, component, vehicle))
         elif names_now != names_before:
             # Same style on different investors: fine if the earlier ones are no longer eligible.
             moved_from = [n for n in names_before - names_now if n in current_names and eligible(current_names[n])]
             if moved_from:
-                out.review(f"{component}: the plug moved from {', '.join(sorted(names_before))} to "
+                out.review(f"{label}: the plug moved from {', '.join(sorted(names_before))} to "
                            f"{', '.join(sorted(names_now))} since the prior event.", sheet,
-                           _first_plug_cell(ctx, component))
-    return f"Plugs follow the prior event's pattern ({', '.join(f'{c}: {now[c][0]}' for c in shared)})."
+                           _first_plug_cell(ctx, component, vehicle))
+    styles = sorted({f"{c}: {now[(c, o)][0]}" for c, o in shared})
+    return f"Plugs follow the prior event's pattern ({', '.join(styles)})."
 
 
-def _first_plug_cell(ctx: CheckContext, component_type: str) -> str | None:
+def _first_plug_cell(ctx: CheckContext, component_type: str, vehicle=None) -> str | None:
     alloc = ctx.data.allocation
     for comp in alloc.active_components:
         if comp.component_type != component_type:
             continue
-        for vehicle in alloc.vehicles:
-            for inv, _ in _plugs(alloc, vehicle, comp.column):
+        for candidate in ([vehicle] if vehicle is not None else alloc.vehicles):
+            for inv, _ in _plugs(alloc, candidate, comp.column):
                 return f"{comp.column}{inv.row}"
     return None

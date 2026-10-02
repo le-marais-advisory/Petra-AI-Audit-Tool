@@ -33,7 +33,7 @@ def facts_for():
 
 def _specs_for(rule_id):
     specs = [FixtureSpec(e) for e in EVENT_TYPES]
-    specs += [FixtureSpec(d.event_types[0], "standard", d.name) for d in DEFECTS.values() if rule_id in d.facts]
+    specs += [FixtureSpec(d.event_types[0], d.variant, d.name) for d in DEFECTS.values() if rule_id in d.facts]
     return specs
 
 

@@ -18,6 +18,8 @@ def _check_cells(ctx: CheckContext) -> list[tuple[SheetModel, str]]:
     data = ctx.data
     if data.summary is not None:
         cells += [(data.summary.sheet, c) for c in data.summary.check_cells]
+        for section in data.summary.sections:
+            cells += [(data.summary.sheet, c) for c in section.check_cells if (data.summary.sheet, c) not in cells]
 
     def numeric_cells_on(sheet: SheetModel, rows: list[int]) -> None:
         for row in rows:
@@ -37,6 +39,9 @@ def _check_cells(ctx: CheckContext) -> list[tuple[SheetModel, str]]:
         if column:
             cells += [(merge.sheet, f"{column}{row.row}") for row in merge.rows
                       if merge.sheet.value(f"{column}{row.row}") is not None]
+        # Check rows the extractor found below the data (a formula comparing the tab with the Allocation).
+        known = {coord for sheet, coord in cells if sheet is merge.sheet}
+        cells += [(merge.sheet, coord) for coord, _ in merge.check_cells if coord not in known]
     return cells
 
 
@@ -291,8 +296,14 @@ def no_hidden_data(ctx: CheckContext, out: Outcome) -> str:
                 out.fail(f"{sheet.name} column {column} is hidden but holds populated investor values "
                          f"({populated[0].coord}={populated[0].value!r}).", sheet, populated[0].coord)
     allocation_name = ctx.data.allocation.sheet.name
+    mapped_merges = {m.sheet.name for m in ctx.data.merges}
     for sheet in ctx.model.sheets:
         if sheet.state == "visible":
+            continue
+        if sheet.name in mapped_merges:
+            # A hidden Merge tab is still the notice data; it was mapped and tied out (CE-TIE-MERGE).
+            out.review(f"Merge tab '{sheet.name}' is hidden; it holds this event's notice data and was tied out, "
+                       "but a hidden notice tab is easy to leave stale.", sheet, None)
             continue
         linked = [c for c in sheet.cells.values() if c.formula and allocation_name.lower() in c.formula.lower()
                   and c.value not in (None, 0, "")]
@@ -312,6 +323,9 @@ def page_break_view(ctx: CheckContext, out: Outcome) -> str:
 
 
 _FILE_NAME_RE = re.compile(r"^(?P<fund>[a-z0-9-]+)_(?P<num>\d{3})_(?P<slug>[a-z0-9-]{1,40})_allocation_summary\.xlsx$")
+# A client's own convention: "<fund> - Capital Call #19 - 08.04.2026.xlsm" (fund, event label, date).
+_CLIENT_NAME_RE = re.compile(r"^(?P<fund>[^-_]+?)\s*[-_]\s*(?P<label>[A-Za-z ]+#\s*\d+[^-_]*)\s*[-_]\s*"
+                             r"(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s*\.xls[xm]$", re.I)
 
 
 def _slug(text: str) -> str:
@@ -323,12 +337,26 @@ def file_naming(ctx: CheckContext, out: Outcome) -> str:
     name = ctx.model.file_name
     sheet = ctx.data.allocation.sheet
     match = _FILE_NAME_RE.match(name)
+    label = ctx.data.allocation.event.label or ""
+    number = event_number(label)
     if not match:
+        client = _CLIENT_NAME_RE.match(name)
+        if client:
+            # FA question outstanding: the generated pattern was confirmed, but client-maintained
+            # workbooks keep their own "<fund> - <event> - <date>" names. Review rather than fail,
+            # and still hold the name to the event inside the workbook.
+            own_number = event_number(client.group("label"))
+            if number is not None and own_number is not None and own_number != number:
+                out.fail(f"File name event '{client.group('label').strip()}' does not match the current event "
+                         f"'{label}'.", sheet, None)
+            else:
+                out.review(f"Workbook name '{name}' follows the client's own '<fund> - <event> - <date>' convention, "
+                           "not {fund_short}_{NNN}_{event-slug}_allocation_summary.xlsx; confirm which is required.",
+                           sheet, None)
+            return ""
         out.fail(f"Workbook name '{name}' does not follow {{fund_short}}_{{NNN}}_{{event-slug}}_allocation_summary.xlsx.",
                  sheet, None)
         return ""
-    label = ctx.data.allocation.event.label or ""
-    number = event_number(label)
     if number is not None and int(match.group("num")) != number:
         out.fail(f"File name event number {match.group('num')} does not match the current event '{label}'.", sheet, None)
     if label and match.group("slug") != _slug(label)[:40]:

@@ -26,8 +26,9 @@ RULES = [{"id": rule_id, "name": rule_id} for rule_id in DETERMINISTIC_RULE_IDS]
 # Rules about a sheet or file as a whole (view setting, file name) cite the sheet but no cell.
 SHEET_LEVEL_RULES = {"CE-WB-FILE-NAMING", "CE-WB-PAGE-BREAK-VIEW"}
 
-SPECS = [FixtureSpec(e, v) for e in EVENT_TYPES for v in VARIANTS] + [FixtureSpec(with_prior=True)] + [
-    FixtureSpec(d.event_types[0], "standard", d.name) for d in DEFECTS.values()
+SPECS = [FixtureSpec(e, v) for e in EVENT_TYPES for v in VARIANTS] + [
+    FixtureSpec(with_prior=True), FixtureSpec(variant="multi_vehicle", with_prior=True)] + [
+    FixtureSpec(d.event_types[0], d.variant, d.name) for d in DEFECTS.values()
 ]
 
 

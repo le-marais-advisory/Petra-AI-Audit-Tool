@@ -5,7 +5,16 @@ import re
 from decimal import Decimal
 
 from src.pipeline.workbook.cells import CENT, PENNY, to_date, to_money
-from src.pipeline.workbook.checks._common import CheckContext, Outcome, check, differs, event_number, mag, money
+from src.pipeline.workbook.checks._common import (
+    CheckContext,
+    Outcome,
+    check,
+    differs,
+    event_number,
+    event_numbers,
+    mag,
+    money,
+)
 
 ZERO = Decimal("0")
 
@@ -21,6 +30,12 @@ def rf_footing(ctx: CheckContext, out: Outcome) -> str:
     if missing:
         out.review(f"Roll-forward column(s) not located: {', '.join(missing)}.")
         return ""
+    # A fund that recycles distributions calls more than the commitment over its life; the
+    # recallable column then adds back the recycled capital. Over-contribution is a question
+    # for the accountant there, not an arithmetic failure.
+    recycles = any(mag(i.roll_forward.get("prior_recallable")) > CENT or mag(i.roll_forward.get("current_recallable")) > CENT
+                   for i in alloc.investors)
+    over = 0
     for inv in alloc.investors:
         values = inv.roll_forward
         c, p, cur, rem = (values.get(k) or ZERO for k in ("commitment", "prior_contributions", "current_call",
@@ -39,8 +54,15 @@ def rf_footing(ctx: CheckContext, out: Outcome) -> str:
             out.fail(f"{inv.name}: commitment {money(c)} less prior {money(mag(p))} and current {money(mag(cur))} "
                      f"does not foot to remaining {money(rem)}.", sheet, cell)
         if mag(p) - mag(c) > CENT:
-            out.fail(f"{inv.name}: prior contributions {money(mag(p))} exceed the commitment {money(c)}.", sheet,
-                     f"{rf.prior_contributions}{inv.row}")
+            over += 1
+            if recycles:
+                if over == 1:
+                    out.review(f"{inv.name}: prior contributions {money(mag(p))} exceed the commitment {money(c)}; "
+                               "the fund models recallable distributions (recycling), so confirm the recycled "
+                               "amount against the LPA cap.", sheet, f"{rf.prior_contributions}{inv.row}")
+            else:
+                out.fail(f"{inv.name}: prior contributions {money(mag(p))} exceed the commitment {money(c)}.", sheet,
+                         f"{rf.prior_contributions}{inv.row}")
         if rem < -PENNY:
             out.fail(f"{inv.name}: remaining commitment is negative ({money(rem)}).", sheet, cell)
     # Refoot the roll-forward subtotals.
@@ -59,6 +81,9 @@ def rf_footing(ctx: CheckContext, out: Outcome) -> str:
                     out.fail(f"{vehicle.name}: {key.replace('_', ' ')} subtotal of {name.replace('_', ' ')} "
                              f"({column}{row}) is {money(stated)} but its rows sum to {money(expected)}.", sheet,
                              f"{column}{row}")
+    if recycles and over:
+        out.review(f"{over} investor(s) have called more than their commitment; the recallable column accounts "
+                   "for the recycled capital and every row still foots.")
     return "Every investor's roll-forward foots, no investor is over-contributed and no remaining commitment is negative."
 
 
@@ -149,24 +174,39 @@ def itd_cumulative(ctx: CheckContext, out: Outcome) -> str:
     itd = ctx.data.itd
     sheet = itd.sheet
     cum_cols = itd.layout.cumulative_columns.model_dump()
+    derived = itd.derived_cumulatives & set(_CUM_CATEGORIES)
+    for cat in sorted(derived):
+        # E.g. a recycling fund's "Recallable Distributions" = -(Unfunded + Contributions - Commitment):
+        # the recyclable room under the LPA cap, not a sum of the marked distribution columns.
+        column = cum_cols[cat]
+        first = next((i for i in itd.investors if i.formulas.get(column) or sheet.cell(f"{column}{i.row}")), None)
+        formula = (sheet.cell(f"{column}{first.row}").formula if first else None) or ""
+        out.review(f"{cat.replace('_', ' ').capitalize()} ({column}) is derived by formula ({formula[:60]}) rather "
+                   "than accumulated from the marked event columns, so it cannot be reconciled to them; confirm "
+                   "the basis (e.g. a recycling cap) against the LPA.", sheet,
+                   f"{column}{first.row}" if first else None)
     for inv in itd.investors:
         sums = {cat: sum((inv.values.get(col, ZERO) for col, cats in itd.marks.items() if cat in cats), ZERO)
                 for cat in _CUM_CATEGORIES}
         for cat in _CUM_CATEGORIES:
             column = cum_cols.get(cat)
             stated = inv.cumulative.get(cat)
-            if column and stated is not None and differs(stated, sums[cat], CENT):
+            if cat in derived or not column or stated is None:
+                continue
+            # Workbooks differ in sign convention (distributions negative or positive).
+            if differs(stated, sums[cat], CENT) and differs(stated, -sums[cat], CENT):
                 out.fail(f"{inv.name}: {cat.replace('_', ' ')} {money(stated)} ({column}{inv.row}) does not equal "
                          f"its classified event columns {money(sums[cat])}.", sheet, f"{column}{inv.row}")
         total = inv.cumulative.get("total_contributions")
-        if total is not None and cum_cols.get("total_contributions"):
+        if total is not None and cum_cols.get("total_contributions") and "total_contributions" not in itd.derived_cumulatives:
             expected = sums["investment_contributions"] + sums["cost_contributions"]
             if differs(total, expected, CENT):
                 out.fail(f"{inv.name}: Total Contributions {money(total)} does not equal classified contributions "
                          f"{money(expected)}.", sheet, f"{cum_cols['total_contributions']}{inv.row}")
         unfunded = inv.cumulative.get("unfunded")
         commitment = inv.cumulative.get("commitment")
-        if unfunded is not None and commitment is not None and total is not None:
+        if unfunded is not None and commitment is not None and total is not None \
+                and not {"unfunded", "recallable_distributions"} & itd.derived_cumulatives:
             recallable = inv.cumulative.get("recallable_distributions") or ZERO
             options = [commitment - total, commitment - total - recallable, commitment - total + mag(recallable)]
             if all(differs(unfunded, value, CENT) for value in options):
@@ -212,6 +252,7 @@ def itd_event_sequence(ctx: CheckContext, out: Outcome) -> str:
         if block.event_type in ("transfer", "other"):
             continue  # FA calibration: transfers do not touch the numbering
         cell = f"{block.first_column}{header_row}"
+        numbers = event_numbers(block.label)
         number = event_number(block.label) or block.number
         match = _DATE_IN_LABEL.search(block.label)
         day = to_date(match.group(1).replace("-", ".").replace("/", ".")) if match else to_date(block.date)
@@ -219,7 +260,18 @@ def itd_event_sequence(ctx: CheckContext, out: Outcome) -> str:
             out.review(f"Event header '{block.label}' has no machine-readable number or date.", sheet, cell)
             continue
         families = _families(block)
-        if block.event_type == "net_event":
+        if len(numbers) == 2:
+            # A combined label ("Capital Call #9 & Distribution #1"): each family continues its own counter.
+            matched = []
+            for family, own in numbers.items():
+                previous = last_by_family[family]
+                if own in seen[family]:
+                    out.fail(f"'{block.label}' repeats {family} number {own}.", sheet, cell)
+                elif previous is not None and own != previous + 1:
+                    out.fail(f"'{block.label}' follows {family} #{previous}; expected #{previous + 1}.", sheet, cell)
+                seen[family].add(own)
+                last_by_family[family] = own
+        elif block.event_type == "net_event":
             # FA calibration: a net event continues the call counter, the distribution counter,
             # or both, depending on the client.
             matched = [f for f in families if last_by_family[f] is not None and number == last_by_family[f] + 1]

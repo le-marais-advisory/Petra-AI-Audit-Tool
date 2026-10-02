@@ -196,6 +196,19 @@ class _Occurrence:
     body: str
     not_run: bool
     verdict: str
+    findings: tuple[str, ...] = ()  # the individual findings behind the summary, when the rule lists them
+
+
+def _findings_beyond_summary(item: Any) -> tuple[str, ...]:
+    """The rule's itemised findings, minus the one its summary already states.
+
+    Deterministic workbook checks keep up to ten findings per rule; a report that printed only
+    the summary hid every finding but the first.
+    """
+    findings = [f for f in (getattr(item, "findings", None) or []) if isinstance(f, str) and f.strip()]
+    summary = (item.summary or "").strip()
+    rest = [f.strip() for f in findings if f.strip() != summary and not summary.endswith(f.strip())]
+    return tuple(rest) if len(findings) > 1 or rest != [summary] else ()
 
 
 @dataclass(frozen=True)
@@ -232,6 +245,7 @@ def _select_occurrences(page_results: list[PageRuleAssessmentSchema]) -> list[_O
                     body=item.summary,
                     not_run=False,
                     verdict=_normalize(item.verdict),
+                    findings=_findings_beyond_summary(item),
                 )
             )
     return occurrences
@@ -272,6 +286,7 @@ def _build_rule_section(
                 body=assessment.summary,
                 not_run=False,
                 verdict=_normalize(assessment.verdict),
+                findings=_findings_beyond_summary(assessment),
             )
         ]
 
@@ -471,6 +486,20 @@ def _render_occurrence(pdf: _ReportPdf, occurrence: _Occurrence) -> None:
         # Full text width, never truncated. multi_cell measures and paginates the
         # text itself, so there is no row height to compute and get wrong.
         pdf.multi_cell(0, 5, _pdf_text(body), new_x="LMARGIN", new_y="NEXT")
+    if occurrence.findings:
+        # Every itemised finding, so the reader sees all of them and not only the first.
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*_COLOR_BODY)
+        indent = pdf.l_margin
+        pdf.set_left_margin(indent + 4)
+        pdf.set_x(indent + 4)
+        try:
+            for finding in occurrence.findings:
+                _ensure_space(pdf, 8)
+                pdf.multi_cell(0, 4.5, _pdf_text(f"- {finding}"), new_x="LMARGIN", new_y="NEXT")
+        finally:
+            pdf.set_left_margin(indent)
+            pdf.set_x(indent)
     pdf.ln(2.5)
 
 

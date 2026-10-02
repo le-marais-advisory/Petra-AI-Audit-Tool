@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from openpyxl.utils.cell import range_boundaries
 
-from src.pipeline.workbook.cells import PENNY, col_idx
+from src.pipeline.workbook.cells import sum_range_rows, PENNY, col_idx
 from src.pipeline.workbook.checks._common import (
     CheckContext,
     NotApplicable,
@@ -94,27 +94,40 @@ def gross_tie(ctx: CheckContext, out: Outcome) -> str:
         if differs(side_sum, stated, PENNY):
             out.fail(f"{total.side} components sum to {money(side_sum)} but the event total driver "
                      f"{total.column}{driver_row} is {money(stated)}.", sheet, f"{total.column}{driver_row}")
-    # (b) per component, vehicle totals sum to the fund-level amount.
+    # (b) per component, the (additive) vehicle totals sum to the fund-level amount. A look-through
+    # block re-allocates amounts already counted in the other blocks and is left out.
+    vehicles = alloc.additive_vehicles
+    fund_label = "the fund-level amount" if not alloc.fund_driver_row_shared else "the sum of the vehicle drivers"
     for comp in alloc.components:
-        vehicle_sum = sum((v.totals.get(comp.column, ZERO) for v in alloc.vehicles), ZERO)
+        vehicle_sum = sum((v.totals.get(comp.column, ZERO) for v in vehicles), ZERO)
         fund = alloc.fund_drivers.get(comp.column, ZERO)
         if differs(vehicle_sum, fund, PENNY):
-            out.fail(f"{comp.header or comp.component_type}: vehicle totals sum to {money(vehicle_sum)} but the "
-                     f"fund-level amount is {money(fund)}.", sheet, f"{comp.column}{driver_row}")
+            out.fail(f"{comp.header or comp.component_type}: vehicle totals sum to {money(vehicle_sum)} but "
+                     f"{fund_label} is {money(fund)}.", sheet, f"{comp.column}{driver_row}")
     # (c) bottom-line totals equal the event gross.
     bottom_cols = [t.column for t in layout.event_total_columns]
     if layout.columns.cash_due:
         bottom_cols.append(layout.columns.cash_due)
     grand_row = layout.grand_total_row or (layout.vehicles[-1].subtotal_rows.total if len(layout.vehicles) == 1 else None)
     for column in bottom_cols:
-        driver_value = sheet.value(f"{column}{driver_row}")
-        if driver_value is None or grand_row is None:
+        if grand_row is None:
             continue
+        if alloc.fund_driver_row_shared:
+            expected = sum((v.totals.get(column, ZERO) for v in vehicles), ZERO)
+            where = "the vehicle totals"
+        else:
+            if sheet.value(f"{column}{driver_row}") is None:
+                continue
+            expected = _value(alloc, column, driver_row)
+            where = f"the event gross {column}{driver_row}"
         grand = alloc.grand_totals.get(column, ZERO)
-        if differs(grand, _value(alloc, column, driver_row), PENNY):
-            out.fail(f"Bottom-line total {column}{grand_row} ({money(grand)}) does not equal the event gross "
-                     f"{column}{driver_row} ({money(driver_value)}).", sheet, f"{column}{grand_row}")
-    return f"Components, vehicle totals and bottom-line totals reconcile to the event gross ({money(alloc.event_gross)})."
+        if differs(grand, expected, PENNY):
+            out.fail(f"Bottom-line total {column}{grand_row} ({money(grand)}) does not equal {where} "
+                     f"({money(expected)}).", sheet, f"{column}{grand_row}")
+    skipped = [v.name for v in alloc.vehicles if not v.additive]
+    note = f" The look-through block(s) {', '.join(skipped)} re-allocate the other blocks and are not added." \
+        if skipped else ""
+    return f"Components, vehicle totals and bottom-line totals reconcile to the event gross ({money(alloc.event_gross)}).{note}"
 
 
 def _numeric_columns(alloc: AllocationData) -> list[tuple[str, Decimal]]:
@@ -176,13 +189,19 @@ def refoot(ctx: CheckContext, out: Outcome) -> str:
                              sheet, f"{column}{total_row}")
     layout = alloc.layout
     if len(alloc.vehicles) > 1 and layout.grand_total_row:
+        # Percentages are 100% per vehicle and do not add across vehicles; look-through blocks are
+        # re-allocations of the other blocks and are not added either.
+        pct_columns = {layout.columns.commitment_pct, layout.columns.distribution_basis_pct}
         for column, tol in columns:
-            expected = sum((_value(alloc, column, v.subtotal_rows["total"]) for v in alloc.vehicles
+            if column in pct_columns:
+                continue
+            expected = sum((_value(alloc, column, v.subtotal_rows["total"]) for v in alloc.additive_vehicles
                             if v.subtotal_rows.get("total")), ZERO)
             stated = _value(alloc, column, layout.grand_total_row)
             if differs(stated, expected, tol):
                 out.fail(f"Grand total {column}{layout.grand_total_row} is {stated} but vehicle totals sum to "
                          f"{expected}.", sheet, f"{column}{layout.grand_total_row}")
+    _check_subtotal_ranges(alloc, out)
     # Crossfoot: each side's event total equals that side's active components on every row.
     active = alloc.active_components
     for total in layout.event_total_columns:
@@ -197,6 +216,28 @@ def refoot(ctx: CheckContext, out: Outcome) -> str:
                 out.fail(f"Row {row}: {total.side} total {total.column}{row} is {money(stated)} but its components "
                          f"sum to {money(expected)}.", sheet, f"{total.column}{row}")
     return "All subtotals and totals refoot and every row crossfoots to its components."
+
+
+def _check_subtotal_ranges(alloc: AllocationData, out: Outcome) -> None:
+    """Every SUM(X7:X58) on a subtotal row must span the block's investor rows, in every column of
+    the sheet (hidden admin columns included): a range that starts late silently drops investors
+    even where the mapped columns refoot."""
+    sheet = alloc.sheet
+    for vehicle in alloc.vehicles:
+        lps = [i.row for i in vehicle.limited_partners]
+        gps = [i.row for i in vehicle.investors if i.is_gp]
+        for key, members in (("limited_partners", lps), ("general_partner", gps)):
+            row = vehicle.subtotal_rows.get(key)
+            if row is None or not members:
+                continue
+            first, last = min(members), max(members)
+            for cell in sheet.row_cells(row):
+                span = sum_range_rows(cell.formula)
+                if span is None or cell.formula is None or not cell.formula.upper().startswith("=SUM("):
+                    continue
+                if span[0] > first or span[1] < last:
+                    out.fail(f"{vehicle.name}: {key.replace('_', ' ')} subtotal {cell.coord} sums rows "
+                             f"{span[0]}-{span[1]} but the block's rows run {first}-{last}.", sheet, cell.coord)
 
 
 def _is_pro_rata(vehicle: AllocationVehicle, comp) -> bool:
@@ -277,11 +318,16 @@ def _plugs(alloc: AllocationData, vehicle: AllocationVehicle, column: str):
 def plug_eligibility(alloc: AllocationData):
     """eligible(investor) -> True / False / None (unknown): GPs, affiliates and fee-exempt LPs carry no plug."""
     fee_cols = [c.column for c in alloc.active_components if c.component_type == "mgmt_fee"]
+    # "Fee-exempt" is relative to the investor's own block: in a block where nobody pays a fee
+    # (e.g. the GP entity's own partners) the fee says nothing about eligibility.
+    fee_paying_blocks = {v.name for v in alloc.vehicles
+                         if any(i.amounts.get(c, ZERO) for i in v.investors for c in fee_cols)}
 
     def eligible(inv) -> bool | None:
         if inv.is_gp or inv.affiliate is True:
             return False
-        if fee_cols and all(inv.amounts.get(c, ZERO) == ZERO for c in fee_cols) and inv.commitment:
+        if fee_cols and inv.vehicle in fee_paying_blocks and all(inv.amounts.get(c, ZERO) == ZERO for c in fee_cols) \
+                and inv.commitment:
             return False
         if inv.affiliate is None and not fee_cols:
             return None

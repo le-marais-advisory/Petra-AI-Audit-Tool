@@ -261,6 +261,13 @@ def _validate_summary(c: _Checker, layout: SummaryLayout) -> None:
         c.non_empty(cell, "check cell")
     for line in layout.component_lines:
         c.non_empty(line.amount_cell, f"component line {line.component_type}")
+    for index, section in enumerate(layout.sections, start=1):
+        for name in ("title_cell", "fund_commitment_cell", "event_total_cell"):
+            c.non_empty(getattr(section, name), f"section {index} {name}")
+        for cell in section.check_cells:
+            c.non_empty(cell, f"section {index} check cell")
+        for line in section.component_lines:
+            c.non_empty(line.amount_cell, f"section {index} component line {line.component_type}")
 
 
 def _validate_merge(c: _Checker, layout: MergeLayout) -> None:

@@ -76,6 +76,8 @@ def test_allocation_ties_out(capital_event_fixtures, event_type, variant):
     (sheet_name, layout), = [(s, lay) for s, lay in manifest.layouts.items() if lay["role"] == "allocation"]
     ws = wv[sheet_name]
     fund_driver_row = layout["fund_driver_row"]
+    additive = manifest.truth["allocation"]["additive_vehicles"]
+    shared = any(v["driver_row"] == fund_driver_row for v in layout["vehicles"]) and len(layout["vehicles"]) > 1
     for comp in layout["components"]:
         col = comp["column"]
         grand = Decimal("0")
@@ -86,8 +88,11 @@ def test_allocation_ties_out(capital_event_fixtures, event_type, variant):
             total = _num(ws[f"{col}{vehicle['subtotal_rows']['total']}"].value)
             assert abs(per_lp - driver) <= TOL, (col, vehicle["name"])
             assert abs(total - driver) <= TOL, (col, vehicle["name"])
-            grand += total
-        assert abs(grand - _num(ws[f"{col}{fund_driver_row}"].value)) <= TOL, col
+            if vehicle["name"] in additive:
+                grand += total
+        fund_level = (_num(manifest.truth["allocation"]["drivers"].get(col, "0")) if shared
+                      else _num(ws[f"{col}{fund_driver_row}"].value))
+        assert abs(grand - fund_level) <= TOL, col
     for row in layout["check_rows"]:
         for cell in ws[row]:
             if isinstance(cell.value, (int, float)):
@@ -147,9 +152,15 @@ def test_summary_and_merge_tie(capital_event_fixtures, event_type, variant):
     _, wv = _load(manifest.path)
     summary = next(lay for lay in manifest.layouts.values() if lay["role"] == "summary")
     ws = wv[summary["sheet"]]
-    for cell in summary["check_cells"]:
+    for cell in summary["check_cells"] + [c for s in summary.get("sections", []) for c in s["check_cells"]]:
         assert abs(_num(ws[cell].value)) <= TOL
-    assert abs(_num(ws[summary["event_total_cell"]].value) - _num(manifest.truth["allocation"]["event_gross"])) <= TOL
+    if summary.get("sections"):
+        # One block per vehicle: the additive vehicles' totals add up to the event gross.
+        additive = manifest.truth["allocation"]["additive_vehicles"]
+        total = sum(_num(ws[s["event_total_cell"]].value) for s in summary["sections"] if s["vehicle"] in additive)
+    else:
+        total = _num(ws[summary["event_total_cell"]].value)
+    assert abs(total - _num(manifest.truth["allocation"]["event_gross"])) <= TOL
 
     dx = next(lay for lay in manifest.layouts.values() if lay["role"] == "investor_data")
     dxs = wv[dx["sheet"]]
@@ -188,8 +199,8 @@ def test_golden_layout_headers_point_at_labels(capital_event_fixtures, event_typ
 def test_each_defect_changes_the_workbook(capital_event_fixtures, name):
     defect = DEFECTS[name]
     event_type = defect.event_types[0]
-    clean = capital_event_fixtures.get(event_type, "standard")
-    broken = capital_event_fixtures.get(event_type, "standard", name)
+    clean = capital_event_fixtures.get(event_type, defect.variant)
+    broken = capital_event_fixtures.get(event_type, defect.variant, name)
     if name == "generic_file_name":
         assert broken.path.name == "Book1.xlsx" != clean.path.name
         return
@@ -211,7 +222,7 @@ def test_each_defect_changes_the_workbook(capital_event_fixtures, name):
     if name == "prior_not_most_recent":
         # Only the uploaded prior workbook differs: it is from an earlier event.
         assert snapshot(wb_c, wv_c) == snapshot(wb_b, wv_b)
-        prior_c = capital_event_fixtures.get(event_type, "standard", None, True).prior
+        prior_c = capital_event_fixtures.get(event_type, defect.variant, None, True).prior
         assert snapshot(*_load(prior_c.path)) != snapshot(*_load(broken.prior.path))
         return
     assert snapshot(wb_c, wv_c) != snapshot(wb_b, wv_b)

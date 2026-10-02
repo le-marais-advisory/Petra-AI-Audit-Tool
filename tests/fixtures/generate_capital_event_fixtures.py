@@ -89,6 +89,7 @@ DETERMINISTIC_RULE_IDS = (
     "CE-TIE-SUPPORT-TABS",
     "CE-TIE-ITD-ALLOCATION",
     "CE-TIE-ITD-COMMITMENTS",
+    "CE-TIE-MERGE",
     "CE-ID-INVESTOR-KEYS",
     "CE-DIST-ROC-LIMIT",
     # Cross-event rules: compare with the prior event's workbook (FA calibration).
@@ -154,6 +155,12 @@ class LayoutVariant:
     vehicles: int = 1
     alt_headers: bool = False
     sheet_names: tuple[tuple[str, str], ...] = ()
+    lookthrough: str | None = None  # a GP-partners block re-allocating the vehicles' GP rows (not additive)
+    shared_driver: bool = False  # no fund-level driver row: the first vehicle's driver row is the fund_driver_row
+    hidden_merge: bool = False  # Merge tabs hidden once the notices are generated
+    combined_prior_label: bool = False  # a prior event headed "Capital Call #2 & Distribution #1 - ..."
+    fee_periods: int = 1  # quarters billed by the current event (header "Q2 2026 - Q3 2026 Mgmt Fees")
+    summary_sections: bool = False  # the Summary repeats one block per vehicle
 
     def sheet_name(self, role: str) -> str:
         return dict(self.sheet_names).get(role, _DEFAULT_SHEET_NAMES[role])
@@ -188,6 +195,24 @@ VARIANTS: dict[str, LayoutVariant] = {
     ),
     # Main fund + parallel vehicle, one Merge tab per vehicle.
     "two_vehicles": LayoutVariant(name="two_vehicles", vehicles=2),
+    # Three vehicles plus the GP entity's own partners as a look-through block, no fund-level driver
+    # row, hidden Merge tabs (one named without "Merge"), a combined prior-event label, two fee
+    # quarters billed at once from two fee-tab columns, and a Summary with one section per vehicle
+    # (the pattern of the multi-vehicle reference client).
+    "multi_vehicle": LayoutVariant(name="multi_vehicle", vehicles=3, lookthrough="EGF III GP Partners",
+                                   shared_driver=True, hidden_merge=True, combined_prior_label=True, fee_periods=2,
+                                   summary_sections=True),
+}
+
+# Clean verdicts a layout variant changes on its own (the FA-calibrated reading of its structure).
+VARIANT_VERDICTS: dict[str, dict[str, str]] = {
+    "multi_vehicle": {
+        # Hidden Merge tabs hold the notice data: still processed and tied out, but flagged for review.
+        "CE-WB-NO-HIDDEN-DATA": "needs_review",
+        # With the prior workbook: the rounding residual lands in different vehicle blocks in the two
+        # events, so no block carries a plug in both and the pattern cannot be compared.
+        "CE-XEV-PLUG-CONSISTENCY": "not_applicable",
+    },
 }
 
 
@@ -199,10 +224,13 @@ class DefectSpec:
     verdicts: dict[str, str | None]  # overrides applied on top of the clean baseline
     facts: dict[str, dict[str, Any]] = field(default_factory=dict)
     with_prior: bool = False  # build the prior event's workbook alongside (cross-event rules)
+    variant: str = "standard"  # the layout variant the defect is seeded on
 
 
-def _d(name, description, event_types=("capital_call",), verdicts=None, facts=None, with_prior=False) -> DefectSpec:
-    return DefectSpec(name, description, tuple(event_types), dict(verdicts or {}), dict(facts or {}), with_prior)
+def _d(name, description, event_types=("capital_call",), verdicts=None, facts=None, with_prior=False,
+       variant="standard") -> DefectSpec:
+    return DefectSpec(name, description, tuple(event_types), dict(verdicts or {}), dict(facts or {}), with_prior,
+                      variant)
 
 
 DEFECTS: dict[str, DefectSpec] = {
@@ -321,6 +349,26 @@ DEFECTS: dict[str, DefectSpec] = {
            facts={"CE-WB-NO-PLACEHOLDERS": {"tbd_cells": 1, "tbd_referenced": 0}}),
         _d("ok_stale_label_inactive", "An unused distribution column still carries the prior distribution's label.",
            facts={"CE-ALLOC-STALE-COMPONENTS": {"stale_columns": 0, "active_with_prior_label": 0}}),
+        # --- Merge tabs (the notice data) and multi-vehicle / recycling patterns.
+        _d("merge_stale_columns", "The Merge tab still pulls the prior event's component columns and omits this "
+           "event's expenses column, so every notice is short.",
+           verdicts={"CE-TIE-MERGE": "fail", "CE-SUM-CHECKS-ZERO": "fail"}),
+        _d("merge_wrong_row_link", "One Merge row's investment cell links to the next investor's Allocation row.",
+           verdicts={"CE-TIE-MERGE": "fail", "CE-SUM-CHECKS-ZERO": "fail"}),
+        _d("hidden_column_short_subtotal", "A hidden admin column ('Outstanding') holds per-LP amounts and its LP "
+           "subtotal SUM range skips the first rows of the block.",
+           verdicts={"CE-ALLOC-REFOOT": "fail", "CE-WB-NO-HIDDEN-DATA": "fail"}),
+        _d("combined_label_dist_gap", "A prior block is headed 'Capital Call #2 & Distribution #1' and the current "
+           "distribution is numbered #3, skipping #2.", event_types=("distribution",),
+           verdicts={"CE-ITD-EVENT-SEQUENCE": "fail"},
+           facts={"CE-DATE-CONSISTENCY": {"distinct_event_numbers": [3]}}),
+        _d("ok_derived_recallable", "The ITD 'Recallable Distributions' cumulative is a recycling-cap formula "
+           "(MIN of the cap and the recalled amounts), not a sum of the marked columns.",
+           verdicts={"CE-ITD-CUMULATIVE": "needs_review"}),
+        _d("multi_vehicle_prior_edited", "On the multi-vehicle workbook, a frozen prior-event value of an Executive "
+           "Fund investor was edited after the prior event was issued.",
+           verdicts={"CE-XEV-HISTORY-UNCHANGED": "fail", "CE-XEV-ROLL-FORWARD": "fail",
+                     "CE-XEV-ITD-ROLL-FORWARD": "fail"}, with_prior=True, variant="multi_vehicle"),
     ]
 }
 
@@ -352,8 +400,9 @@ class FixtureSpec:
             defect = DEFECTS[self.defect]
             if self.event_type not in defect.event_types:
                 raise ValueError(f"defect {self.defect!r} does not apply to {self.event_type!r}")
-        if self.has_prior and (self.event_type != "capital_call" or self.variant != "standard"):
-            raise ValueError("prior-event workbooks are generated for the standard capital-call fixture only")
+        if self.has_prior and (self.event_type != "capital_call" or self.variant not in ("standard", "two_vehicles",
+                                                                                           "multi_vehicle")):
+            raise ValueError("prior-event workbooks are generated for capital-call fixtures only")
 
 
 @dataclass
@@ -391,8 +440,9 @@ class FixtureManifest:
         }
 
 
-def clean_verdicts(event_type: str, with_prior: bool = False) -> dict[str, str | None]:
+def clean_verdicts(event_type: str, with_prior: bool = False, variant: str = "standard") -> dict[str, str | None]:
     verdicts: dict[str, str | None] = {rule_id: "pass" for rule_id in DETERMINISTIC_RULE_IDS}
+    verdicts.update(VARIANT_VERDICTS.get(variant, {}))
     if event_type == "capital_call":
         verdicts["CE-DIST-ROC-LIMIT"] = "not_applicable"
     if event_type == "distribution":
@@ -409,8 +459,9 @@ def default_specs() -> list[FixtureSpec]:
     """Clean fixtures for every event type x layout variant, plus every defect."""
     specs = [FixtureSpec(event_type=e, variant=v) for e in EVENT_TYPES for v in VARIANTS]
     specs.append(FixtureSpec(with_prior=True))
+    specs.append(FixtureSpec(variant="multi_vehicle", with_prior=True))
     for defect in DEFECTS.values():
-        specs.append(FixtureSpec(event_type=defect.event_types[0], variant="standard", defect=defect.name))
+        specs.append(FixtureSpec(event_type=defect.event_types[0], variant=defect.variant, defect=defect.name))
     return specs
 
 
@@ -461,6 +512,7 @@ class EventDef:
     date: dt.date  # due / payment date shown in the ITD header
     drivers: dict[str, Decimal]  # component key -> fund-level amount (distributions negative)
     fee_period: str | None = None
+    label: str | None = None  # ITD header text when it is not "<word> #<n> - <date>" (combined events)
 
     @property
     def word(self) -> str:
@@ -472,7 +524,7 @@ class EventDef:
 
     @property
     def itd_label(self) -> str:
-        return f"{self.short_label} - {self.date:%m.%d.%Y}"
+        return self.label or f"{self.short_label} - {self.date:%m.%d.%Y}"
 
     def header_for(self, comp: ComponentType) -> str:
         if comp.key == "mgmt_fee" and self.fee_period:
@@ -500,7 +552,7 @@ def _investors(variant: LayoutVariant, defect: str | None) -> list[Investor]:
     investors.append(Investor("Brightwater Affiliates Fund, LP", "Main Fund", Decimal("4000000"), affiliate=True))
     investors.append(Investor("Vireo Late Close Partners", "Main Fund", Decimal("1500000"), late_closer=True))
     investors.append(Investor("Example Growth Fund III GP, LLC", "Main Fund", Decimal("0"), is_gp=True))
-    if variant.vehicles == 2:
+    if variant.vehicles >= 2:
         for n, c in [
             ("Kestrel Offshore Feeder, Ltd.", "9000000"),
             ("Lindqvist Pension Stiftung", "6500000"),
@@ -509,16 +561,34 @@ def _investors(variant: LayoutVariant, defect: str | None) -> list[Investor]:
         ]:
             investors.append(Investor(n, "Parallel Fund", Decimal(c)))
         investors.append(Investor("EGF III Parallel GP, LLC", "Parallel Fund", Decimal("0"), is_gp=True))
+    if variant.vehicles >= 3:
+        for n, c in [
+            ("Halloran Executive Partners", "1500000"),
+            ("Ines Marchetti", "750000"),
+            ("Rowan & Sable Capital", "2250000"),
+        ]:
+            investors.append(Investor(n, "Executive Fund", Decimal(c)))
+        investors.append(Investor("EGF III Executive GP, LLC", "Executive Fund", Decimal("0"), is_gp=True))
+    if variant.lookthrough:
+        # The GP entity's own partners: their block re-allocates the GP rows of the vehicles above.
+        # Their commitments add up to the GP entity's commitments across the vehicles (3 x 2,000,000).
+        for n, c in [("Brian Castleberry", "1890000"), ("Marta Quill", "1500000"), ("Devin Oyelaran", "2610000")]:
+            investors.append(Investor(n, variant.lookthrough, Decimal(c)))
+    if variant.lookthrough:
+        for inv in investors:
+            if inv.is_gp:
+                inv.commitment = Decimal("2000000")  # the GP entity invests alongside the LPs
+    fund_ids = {"Main Fund": 901, "Parallel Fund": 902, "Executive Fund": 903}
     next_id = 20001
     for inv in investors:
-        inv.fund_id = 901 if inv.vehicle == "Main Fund" else 902
+        inv.fund_id = fund_ids.get(inv.vehicle, 904)
         if not inv.is_gp:
             inv.investor_id = next_id
             next_id += 1
     return investors
 
 
-def _events(event_type: str, defect: str | None) -> tuple[list[EventDef], EventDef]:
+def _events(event_type: str, defect: str | None, variant: LayoutVariant | None = None) -> tuple[list[EventDef], EventDef]:
     prior = [
         EventDef("capital_call", 1, dt.date(2024, 1, 22),
                  {"investment": Decimal("20000000"), "expenses": Decimal("400000"), "mgmt_fee": Decimal("0")}, "Q1 2024"),
@@ -528,6 +598,11 @@ def _events(event_type: str, defect: str | None) -> tuple[list[EventDef], EventD
         EventDef("capital_call", 3, dt.date(2026, 3, 9),
                  {"investment": Decimal("5000000"), "expenses": Decimal("250000"), "mgmt_fee": Decimal("0")}, "Q1 2026"),
     ]
+    if (variant and variant.combined_prior_label) or defect == "combined_label_dist_gap":
+        # Capital Call #2 and Distribution #1 issued together under one ITD header.
+        prior[1:3] = [EventDef("net_event", 2, dt.date(2024, 6, 25),
+                               {"investment": Decimal("10000000"), "mgmt_fee": Decimal("0"), "roc": Decimal("-1500000")},
+                               "Q2 2024", label="Capital Call #2 & Distribution #1 - 06.25.2024")]
     due = dt.date(2026, 6, 10)
     if event_type == "capital_call":
         current = EventDef("capital_call", 4, due,
@@ -542,9 +617,13 @@ def _events(event_type: str, defect: str | None) -> tuple[list[EventDef], EventD
                            "Q3 2026")
     if defect == "itd_event_number_gap":
         current.number = 5
+    if defect == "combined_label_dist_gap":
+        current.number = 3  # the combined header carried Distribution #1, so #2 is skipped
     if defect == "ok_call_without_fee":
         del current.drivers["mgmt_fee"]
         current.fee_period = None
+    if variant and variant.fee_periods == 2 and "mgmt_fee" in current.drivers:
+        current.fee_period = "Q2 2026 - Q3 2026"
     return prior, current
 
 
@@ -702,7 +781,7 @@ class _Builder:
         self.variant = VARIANTS[spec.variant]
         self.defect = spec.defect if stage == "current" else None
         self.investors = _investors(self.variant, self.defect)
-        self.prior_events, self.current = _events(spec.event_type, self.defect)
+        self.prior_events, self.current = _events(spec.event_type, self.defect, self.variant)
         self.holidays = {d for _, d in HOLIDAYS_2026}
         self.notice_date = NOTICE_DATE
         if stage == "prior":
@@ -717,6 +796,11 @@ class _Builder:
             self.notice_date = _workday(self.current.date, -10, self.holidays)
             assert _workday(self.notice_date, 10, self.holidays) == self.current.date
         self.vehicles = list(dict.fromkeys(i.vehicle for i in self.investors))
+        self.lookthrough = self.variant.lookthrough
+        self.lp_vehicles = [v for v in self.vehicles if v != self.lookthrough]
+        # Billing two quarters at once is a feature of the current event; the prior event billed one.
+        self.fee_periods = self.variant.fee_periods if stage == "current" else 1
+        self.fee_quarters = ["Q2 2026", "Q3 2026"] if self.fee_periods == 2 else None
         self.sheets: list[SheetBuilder] = []
         self.layouts: dict[str, dict[str, Any]] = {}
         self.truth: dict[str, Any] = {}
@@ -726,6 +810,9 @@ class _Builder:
             self.merge_names = {"Main Fund": "Example Growth Fund III" if self.variant.name == "shifted" else "Merge"}
         else:
             self.merge_names = {v: f"Merge - {v}" for v in self.vehicles}
+            if self.variant.name == "multi_vehicle":
+                # As in the reference client: one tab named after the vehicle without "Merge".
+                self.merge_names["Executive Fund"] = "EGF III Executive"
         self.whole_dollar_fees = self.defect == "ok_whole_dollar_fees"
         # FA item 15: the carry is broken out on a waterfall support tab the Allocation pulls from.
         self.waterfall = self.defect in ("ok_waterfall_support_tab", "waterfall_row_not_pulled")
@@ -743,7 +830,12 @@ class _Builder:
         return next(i for i in self.investors if i.name == name)
 
     def fee_for(self, inv: Investor) -> Decimal:
-        return _fee(inv, whole_dollars=self.whole_dollar_fees)
+        if inv.vehicle == self.lookthrough:
+            return Decimal("0")  # the GP's partners pay no fee; their block re-allocates the GP rows ($0 fee)
+        return _fee(inv, whole_dollars=self.whole_dollar_fees) * self.fee_periods
+
+    def is_lookthrough(self, name: str) -> bool:
+        return self.lookthrough is not None and self.by_name(name).vehicle == self.lookthrough
 
     # -- event allocations ----------------------------------------------------------
 
@@ -765,13 +857,14 @@ class _Builder:
             offsets[key] = {}
             if key == "mgmt_fee":
                 for inv in self.investors:
-                    if eligible(inv):
+                    if eligible(inv) and inv.vehicle != self.lookthrough:
                         amounts[key][inv.name] = self.fee_for(inv) if current else _fee(inv)
                 if current and self.defect == "fee_pulled_from_wrong_row":
                     amounts[key]["Juniper Hollow Partners"] = self.fee_for(self.by_name("Meridian Endowment Fund"))
                 continue
-            split = _vehicle_split(fund_driver, self.investors, self.vehicles)
-            for vehicle in self.vehicles:
+            lp_investors = [i for i in self.investors if i.vehicle != self.lookthrough and eligible(i)]
+            split = _vehicle_split(fund_driver, lp_investors, self.lp_vehicles)
+            for vehicle in self.lp_vehicles:
                 members = [i for i in self.in_vehicle(vehicle) if eligible(i)]
                 driver = split[vehicle]
                 plug = _plug_target(members)
@@ -807,6 +900,18 @@ class _Builder:
                     vehicle_offsets = _spread_residual(driver, vehicle_amounts, members)
                 amounts[key].update(vehicle_amounts)
                 offsets[key].update(vehicle_offsets)
+            if self.lookthrough:
+                # The GP entity's share of every vehicle, re-allocated to its own partners by commitment.
+                partners = [i for i in self.in_vehicle(self.lookthrough) if eligible(i)]
+                gp_total = sum((amounts[key][i.name] for i in self.investors if i.is_gp), Decimal("0"))
+                if C_BY_KEY[key].side == "distribution":
+                    lt_weights = {i.name: contributed.get(i.name, Decimal("0")) for i in partners}
+                else:
+                    lt_weights = {i.name: i.commitment for i in partners}
+                lt_amounts, lt_offsets = _allocate_pro_rata(gp_total, partners, lt_weights,
+                                                            _plug_target(partners) if partners else None)
+                amounts[key].update(lt_amounts)
+                offsets[key].update(lt_offsets)
             if current and key == "investment" and self.defect == "concentrated_plug":
                 self._move(amounts, offsets, key, "Juniper Hollow Partners", "Silverline Retirement Plan", Decimal("500"))
             if current and key == "carry" and self.defect == "waterfall_row_not_pulled":
@@ -857,12 +962,13 @@ class _Builder:
                         contributed[name] += amount
                     else:
                         distributed[name] += amount
-        if self.defect == "prior_block_edited":
+        if self.defect in ("prior_block_edited", "multi_vehicle_prior_edited"):
             # Edited after the prior events were issued: one frozen cell, nothing re-derived from it.
             edited = next(a for e, a in zip(self.prior_events, self.prior_allocations)
-                          if e.kind == "capital_call" and e.number == 2)
-            edited.amounts["investment"]["Northgate Family Trust"] += Decimal("1000")
-            contributed["Northgate Family Trust"] += Decimal("1000")
+                          if e.kind in ("capital_call", "net_event") and e.number == 2)
+            victim = "Northgate Family Trust" if self.defect == "prior_block_edited" else "Ines Marchetti"
+            edited.amounts["investment"][victim] += Decimal("1000")
+            contributed[victim] += Decimal("1000")
         self.prior_contributed = contributed
         self.prior_distributed = distributed
         self.current_alloc = self.allocate_event(self.current, contributed, current=True)
@@ -894,7 +1000,7 @@ class _Builder:
         sheet_roles = {s.name: s.role for s in ordered}
         relevant = [s.name for s in ordered if s.role in RELEVANT_ROLES[self.spec.event_type]]
         references = _referenced_sheets(ordered, relevant)
-        verdicts = clean_verdicts(self.spec.event_type, with_prior=self.spec.has_prior)
+        verdicts = clean_verdicts(self.spec.event_type, with_prior=self.spec.has_prior, variant=self.spec.variant)
         facts = _clean_facts(self.spec.event_type)
         if self.defect:
             verdicts.update(DEFECTS[self.defect].verdicts)
@@ -995,14 +1101,14 @@ class _Builder:
         rows: dict[str, Any] = {"fund_name": 2, "notice": 3, "due": 4, "driver": 5, "header": 6}
         r = 7
         blocks = []
-        for vehicle in self.vehicles:
+        for index, vehicle in enumerate(self.vehicles):
             block: dict[str, Any] = {"name": vehicle}
-            if len(self.vehicles) > 1:
+            if len(self.vehicles) > 1 and not (v.shared_driver and index == 0):
                 block["title_row"] = r
                 block["driver_row"] = r + 1
                 r += 2
             else:
-                block["driver_row"] = rows["driver"]
+                block["driver_row"] = rows["driver"]  # the row above the header
             block["investor_rows"] = {}
             for inv in self.in_vehicle(vehicle):
                 if inv.is_gp:
@@ -1012,12 +1118,15 @@ class _Builder:
             r += 1
             block["lp_subtotal"] = r
             r += 2
-            gp = next(i for i in self.in_vehicle(vehicle) if i.is_gp)
-            block["gp_row"] = r
-            block["gp_name"] = gp.name
-            r += 1
-            block["gp_subtotal"] = r
-            r += 2
+            gp = next((i for i in self.in_vehicle(vehicle) if i.is_gp), None)
+            if gp is not None:
+                block["gp_row"] = r
+                block["gp_name"] = gp.name
+                r += 1
+                block["gp_subtotal"] = r
+                r += 2
+            else:  # the look-through block has no general partner row
+                block["gp_row"] = block["gp_name"] = block["gp_subtotal"] = None
             block["total_row"] = r
             r += 2 if len(self.vehicles) > 1 else 1
             blocks.append(block)
@@ -1027,11 +1136,16 @@ class _Builder:
         else:
             rows["grand_total"] = blocks[0]["total_row"]
         rows["check"] = r
+        if v.shared_driver:
+            rows["driver"] = blocks[0]["driver_row"]  # no fund-level row: the first block's driver row
+        if self.defect == "hidden_column_short_subtotal":
+            cols["outstanding"] = cols["received_date"] + 1
         self.arows = rows
         self.ablocks = blocks
         self.investor_row = {n: sheet.row(rr) for b in blocks for n, rr in b["investor_rows"].items()}
         for b in blocks:
-            self.investor_row[b["gp_name"]] = sheet.row(b["gp_row"])
+            if b["gp_name"]:
+                self.investor_row[b["gp_name"]] = sheet.row(b["gp_row"])
 
     # -- ITD ----------------------------------------------------------------------------
 
@@ -1108,12 +1222,15 @@ class _Builder:
             r += 1
             vb["lp_subtotal"] = r
             r += 2
-            gp = next(i for i in self.in_vehicle(vehicle) if i.is_gp)
-            vb["gp_row"] = r
-            vb["gp_name"] = gp.name
-            r += 1
-            vb["gp_subtotal"] = r
-            r += 2
+            gp = next((i for i in self.in_vehicle(vehicle) if i.is_gp), None)
+            if gp is not None:
+                vb["gp_row"] = r
+                vb["gp_name"] = gp.name
+                r += 1
+                vb["gp_subtotal"] = r
+                r += 2
+            else:
+                vb["gp_row"] = vb["gp_name"] = vb["gp_subtotal"] = None
             vb["total_row"] = r
             r += 2
             vblocks.append(vb)
@@ -1166,7 +1283,7 @@ class _Builder:
         # Investor rows.
         cum_values: dict[str, dict[str, Decimal]] = {}
         for vb in vblocks:
-            rows_in_block = list(vb["investor_rows"].items()) + [(vb["gp_name"], vb["gp_row"])]
+            rows_in_block = list(vb["investor_rows"].items()) + ([(vb["gp_name"], vb["gp_row"])] if vb["gp_row"] else [])
             for name, rr in rows_in_block:
                 inv = self.by_name(name)
                 arow = self.investor_row[name]
@@ -1213,6 +1330,12 @@ class _Builder:
                 total_contrib = cum["investment_contributions"] + cum["cost_contributions"]
                 unfunded = inv.commitment - total_contrib - cum["recallable_distributions"]
                 total_dist = cum["recallable_distributions"] + cum["non_recallable_distributions"]
+                recallable_formula = sumif("recallable_distributions")
+                if self.defect == "ok_derived_recallable":
+                    # A recycling cap: the recallable room is the lesser of 15% of the commitment and
+                    # the recalled amounts, not a plain accumulation of the marked columns.
+                    recallable_formula = (f"-MIN(ROUND({sheet.coord(rr, cum_cols['commitment'])}*0.15,2),"
+                                          f"-({recallable_formula}))")
                 cells = {
                     "investment_contributions": (sumif("investment_contributions"), cum["investment_contributions"]),
                     "cost_contributions": (sumif("cost_contributions"), cum["cost_contributions"]),
@@ -1222,7 +1345,7 @@ class _Builder:
                     "unfunded": (
                         f"{sheet.coord(rr, cum_cols['commitment'])}-{sheet.coord(rr, cum_cols['total_contributions'])}"
                         f"-{sheet.coord(rr, cum_cols['recallable_distributions'])}", unfunded),
-                    "recallable_distributions": (sumif("recallable_distributions"), cum["recallable_distributions"]),
+                    "recallable_distributions": (recallable_formula, cum["recallable_distributions"]),
                     "non_recallable_distributions": (sumif("non_recallable_distributions"),
                                                      cum["non_recallable_distributions"]),
                     "total_distributions": (
@@ -1248,14 +1371,18 @@ class _Builder:
                 sheet.put(vb["lp_subtotal"], col, formula=(
                     f"SUM({sheet.coord(lp_rows[0], col)}:{sheet.coord(lp_rows[-1], col)})"),
                     cached=_num(lp_sum), fmt=MONEY_FMT)
-                gp_val = _cached_decimal(sheet, sheet.coord(vb["gp_row"], col))
-                sheet.put(vb["gp_subtotal"], col, formula=f"SUM({sheet.coord(vb['gp_row'], col)})",
-                          cached=_num(gp_val), fmt=MONEY_FMT)
-                sheet.put(vb["total_row"], col, formula=(
-                    f"{sheet.coord(vb['lp_subtotal'], col)}+{sheet.coord(vb['gp_subtotal'], col)}"),
-                    cached=_num(lp_sum + gp_val), fmt=MONEY_FMT)
+                if vb["gp_row"]:
+                    gp_val = _cached_decimal(sheet, sheet.coord(vb["gp_row"], col))
+                    sheet.put(vb["gp_subtotal"], col, formula=f"SUM({sheet.coord(vb['gp_row'], col)})",
+                              cached=_num(gp_val), fmt=MONEY_FMT)
+                    total_formula = f"{sheet.coord(vb['lp_subtotal'], col)}+{sheet.coord(vb['gp_subtotal'], col)}"
+                else:
+                    gp_val = Decimal("0")
+                    total_formula = sheet.coord(vb["lp_subtotal"], col)
+                sheet.put(vb["total_row"], col, formula=total_formula, cached=_num(lp_sum + gp_val), fmt=MONEY_FMT)
             sheet.put(vb["lp_subtotal"], 1, "Limited Partners")
-            sheet.put(vb["gp_subtotal"], 1, "General Partner")
+            if vb["gp_subtotal"]:
+                sheet.put(vb["gp_subtotal"], 1, "General Partner")
             sheet.put(vb["total_row"], 1, f"Total {vehicle}" if len(self.vehicles) > 1 else "Total Partnership")
 
         # Prior-block live links on the $0 GP row (calibration probe) / on an LP (defect).
@@ -1273,13 +1400,14 @@ class _Builder:
                                          f"${a_inv_col},${sheet.col(1)}{sheet.row(rr)})"),
                          cached=cell.value, fmt=MONEY_FMT)
 
-        # Check row: current block totals vs Allocation grand totals.
+        # Check row: current block totals vs Allocation grand totals (the look-through block re-allocates
+        # the others' GP rows and is outside both).
         sheet.put(check_row, 1, "Check vs Allocation")
-        grand_itd_rows = [vb["total_row"] for vb in vblocks]
+        grand_itd_rows = [vb["total_row"] for vb in vblocks if vb["name"] != self.lookthrough]
         for key, col in current_plan["cols"].items():
             a_col = alloc.col(self.comp_col[key])
             itd_total = sum(_cached_decimal(sheet, sheet.coord(rr, col)) for rr in grand_itd_rows)
-            alloc_total = sum(self.current_alloc.amounts[key].values())
+            alloc_total = sum(a for n, a in self.current_alloc.amounts[key].items() if not self.is_lookthrough(n))
             sheet.put(check_row, col, formula=(
                 "+".join(sheet.coord(rr, col) for rr in grand_itd_rows) +
                 f"-{q(alloc.name)}!{a_col}{alloc.row(self.arows['grand_total'])}"),
@@ -1329,9 +1457,9 @@ class _Builder:
                     "title_row": sheet.row(vb["title_row"]) if "title_row" in vb else None,
                     "investor_rows": [sheet.row(min(vb["investor_rows"].values())),
                                       sheet.row(max(vb["investor_rows"].values()))],
-                    "gp_rows": [sheet.row(vb["gp_row"])],
+                    "gp_rows": [sheet.row(vb["gp_row"])] if vb["gp_row"] else [],
                     "subtotal_rows": {"limited_partners": sheet.row(vb["lp_subtotal"]),
-                                      "general_partner": sheet.row(vb["gp_subtotal"]),
+                                      "general_partner": sheet.row(vb["gp_subtotal"]) if vb["gp_subtotal"] else None,
                                       "total": sheet.row(vb["total_row"])},
                 }
                 for vb in vblocks
@@ -1470,32 +1598,37 @@ class _Builder:
                     drivers[comp.key] = event.drivers[comp.key]
             else:
                 drivers[comp.key] = Decimal("0")
-        for comp_key, amount in drivers.items():
-            col = self.comp_col[comp_key]
-            if comp_key == "mgmt_fee" and comp_key in active:
-                sheet.put(fund_driver_row, col, formula=f"{q(fee_sheet)}!${fee_amount_col}${self._fee_total_row()}",
-                          cached=_num(amount), fmt=MONEY_FMT)
-            elif comp_key == "investment" and comp_key in active and self.tracker_current_row():
-                # As in the reference sample, the investment driver pulls the current deal from the tracker.
-                sheet.put(fund_driver_row, col, formula=f"{q('Portfolio Investment Tracker')}!$E${self.tracker_current_row()}",
-                          cached=_num(amount), fmt=MONEY_FMT)
-            else:
-                sheet.put(fund_driver_row, col, _num(amount), fmt=MONEY_FMT)
         call_driver_total = sum(drivers[c.key] for c in CALL_COMPONENTS)
         dist_driver_total = sum(drivers[c.key] for c in DIST_COMPONENTS)
-        sheet.put(fund_driver_row, cols["call_total"], formula=(
-            f"SUM({sheet.coord(fund_driver_row, call_cols[0])}:{sheet.coord(fund_driver_row, call_cols[-1])})"),
-            cached=_num(call_driver_total), fmt=MONEY_FMT)
-        sheet.put(fund_driver_row, cols["dist_total"], formula=(
-            f"SUM({sheet.coord(fund_driver_row, dist_cols[0])}:{sheet.coord(fund_driver_row, dist_cols[-1])})"),
-            cached=_num(dist_driver_total), fmt=MONEY_FMT)
-        sheet.put(fund_driver_row, cols["late_interest"], 0, fmt=MONEY_FMT)
-        sheet.put(fund_driver_row, cols["cash_due"], formula=(
-            f"SUM({sheet.coord(fund_driver_row, cols['call_total'])},{sheet.coord(fund_driver_row, cols['dist_total'])},"
-            f"{sheet.coord(fund_driver_row, cols['late_interest'])})"),
-            cached=_num(call_driver_total + dist_driver_total), fmt=MONEY_FMT)
-        if self.defect == "stale_component":
-            sheet.put(fund_driver_row, cols["stale"], 0, fmt=MONEY_FMT)
+
+        def put_event_totals(row: int, call_amount: Decimal, dist_amount: Decimal) -> None:
+            sheet.put(row, cols["call_total"], formula=(
+                f"SUM({sheet.coord(row, call_cols[0])}:{sheet.coord(row, call_cols[-1])})"),
+                cached=_num(call_amount), fmt=MONEY_FMT)
+            sheet.put(row, cols["dist_total"], formula=(
+                f"SUM({sheet.coord(row, dist_cols[0])}:{sheet.coord(row, dist_cols[-1])})"),
+                cached=_num(dist_amount), fmt=MONEY_FMT)
+            sheet.put(row, cols["late_interest"], 0, fmt=MONEY_FMT)
+            sheet.put(row, cols["cash_due"], formula=(
+                f"SUM({sheet.coord(row, cols['call_total'])},{sheet.coord(row, cols['dist_total'])},"
+                f"{sheet.coord(row, cols['late_interest'])})"),
+                cached=_num(call_amount + dist_amount), fmt=MONEY_FMT)
+
+        if not v.shared_driver:
+            for comp_key, amount in drivers.items():
+                col = self.comp_col[comp_key]
+                if comp_key == "mgmt_fee" and comp_key in active:
+                    sheet.put(fund_driver_row, col, formula=f"{q(fee_sheet)}!${fee_amount_col}${self._fee_total_row()}",
+                              cached=_num(amount), fmt=MONEY_FMT)
+                elif comp_key == "investment" and comp_key in active and self.tracker_current_row():
+                    # As in the reference sample, the investment driver pulls the current deal from the tracker.
+                    sheet.put(fund_driver_row, col, formula=f"{q('Portfolio Investment Tracker')}!$E${self.tracker_current_row()}",
+                              cached=_num(amount), fmt=MONEY_FMT)
+                else:
+                    sheet.put(fund_driver_row, col, _num(amount), fmt=MONEY_FMT)
+            put_event_totals(fund_driver_row, call_driver_total, dist_driver_total)
+            if self.defect == "stale_component":
+                sheet.put(fund_driver_row, cols["stale"], 0, fmt=MONEY_FMT)
 
         # Vehicle blocks.
         itd_inv = f"{q(itd.name)}!${itd.col(1)}:${itd.col(1)}"
@@ -1511,22 +1644,35 @@ class _Builder:
             vdriver_row = block["driver_row"]
             vehicle_commitment = sum(i.commitment for i in members)
             if len(self.vehicles) > 1:
-                sheet.put(block["title_row"], cols["investor"], vehicle)
+                if "title_row" in block:
+                    sheet.put(block["title_row"], cols["investor"], vehicle)
                 sheet.put(vdriver_row, cols["investor"], f"{vehicle} Allocation")
+                vehicle_call = vehicle_dist = Decimal("0")
                 for comp in (*CALL_COMPONENTS, *DIST_COMPONENTS):
                     col = self.comp_col[comp.key]
                     amount = sum(alloc.amounts.get(comp.key, {}).get(i.name, Decimal("0")) for i in members) \
                         if comp.key in active else Decimal("0")
-                    if comp.key == "mgmt_fee" and comp.key in active:
-                        sheet.put(vdriver_row, col, formula=(
-                            f"SUMIFS({q(fee_sheet)}!${fee_amount_col}:${fee_amount_col},{q(fee_sheet)}!"
-                            f"${fee_vehicle_col}:${fee_vehicle_col},\"{vehicle}\")"), cached=_num(amount), fmt=MONEY_FMT)
+                    if comp.side == "call":
+                        vehicle_call += amount
+                    else:
+                        vehicle_dist += amount
+                    if vehicle == self.lookthrough:
+                        # The look-through driver is the GP rows of the other blocks added up.
+                        gp_cells = [sheet.coord(b["gp_row"], col) for b in self.ablocks if b["gp_row"]]
+                        sheet.put(vdriver_row, col, formula="+".join(gp_cells), cached=_num(amount), fmt=MONEY_FMT)
+                    elif comp.key == "mgmt_fee" and comp.key in active:
+                        terms = [f"SUMIFS({q(fee_sheet)}!${c}:${c},{q(fee_sheet)}!${fee_vehicle_col}:${fee_vehicle_col},"
+                                 f"\"{vehicle}\")" for c in self.fee_cols()]
+                        sheet.put(vdriver_row, col, formula="+".join(terms), cached=_num(amount), fmt=MONEY_FMT)
                     else:
                         sheet.put(vdriver_row, col, _num(amount), fmt=MONEY_FMT)
+                if v.shared_driver:
+                    put_event_totals(vdriver_row, vehicle_call, vehicle_dist)
             total_row_commit = sheet.coord(block["total_row"], cols["commitment"])
             contributed_total = sum(self.prior_contributed[i.name] for i in members)
+            gp_member = next((i for i in members if i.is_gp), None)
             rows_for_block = [(i, block["investor_rows"][i.name]) for i in lps] + \
-                             [(next(i for i in members if i.is_gp), block["gp_row"])]
+                             ([(gp_member, block["gp_row"])] if gp_member is not None else [])
             col_sums_lp: dict[int, Decimal] = {}
             col_sums_gp: dict[int, Decimal] = {}
             for inv, rr in rows_for_block:
@@ -1575,9 +1721,12 @@ class _Builder:
                             and inv.name == "Juniper Hollow Partners":
                         formula = (f"SUMIFS({q(fee_sheet)}!$E:$E,{q(fee_sheet)}!"
                                    f"${fee_name_col}:${fee_name_col},${sheet.col(cols['investor'])}{sheet.row(rr)})")
+                    elif comp.key == "mgmt_fee" and comp.key in active and vehicle == self.lookthrough:
+                        formula = f"ROUND({driver_ref}*{basis_ref},2)"  # the GP's partners share the GP's $0 fee
                     elif comp.key == "mgmt_fee" and comp.key in active:
-                        formula = (f"SUMIFS({q(fee_sheet)}!${fee_amount_col}:${fee_amount_col},{q(fee_sheet)}!"
-                                   f"${fee_name_col}:${fee_name_col},${sheet.col(cols['investor'])}{sheet.row(rr)})")
+                        formula = "+".join(
+                            f"SUMIFS({q(fee_sheet)}!${c}:${c},{q(fee_sheet)}!${fee_name_col}:${fee_name_col},"
+                            f"${sheet.col(cols['investor'])}{sheet.row(rr)})" for c in self.fee_cols())
                     elif comp.key == "carry" and comp.key in active and self.waterfall:
                         rate_ref = _abs(self.carry_rate_coord)
                         unpulled = self.defect == "waterfall_row_not_pulled" and inv.name == "Juniper Hollow Partners"
@@ -1592,6 +1741,8 @@ class _Builder:
                     elif comp.key == "carry" and comp.key in active and inv.is_gp:
                         rate_ref = "0.25" if self.defect == "carry_split_wrong" else _abs(self.carry_rate_coord)
                         formula = f"ROUND({driver_ref}*{rate_ref},2)"
+                    elif comp.key == "carry" and comp.key in active and vehicle == self.lookthrough:
+                        formula = f"ROUND({driver_ref}*{basis_ref},2)"  # the GP's carry, shared by its partners
                     elif comp.key == "carry" and comp.key in active:
                         formula = (f"ROUND(({driver_ref}-{sheet.col(col)}${sheet.row(block['gp_row'])})*{basis_ref},2)")
                     elif (comp.key, inv.name) in alloc.unrounded:
@@ -1615,7 +1766,8 @@ class _Builder:
                 if self.defect == "stale_component" and not inv.is_gp:
                     stale = r2(Decimal("60000") * inv.commitment / vehicle_commitment)
                     put("stale", _num(stale))
-                put("late_interest", formula=f"ROUND({sheet.col(cols['late_interest'])}${sheet.row(fund_driver_row)}*{pct_ref},2)",
+                late_row = vdriver_row if v.shared_driver else fund_driver_row
+                put("late_interest", formula=f"ROUND({sheet.col(cols['late_interest'])}${sheet.row(late_row)}*{pct_ref},2)",
                     cached=0)
                 put("cash_due", formula=(
                     f"{sheet.coord(rr, cols['call_total'])}+{sheet.coord(rr, cols['dist_total'])}+"
@@ -1650,6 +1802,10 @@ class _Builder:
                 put("total_gross_dist", formula=(
                     f"{sheet.coord(rr, cols['prior_gross_dist'])}+{sheet.coord(rr, cols['current_dist'])}"),
                     cached=_num(prior_dist + dist_total))
+                if "outstanding" in cols and not inv.is_gp:
+                    # A hidden admin column ("Outstanding" = cash due less received), as in the reference client.
+                    put("outstanding", formula=f"{sheet.coord(rr, cols['cash_due'])}-{sheet.coord(rr, cols['received'])}",
+                        cached=_num(call_total + dist_total))
                 target = col_sums_gp if inv.is_gp else col_sums_lp
                 for col, val in row_vals.items():
                     target[col] = target.get(col, Decimal("0")) + val
@@ -1673,7 +1829,8 @@ class _Builder:
             first_lp = min(block["investor_rows"].values())
             last_lp = max(block["investor_rows"].values())
             sheet.put(block["lp_subtotal"], cols["investor"], "Limited Partners")
-            sheet.put(block["gp_subtotal"], cols["investor"], "General Partner")
+            if block["gp_subtotal"]:
+                sheet.put(block["gp_subtotal"], cols["investor"], "General Partner")
             sheet.put(block["total_row"], cols["investor"],
                       f"Total {vehicle}" if len(self.vehicles) > 1 else "Total Partnership")
             for col in numeric_cols:
@@ -1684,27 +1841,34 @@ class _Builder:
                 if self.defect == "short_subtotal_range" and col == cols["rf_prior"] and block is self.ablocks[0]:
                     lp_first = first_lp + 1  # the subtotal skips the first LP
                     lp_value -= Decimal(str(sheet.get(sheet.coord(first_lp, col)).cached))
+                if col == cols.get("outstanding") and block is self.ablocks[0]:
+                    lp_first = first_lp + 2  # the hidden column's subtotal skips the first two LPs
+                    lp_value -= sum(_cached_decimal(sheet, sheet.coord(r_, col)) for r_ in (first_lp, first_lp + 1))
                 fmt = PCT_FMT if col in (cols["commitment_pct"], cols.get("contributed_pct")) else MONEY_FMT
                 sheet.put(block["lp_subtotal"], col, formula=(
                     f"SUM({sheet.coord(lp_first, col)}:{sheet.coord(last_lp, col)})"), cached=_num(lp_value), fmt=fmt)
                 gp_value = col_sums_gp.get(col, Decimal("0"))
-                sheet.put(block["gp_subtotal"], col, formula=f"SUM({sheet.coord(block['gp_row'], col)})",
-                          cached=_num(gp_value), fmt=fmt)
-                sheet.put(block["total_row"], col, formula=(
-                    f"{sheet.coord(block['lp_subtotal'], col)}+{sheet.coord(block['gp_subtotal'], col)}"),
-                    cached=_num(lp_value + gp_value), fmt=fmt)
-                grand[col] = grand.get(col, Decimal("0")) + lp_value + gp_value
+                if block["gp_row"]:
+                    sheet.put(block["gp_subtotal"], col, formula=f"SUM({sheet.coord(block['gp_row'], col)})",
+                              cached=_num(gp_value), fmt=fmt)
+                    total_formula = f"{sheet.coord(block['lp_subtotal'], col)}+{sheet.coord(block['gp_subtotal'], col)}"
+                else:
+                    total_formula = sheet.coord(block["lp_subtotal"], col)
+                sheet.put(block["total_row"], col, formula=total_formula, cached=_num(lp_value + gp_value), fmt=fmt)
+                if vehicle != self.lookthrough:
+                    grand[col] = grand.get(col, Decimal("0")) + lp_value + gp_value
             vehicle_layouts.append({
                 "name": vehicle,
                 "title_row": sheet.row(block["title_row"]) if "title_row" in block else None,
                 "driver_row": sheet.row(vdriver_row),
                 "investor_rows": [sheet.row(first_lp), sheet.row(last_lp)],
-                "gp_rows": [sheet.row(block["gp_row"])],
+                "gp_rows": [sheet.row(block["gp_row"])] if block["gp_row"] else [],
                 "subtotal_rows": {"limited_partners": sheet.row(block["lp_subtotal"]),
-                                  "general_partner": sheet.row(block["gp_subtotal"]),
+                                  "general_partner": sheet.row(block["gp_subtotal"]) if block["gp_subtotal"] else None,
                                   "total": sheet.row(block["total_row"])},
             })
 
+        additive_blocks = [b for b in self.ablocks if b["name"] != self.lookthrough]
         if len(self.vehicles) > 1:
             gt = rows["grand_total"]
             sheet.put(gt, cols["investor"], "Grand Total")
@@ -1712,20 +1876,27 @@ class _Builder:
                 if col == cols["close"]:
                     continue
                 fmt = PCT_FMT if col in (cols["commitment_pct"], cols.get("contributed_pct")) else MONEY_FMT
-                sheet.put(gt, col, formula="+".join(sheet.coord(b["total_row"], col) for b in self.ablocks),
+                sheet.put(gt, col, formula="+".join(sheet.coord(b["total_row"], col) for b in additive_blocks),
                           cached=_num(value), fmt=fmt)
 
-        # Check row: grand totals minus fund drivers.
+        # Check row: grand totals minus fund drivers (the vehicle drivers added up when no fund row exists).
         check = rows["check"]
         sheet.put(check, cols["investor"], "Check")
         for key in [*self.comp_col, "call_total", "dist_total", "cash_due"]:
             col = self.comp_col.get(key) or cols[key]
             total = grand.get(col, Decimal("0"))
-            driver_cached = sheet.get(sheet.coord(fund_driver_row, col))
-            driver_value = Decimal(str(driver_cached.cached if driver_cached.formula else driver_cached.value))
-            sheet.put(check, col, formula=(
-                f"ROUND({sheet.coord(rows['grand_total'], col)}-{sheet.coord(fund_driver_row, col)},2)"),
-                cached=_num(r2(total - driver_value)), fmt=MONEY_FMT)
+            if v.shared_driver:
+                driver_cells = [sheet.coord(b["driver_row"], col) for b in additive_blocks]
+                driver_value = sum(_cached_decimal(sheet, c) for c in driver_cells)
+                formula = f"ROUND({sheet.coord(rows['grand_total'], col)}-({'+'.join(driver_cells)}),2)"
+            else:
+                driver_cached = sheet.get(sheet.coord(fund_driver_row, col))
+                driver_value = Decimal(str(driver_cached.cached if driver_cached.formula else driver_cached.value))
+                formula = f"ROUND({sheet.coord(rows['grand_total'], col)}-{sheet.coord(fund_driver_row, col)},2)"
+            sheet.put(check, col, formula=formula, cached=_num(r2(total - driver_value)), fmt=MONEY_FMT)
+        if "outstanding" in cols:
+            sheet.put(header, cols["outstanding"], "Outstanding")
+            sheet.hidden_cols.add(sheet.col(cols["outstanding"]))
 
         if self.defect == "referenced_hidden_sheet_error":
             memo = r2(self.lps()[0].commitment * Decimal("0.0021"))
@@ -1800,6 +1971,7 @@ class _Builder:
             "event_gross": str(sum(drivers[k] for k in active)),
             "notice_date": self.notice_date.isoformat(),
             "due_date": due_date.isoformat(),
+            "additive_vehicles": [vname for vname in self.vehicles if vname != self.lookthrough],
         }
 
     # -- Summary --------------------------------------------------------------------------
@@ -1811,7 +1983,6 @@ class _Builder:
         a = q(alloc.name)
         event = self.current
         cols = self.acols
-        gt = alloc.row(self.arows["grand_total"])
         sheet.put(2, 2, formula=f"{a}!{alloc.coord(self.arows['fund_name'], 2)}", cached=FUND_NAME)
         word = "Distribution - payable " if event.kind == "distribution" else "Capital Call - due "
         title = f"{word}{self.due_date:%B} {self.due_date.day}, {self.due_date.year}"
@@ -1820,53 +1991,90 @@ class _Builder:
         notice_cell = sheet.put(5, 4, formula=f"{a}!{self.notice_coord}", cached=_serial(self.notice_date), fmt=DATE_LONG_FMT)
         sheet.put(6, 3, "Payment Date" if event.kind == "distribution" else "Due Date")
         due_cell = sheet.put(6, 4, formula=f"{a}!{self.due_coord}", cached=_serial(self.due_date), fmt=DATE_LONG_FMT)
-        sheet.put(8, 2, "Total Commitments" if v.alt_headers else "Total Fund Commitments")
-        total_commit = self.alloc_grand[cols["commitment"]]
-        commit_cell = sheet.put(8, 4, formula=f"{a}!{alloc.col(cols['commitment'])}{gt}", cached=_num(total_commit),
-                                fmt=MONEY_FMT)
-        sheet.put(8, 5, "% of commitment")
-        r = 10
-        lines = []
-        sections = []
-        for side, title_text in (("call", "Current Capital Call:"), ("distribution", "Current Distribution:")):
-            keys = [k for k in event.drivers if C_BY_KEY[k].side == side]
-            if not keys:
-                continue
-            sheet.put(r, 3, title_text)
-            r += 1
-            first = r
-            for key in keys:
-                col = alloc.col(self.comp_col[key])
-                amount = self.alloc_grand[self.comp_col[key]]
-                label = self.comp_headers[key]
-                sheet.put(r, 3, formula=f"{a}!{col}{alloc.row(self.arows['header'])}", cached=label)
-                if self.defect == "summary_line_hardcoded" and key == "expenses":
-                    amount = amount - Decimal("0.05")
-                    amount_cell = sheet.put(r, 4, _num(amount), fmt=MONEY_FMT)
+        # One block for the fund, or one block per vehicle (its total row) when the Summary repeats them.
+        if v.summary_sections:
+            blocks = [(b["name"], alloc.row(b["total_row"]), None) for b in self.ablocks]
+        else:
+            blocks = [(None, alloc.row(self.arows["grand_total"]), self.alloc_grand)]
+        r = 8
+        sections_layout = []
+        section_totals: list[Decimal] = []
+        for index, (vehicle, total_row, grand) in enumerate(blocks):
+
+            def amount_at(col_index: int) -> Decimal:
+                if grand is not None:
+                    return grand[col_index]
+                return _cached_decimal(alloc, alloc.coord(total_row - alloc.row_offset, col_index))
+
+            if vehicle is not None:
+                block = self.ablocks[index]
+                if "title_row" in block:
+                    sheet.put(r, 2, formula=f"{a}!{alloc.coord(block['title_row'], cols['investor'])}", cached=vehicle)
                 else:
-                    amount_cell = sheet.put(r, 4, formula=f"{a}!{col}{gt}", cached=_num(amount), fmt=MONEY_FMT)
-                sheet.put(r, 5, formula=f"{amount_cell}/{_abs(commit_cell)}", cached=float(amount / total_commit),
-                          fmt=PCT_FMT)
-                lines.append({"label_cell": sheet.coord(r, 3), "amount_cell": amount_cell,
-                              "component_type": C_BY_KEY[key].component_type, "side": side})
+                    sheet.put(r, 2, vehicle)
+                heading_cell = sheet.coord(r, 2)
                 r += 1
-            total = sum(Decimal(str(sheet.get(line["amount_cell"]).cached if sheet.get(line["amount_cell"]).formula
-                                    else sheet.get(line["amount_cell"]).value))
-                        for line in lines if line["side"] == side)
-            label = "Total Current Capital Call" if side == "call" else "Total Current Distribution"
-            sheet.put(r, 3, label)
-            total_cell = sheet.put(r, 4, formula=f"SUM({sheet.coord(first, 4)}:{sheet.coord(r - 1, 4)})",
-                                   cached=_num(total), fmt=MONEY_FMT)
-            sections.append({"side": side, "total_cell": total_cell, "total": total})
+            else:
+                heading_cell = None
+            sheet.put(r, 2, "Total Commitments" if v.alt_headers else "Total Fund Commitments")
+            total_commit = amount_at(cols["commitment"])
+            commit_cell = sheet.put(r, 4, formula=f"{a}!{alloc.col(cols['commitment'])}{total_row}",
+                                    cached=_num(total_commit), fmt=MONEY_FMT)
+            sheet.put(r, 5, "% of commitment")
             r += 2
-        net = sum(s["total"] for s in sections)
-        sheet.put(r, 3, "Total Net Cash Due" if len(sections) > 1 or sections[0]["side"] == "call"
-                  else "Total Cash to LPs")
-        net_cell = sheet.put(r, 4, formula="+".join(s["total_cell"] for s in sections), cached=_num(net), fmt=MONEY_FMT)
-        sheet.put(r, 6, "check")
-        alloc_cash = self.alloc_grand[cols["cash_due"]]
-        check_cell = sheet.put(r, 7, formula=f"{a}!{alloc.col(cols['cash_due'])}{gt}-{net_cell}",
-                               cached=_num(alloc_cash - net), fmt=MONEY_FMT)
+            lines = []
+            sides = []
+            for side, title_text in (("call", "Current Capital Call:"), ("distribution", "Current Distribution:")):
+                keys = [k for k in event.drivers if C_BY_KEY[k].side == side]
+                if not keys:
+                    continue
+                sheet.put(r, 3, title_text)
+                r += 1
+                first = r
+                for key in keys:
+                    col = alloc.col(self.comp_col[key])
+                    amount = amount_at(self.comp_col[key])
+                    label = self.comp_headers[key]
+                    sheet.put(r, 3, formula=f"{a}!{col}{alloc.row(self.arows['header'])}", cached=label)
+                    if self.defect == "summary_line_hardcoded" and key == "expenses" and index == 0:
+                        amount = amount - Decimal("0.05")
+                        amount_cell = sheet.put(r, 4, _num(amount), fmt=MONEY_FMT)
+                    else:
+                        amount_cell = sheet.put(r, 4, formula=f"{a}!{col}{total_row}", cached=_num(amount), fmt=MONEY_FMT)
+                    sheet.put(r, 5, formula=f"{amount_cell}/{_abs(commit_cell)}",
+                              cached=float(amount / total_commit) if total_commit else 0.0, fmt=PCT_FMT)
+                    lines.append({"label_cell": sheet.coord(r, 3), "amount_cell": amount_cell,
+                                  "component_type": C_BY_KEY[key].component_type, "side": side})
+                    r += 1
+                total = sum(Decimal(str(sheet.get(line["amount_cell"]).cached if sheet.get(line["amount_cell"]).formula
+                                        else sheet.get(line["amount_cell"]).value))
+                            for line in lines if line["side"] == side)
+                label = "Total Current Capital Call" if side == "call" else "Total Current Distribution"
+                sheet.put(r, 3, label)
+                total_cell = sheet.put(r, 4, formula=f"SUM({sheet.coord(first, 4)}:{sheet.coord(r - 1, 4)})",
+                                       cached=_num(total), fmt=MONEY_FMT)
+                sides.append({"side": side, "total_cell": total_cell, "total": total})
+                r += 2
+            net = sum(x["total"] for x in sides)
+            sheet.put(r, 3, "Total Net Cash Due" if len(sides) > 1 or sides[0]["side"] == "call"
+                      else "Total Cash to LPs")
+            net_cell = sheet.put(r, 4, formula="+".join(x["total_cell"] for x in sides), cached=_num(net), fmt=MONEY_FMT)
+            sheet.put(r, 6, "check")
+            alloc_cash = amount_at(cols["cash_due"])
+            check_cell = sheet.put(r, 7, formula=f"{a}!{alloc.col(cols['cash_due'])}{total_row}-{net_cell}",
+                                   cached=_num(alloc_cash - net), fmt=MONEY_FMT)
+            r += 3
+            section_totals.append(net)
+            sections_layout.append({
+                "vehicle": vehicle,
+                "title_cell": heading_cell,
+                "fund_commitment_cell": commit_cell,
+                "component_lines": lines,
+                "section_totals": [{"side": x["side"], "cell": x["total_cell"]} for x in sides],
+                "event_total_cell": net_cell,
+                "check_cells": [check_cell],
+            })
+        first = sections_layout[0]
         self.sheets.append(sheet)
         self.layouts[sheet.name] = {
             "role": "summary",
@@ -1874,13 +2082,16 @@ class _Builder:
             "title_cell": title_coord,
             "notice_date_cell": notice_cell,
             "due_date_cell": due_cell,
-            "fund_commitment_cell": commit_cell,
-            "component_lines": lines,
-            "section_totals": [{"side": s["side"], "cell": s["total_cell"]} for s in sections],
-            "event_total_cell": net_cell,
-            "check_cells": [check_cell],
+            "fund_commitment_cell": first["fund_commitment_cell"],
+            "component_lines": first["component_lines"],
+            "section_totals": first["section_totals"],
+            "event_total_cell": first["event_total_cell"],
+            "check_cells": first["check_cells"],
+            "sections": sections_layout if v.summary_sections else [],
         }
-        self.truth["summary"] = {"event_total": str(net), "check": str(alloc_cash - net)}
+        self.truth["summary"] = {"event_total": str(section_totals[0]),
+                                 "check": str(_cached_decimal(sheet, first["check_cells"][0])),
+                                 "section_totals": [str(t) for t in section_totals]}
 
     # -- Merge tabs -----------------------------------------------------------------------
 
@@ -1894,6 +2105,9 @@ class _Builder:
         label_cached = alloc.get(self.event_label_coord).value
         for vehicle, tab in self.merge_names.items():
             sheet = SheetBuilder(tab, "merge")
+            if self.variant.hidden_merge:
+                sheet.state = "hidden"  # hidden once the notices were generated (reference client)
+            tab_keys = [k for k in active if not (self.defect == "merge_stale_columns" and k == "expenses")]
             headers = ["Investor", "Short Name", "Letter Date", "Due (Wire) Date",
                        "DX Investor ID" if alt_ids else "Investor ID", "DX Fund ID" if alt_ids else "Fund ID",
                        "File Name", "Commitment Amount", "Commitment %"]
@@ -1901,7 +2115,7 @@ class _Builder:
             for i, h in enumerate(headers, start=1):
                 sheet.put(1, i, h)
             c = len(headers) + 1
-            for key in active:
+            for key in tab_keys:
                 comp_cols[key] = c
                 sheet.put(1, c, formula=f"{a}!{alloc.col(self.comp_col[key])}{alloc.row(self.arows['header'])}",
                           cached=self.comp_headers[key])
@@ -1938,19 +2152,26 @@ class _Builder:
                 sheet.put(r, 9, formula=f"{a}!{alloc.col(cols['commitment_pct'])}{arow}",
                           cached=pct_cell.cached if pct_cell.formula else pct_cell.value, fmt=PCT_FMT)
                 row_total = Decimal("0")
+                full_total = sum((self.current_alloc.amounts[k].get(inv.name, Decimal("0")) for k in active), Decimal("0"))
                 for key, col in comp_cols.items():
+                    source_row = arow
                     amount = self.current_alloc.amounts[key].get(inv.name, Decimal("0"))
-                    sheet.put(r, col, formula=f"{a}!{alloc.col(self.comp_col[key])}{arow}", cached=_num(amount),
+                    if self.defect == "merge_wrong_row_link" and key == "investment" \
+                            and inv.name == "Juniper Hollow Partners":
+                        source_row = self.investor_row["Meridian Endowment Fund"]  # links to the next investor's row
+                        amount = self.current_alloc.amounts[key]["Meridian Endowment Fund"]
+                    sheet.put(r, col, formula=f"{a}!{alloc.col(self.comp_col[key])}{source_row}", cached=_num(amount),
                               fmt=MONEY_FMT)
                     totals[col] = totals.get(col, Decimal("0")) + amount
                     row_total += amount
-                sheet.put(r, total_col, formula=f"SUM({sheet.coord(r, comp_cols[active[0]])}:"
-                                                f"{sheet.coord(r, comp_cols[active[-1]])})",
+                sheet.put(r, total_col, formula=f"SUM({sheet.coord(r, comp_cols[tab_keys[0]])}:"
+                                                f"{sheet.coord(r, comp_cols[tab_keys[-1]])})",
                           cached=_num(row_total), fmt=MONEY_FMT)
                 totals[total_col] = totals.get(total_col, Decimal("0")) + row_total
                 a_cash = alloc.col(cols["cash_due"])
                 sheet.put(r, check_col, formula=(f"-{sheet.coord(r, total_col)}+SUMIFS({a}!${a_cash}:${a_cash},"
-                                                 f"{a}!${a_inv}:${a_inv},$A{r})"), cached=0, fmt=MONEY_FMT)
+                                                 f"{a}!${a_inv}:${a_inv},$A{r})"), cached=_num(full_total - row_total),
+                          fmt=MONEY_FMT)
                 r += 1
             last_row = r - 1
             if self.defect == "ok_inactive_investor_na" and vehicle == "Main Fund":
@@ -2054,8 +2275,12 @@ class _Builder:
 
     # -- Mgmt fee tab -----------------------------------------------------------------------
 
+    def fee_cols(self) -> list[str]:
+        """Fee-tab amount columns the Allocation pulls: one per quarter billed by the current event."""
+        return ["F", "G"] if self.fee_periods == 2 else ["F"]
+
     def _fee_rows(self) -> dict[str, Any]:
-        lps = [i for i in self.investors if not i.is_gp]
+        lps = [i for i in self.investors if not i.is_gp and i.vehicle != self.lookthrough]
         gps = [i for i in self.investors if i.is_gp]
         first = 9
         lp_rows = {inv.name: first + idx for idx, inv in enumerate(lps)}
@@ -2077,6 +2302,7 @@ class _Builder:
         period = event.fee_period or self.prior_events[-1].fee_period
         if self.defect == "stale_fee_period":
             period = "Q2 2026"
+        quarters = self.fee_quarters if (self.fee_quarters and "mgmt_fee" in event.drivers) else [period]
         fee_is_current = "mgmt_fee" in event.drivers
         rows = self._fee_rows()
         sheet.put(2, 2, formula=f"{a}!{alloc.coord(self.arows['fund_name'], 2)}", cached=FUND_NAME)
@@ -2085,14 +2311,18 @@ class _Builder:
         rate_cell = sheet.put(5, 6, _num(MGMT_FEE_RATE), fmt="0.00%")
         sheet.put(6, 5, "% of year")
         frac_cell = sheet.put(6, 6, _num(FEE_PERIOD_FRACTION), fmt="0.00")
-        for i, h in enumerate(["Investor", "Vehicle", "Affiliate?", "Commitment Amount",
-                               f"{period} Mgmt Fees (2.0%)"], start=2):
+        for i, h in enumerate(["Investor", "Vehicle", "Affiliate?", "Commitment Amount"], start=2):
             sheet.put(8, i, h)
+        fee_columns = list(zip(self.fee_cols(), quarters))  # (column letter, quarter)
+        for index, (letter, quarter) in enumerate(fee_columns):
+            sheet.put(8, 6 + index, f"{quarter} Mgmt Fees (2.0%)")
         round_digits = 0 if self.whole_dollar_fees else 2
         lp_total = Decimal("0")
+        per_column_total = {letter: Decimal("0") for letter, _ in fee_columns}
         commit_total = Decimal("0")
+        gp_commit_total = Decimal("0")
         for inv in self.investors:
-            if inv.is_gp:
+            if inv.is_gp or inv.vehicle == self.lookthrough:
                 continue
             rr = rows["lp_rows"][inv.name]
             arow = self.investor_row[inv.name]
@@ -2102,19 +2332,23 @@ class _Builder:
             sheet.put(rr, 4, flag)
             sheet.put(rr, 5, formula=f"{a}!{alloc.col(cols['commitment'])}{arow}", cached=_num(inv.commitment),
                       fmt=MONEY_FMT)
-            fee = self.fee_for(inv) if fee_is_current else _fee(inv)
-            if self.defect == "fee_tab_value_wrong" and inv.name == "Meridian Endowment Fund":
-                sheet.put(rr, 6, _num(fee), fmt=MONEY_FMT)
-            else:
-                sheet.put(rr, 6, formula=f"IF($D{rr}=\"N\",ROUND($E{rr}*F$5*F$6,{round_digits}),0)", cached=_num(fee),
-                          fmt=MONEY_FMT)
-            lp_total += fee
+            quarter_fee = (_fee(inv, whole_dollars=self.whole_dollar_fees) if fee_is_current else _fee(inv))
+            for index, (letter, _) in enumerate(fee_columns):
+                if self.defect == "fee_tab_value_wrong" and inv.name == "Meridian Endowment Fund":
+                    sheet.put(rr, 6 + index, _num(quarter_fee), fmt=MONEY_FMT)
+                else:
+                    sheet.put(rr, 6 + index, formula=f"IF($D{rr}=\"N\",ROUND($E{rr}*$F$5*$F$6,{round_digits}),0)",
+                              cached=_num(quarter_fee), fmt=MONEY_FMT)
+                per_column_total[letter] += quarter_fee
+                lp_total += quarter_fee
             commit_total += inv.commitment
         first_lp = min(rows["lp_rows"].values())
         last_lp = max(rows["lp_rows"].values())
         sheet.put(rows["lp_sub"], 2, "Limited Partners")
         sheet.put(rows["lp_sub"], 5, formula=f"SUM(E{first_lp}:E{last_lp})", cached=_num(commit_total), fmt=MONEY_FMT)
-        sheet.put(rows["lp_sub"], 6, formula=f"SUM(F{first_lp}:F{last_lp})", cached=_num(lp_total), fmt=MONEY_FMT)
+        for letter, _ in fee_columns:
+            sheet.put(rows["lp_sub"], 6 + self.fee_cols().index(letter), formula=f"SUM({letter}{first_lp}:{letter}{last_lp})",
+                      cached=_num(per_column_total[letter]), fmt=MONEY_FMT)
         for inv in self.investors:
             if not inv.is_gp:
                 continue
@@ -2123,18 +2357,23 @@ class _Builder:
             sheet.put(rr, 2, formula=f"{a}!{alloc.col(cols['investor'])}{arow}", cached=inv.name)
             sheet.put(rr, 3, inv.vehicle)
             sheet.put(rr, 4, "GP")
-            sheet.put(rr, 5, formula=f"{a}!{alloc.col(cols['commitment'])}{arow}", cached=0, fmt=MONEY_FMT)
-            sheet.put(rr, 6, 0, fmt=MONEY_FMT)
+            sheet.put(rr, 5, formula=f"{a}!{alloc.col(cols['commitment'])}{arow}", cached=_num(inv.commitment),
+                      fmt=MONEY_FMT)
+            gp_commit_total += inv.commitment
+            for index, _ in enumerate(fee_columns):
+                sheet.put(rr, 6 + index, 0, fmt=MONEY_FMT)
         gp_first, gp_last = min(rows["gp_rows"].values()), max(rows["gp_rows"].values())
         sheet.put(rows["gp_sub"], 2, "General Partner (non paying)")
-        sheet.put(rows["gp_sub"], 5, formula=f"SUM(E{gp_first}:E{gp_last})", cached=0, fmt=MONEY_FMT)
-        sheet.put(rows["gp_sub"], 6, formula=f"SUM(F{gp_first}:F{gp_last})", cached=0, fmt=MONEY_FMT)
+        sheet.put(rows["gp_sub"], 5, formula=f"SUM(E{gp_first}:E{gp_last})", cached=_num(gp_commit_total), fmt=MONEY_FMT)
         sheet.put(rows["total"], 2, "Total")
-        sheet.put(rows["total"], 5, formula=f"E{rows['lp_sub']}+E{rows['gp_sub']}", cached=_num(commit_total),
+        sheet.put(rows["total"], 5, formula=f"E{rows['lp_sub']}+E{rows['gp_sub']}",
+                  cached=_num(commit_total + gp_commit_total), fmt=MONEY_FMT)
+        for index, (letter, _) in enumerate(fee_columns):
+            sheet.put(rows["gp_sub"], 6 + index, formula=f"SUM({letter}{gp_first}:{letter}{gp_last})", cached=0, fmt=MONEY_FMT)
+            sheet.put(rows["total"], 6 + index, formula=f"{letter}{rows['lp_sub']}+{letter}{rows['gp_sub']}",
+                      cached=_num(per_column_total[letter]), fmt=MONEY_FMT)
+        sheet.put(7, 6, formula="+".join(f"{letter}{rows['total']}" for letter, _ in fee_columns), cached=_num(lp_total),
                   fmt=MONEY_FMT)
-        sheet.put(rows["total"], 6, formula=f"F{rows['lp_sub']}+F{rows['gp_sub']}", cached=_num(lp_total),
-                  fmt=MONEY_FMT)
-        sheet.put(7, 6, formula=f"F{rows['total']}", cached=_num(lp_total), fmt=MONEY_FMT)
         gt = alloc.row(self.arows["grand_total"])
         sheet.put(rows["check"], 5, formula=f"{a}!{alloc.col(cols['commitment'])}{gt}-E{rows['total']}", cached=0,
                   fmt=MONEY_FMT)
@@ -2149,12 +2388,12 @@ class _Builder:
             "columns": {"investor": "B", "vehicle": "C", "affiliate_flag": "D", "commitment": "E"},
             "rate_cells": [rate_cell],
             "period_fraction_cells": [frac_cell],
-            "fee_columns": [{"column": "F", "period_label": period}],
+            "fee_columns": [{"column": letter, "period_label": quarter} for letter, quarter in fee_columns],
             "subtotal_rows": {"limited_partners": rows["lp_sub"], "general_partner": rows["gp_sub"],
                               "total": rows["total"]},
             "check_rows": [rows["check"]],
         }
-        self.truth["mgmt_fee"] = {"total": str(lp_total), "period": period}
+        self.truth["mgmt_fee"] = {"total": str(lp_total), "period": quarters[0]}
 
     # -- Other sheets -------------------------------------------------------------------------
 

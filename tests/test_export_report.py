@@ -317,3 +317,23 @@ def test_report_states_the_filter_it_applied():
         rendered = " ".join(" ".join((page.extract_text() or "").split()) for page in doc.pages)
 
     assert "Only rules with a failing or needs-review result are listed" in rendered
+
+
+def test_itemised_findings_are_listed_under_the_summary():
+    from src.api.routers.export import _build_rule_section, _findings_beyond_summary
+    from src.schemas.validation import PageRuleAssessmentSchema, RuleAssessmentSchema
+
+    findings = ["Chaikin: Capital Call #1 investment changed from 21,698.71 to 21,698.72.",
+                "Chaikin: Capital Call #1 org_expense changed from 897.44 to 897.43."]
+    assessment = RuleAssessmentSchema(rule_id="CE-XEV-HISTORY-UNCHANGED", rule_name="Prior Events Carried Over Unchanged",
+                                      verdict="fail", summary=f"2 findings; first: {findings[0]}", findings=findings,
+                                      scope="document")
+    page = PageRuleAssessmentSchema(page=1, label="ITD Capital Activity", rule_id=assessment.rule_id,
+                                    rule_name=assessment.rule_name, verdict="fail", summary=assessment.summary,
+                                    findings=findings, scope="document")
+    section = _build_rule_section(assessment, [page])
+    assert section is not None and len(section.occurrences) == 1
+    # The summary already states the first finding; the rest are listed, none is lost.
+    assert section.occurrences[0].findings == (findings[1],)
+    assert _findings_beyond_summary(RuleAssessmentSchema(rule_id="x", rule_name="x", verdict="fail",
+                                                         summary=findings[0], findings=[findings[0]])) == ()

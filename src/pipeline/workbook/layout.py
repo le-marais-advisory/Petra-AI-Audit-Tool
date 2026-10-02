@@ -199,6 +199,18 @@ class SectionTotal(_Base):
     cell: str
 
 
+class SummarySection(_Base):
+    """One vehicle's section of a Summary that repeats its block per vehicle."""
+
+    vehicle: Optional[str] = Field(default=None, description="Vehicle / fund name heading the section")
+    title_cell: Optional[str] = None
+    fund_commitment_cell: Optional[str] = None
+    component_lines: list[SummaryLine] = Field(default_factory=list)
+    section_totals: list[SectionTotal] = Field(default_factory=list)
+    event_total_cell: Optional[str] = Field(default=None, description="The section's bottom-line amount")
+    check_cells: list[str] = Field(default_factory=list)
+
+
 class SummaryLayout(_Base):
     role: Literal["summary"]
     sheet: str
@@ -210,6 +222,9 @@ class SummaryLayout(_Base):
     section_totals: list[SectionTotal] = Field(default_factory=list, description="Per-side subtotal cells, e.g. 'Total Current Capital Call'")
     event_total_cell: str = Field(..., description="Bottom-line amount of the event (e.g. 'Total Net Cash Due'), after any adjustments; not a per-side subtotal")
     check_cells: list[str] = Field(default_factory=list, description="Value cells of rows or cells labelled check / difference / variance that should be zero")
+    sections: list[SummarySection] = Field(default_factory=list, description=(
+        "When the sheet repeats one summary block per vehicle, every block in order (the fields above then describe "
+        "the first block); empty when the sheet has a single block"))
 
 
 class MergeColumns(_Base):

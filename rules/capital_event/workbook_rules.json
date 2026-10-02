@@ -45,7 +45,7 @@
       "name": "Bottom-Line Totals Tie to Event Gross",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Components sum to the event gross, vehicle totals sum to each component, and every bottom-line total equals the event gross, penny-exact.",
+      "description": "Components sum to the event gross, vehicle totals sum to each component, and every bottom-line total equals the event gross, penny-exact. On a multi-vehicle sheet the fund-level amount is the sum of the additive vehicles' drivers; a look-through block that re-allocates the other blocks (e.g. the GP entity's own partners) is not added.",
       "acceptance_criteria": "Components, vehicle totals and bottom-line totals all reconcile to the event gross within $0.005.",
       "severity": "critical",
       "group": "ce_allocation",
@@ -227,8 +227,8 @@
       "name": "Roll-Forward Footing per LP",
       "analysis_type": "text",
       "scope": "page",
-      "description": "Per LP, Commitment less prior and current contributions (and recallables where modelled) equals Remaining Commitment; no over-contribution or negative unfunded.",
-      "acceptance_criteria": "Every LP row foots within $0.01; prior contributions <= commitment; remaining >= 0.",
+      "description": "Per LP, Commitment less prior and current contributions (and recallables where modelled) equals Remaining Commitment; no negative unfunded. Prior contributions above the commitment fail unless the roll-forward models recallable distributions (a recycling fund legitimately calls more than the commitment over its life); then they need review against the LPA's recycling cap.",
+      "acceptance_criteria": "Every LP row foots within $0.01; remaining >= 0; prior contributions <= commitment unless recallables are modelled (then needs_review).",
       "severity": "critical",
       "group": "ce_roll_forward",
       "section": "Allocation",
@@ -308,7 +308,7 @@
       "name": "ITD Cumulative Columns Reconcile",
       "analysis_type": "text",
       "scope": "page",
-      "description": "ITD cumulative columns equal the sum of their classified event columns (including this event), and Unfunded = Commitment - Total Contributions.",
+      "description": "ITD cumulative columns equal the sum of their classified event columns (including this event), and Unfunded = Commitment - Total Contributions. A cumulative column that is derived by formula from other figures rather than accumulated from the event columns (e.g. a recycling fund's recallable room under the LPA cap) cannot be reconciled this way and needs review.",
       "acceptance_criteria": "Cumulatives, Unfunded and ITD totals all reconcile within $0.01.",
       "severity": "critical",
       "group": "ce_itd",
@@ -622,8 +622,8 @@
         "Allocation",
         "Mgmt Fee Calc"
       ],
-      "description": "When the event carries a management-fee component, the fee tab is the source of the management fees: each LP's fee on the Allocation sheet must equal its fee on the fee tab, the fee tab total must equal the Allocation fee driver, and the fee tab must be for the current period. The fee calculation itself (rate x basis, exempt investors) is checked against the fund terms (deferred CE-REF-MGMT-FEE-MATH). Not applicable when the event has no management-fee component.",
-      "acceptance_criteria": "Allocation fees = fee tab fees per LP; fee tab total = fee driver; the fee tab period matches the Allocation fee component.",
+      "description": "When the event carries a management-fee component, the fee tab(s) are the source of the management fees: each LP's fee on the Allocation sheet must equal what the fee tab(s) hold for that LP, the fee tab period(s) must fall within the Allocation fee component's period (an event may bill several quarters at once, e.g. 'Q3 2025 - Q3 2026'), and no fee on the tab may go unpulled. The fee calculation itself (rate x basis, exempt investors) is checked against the fund terms (deferred CE-REF-MGMT-FEE-MATH). Not applicable when the event has no management-fee component.",
+      "acceptance_criteria": "Allocation fees = fee tab fees per LP (summed over the billed periods); fee tab period(s) within the Allocation fee period; every fee on the tab is pulled.",
       "severity": "critical",
       "group": "cross_tie_outs",
       "bypassable": false,
@@ -670,7 +670,7 @@
         "Allocation",
         "ITD Capital Activity"
       ],
-      "description": "The current event's ITD column block equals the Allocation sheet per investor and per component.",
+      "description": "The current event's ITD column block equals the Allocation sheet per investor and per component. One ITD column may stand for several Allocation columns of the same component type (e.g. one 'Investment' column summing four deals); the ITD formulas decide the mapping.",
       "acceptance_criteria": "ITD current block = Allocation, per investor and per component, within $0.005.",
       "severity": "critical",
       "group": "cross_tie_outs",
@@ -735,11 +735,35 @@
       "evaluator": "hybrid"
     },
     {
+      "id": "CE-TIE-MERGE",
+      "name": "Merge Tabs Tie to Allocation",
+      "analysis_type": "text",
+      "scope": "multi_page",
+      "sections": [
+        "Allocation",
+        "Merge"
+      ],
+      "description": "The Merge tabs are the data the investor notices are built from, so each one must carry the current event in full. Per vehicle: every active Allocation component column is pulled into the tab (a stale tab keeps the prior event's columns and silently omits new ones), each investor's call and distribution totals and cash due equal the Allocation's, the total row refoots, the tab's own check cells are zero, and a component column whose header no longer matches the Allocation column it pulls is flagged for review.",
+      "acceptance_criteria": "Every Merge tab pulls all of its vehicle's active components; per-investor call, distribution and cash-due amounts equal the Allocation within $0.005; totals refoot; check cells are zero.",
+      "severity": "critical",
+      "group": "cross_tie_outs",
+      "bypassable": false,
+      "document_types": [
+        "capital_event_workbook"
+      ],
+      "event_types": null,
+      "required_roles": [
+        "allocation",
+        "merge"
+      ],
+      "evaluator": "deterministic"
+    },
+    {
       "id": "CE-DATE-CONSISTENCY",
       "name": "Event Label and Date Consistency Across Tabs",
       "analysis_type": "text",
       "scope": "document",
-      "query": "Using the COMPUTED FACTS (every reference to the current event across the processed sheets: event labels, notice dates, due dates, ITD header dates, summary title, Merge letter and due dates and file names, and the fee periods with an explicit fee_period_mismatch flag), check that every tab describes the same current event. ITD event headers always show the due date, the date the items are recorded for accounting purposes, so compare them with the due date, not the notice date.\n\nPass criteria: Every reference resolves to the same event number, the same notice date and the same due date, and the fee periods agree (fee_period_mismatch is false).\n\nFail criteria: Any tab references a different event number or date for the current event, or the fee tab is for a different period than the Allocation fee component (stale prior-event metadata). Do not explain a mismatch away (e.g. as a catch-up); report it.\n\nneeds_review when a reference cannot be normalized to a specific date or event.",
+      "query": "Using the COMPUTED FACTS (every reference to the current event across the processed sheets: event labels, notice dates, due dates, ITD header dates, summary title, Merge letter and due dates and file names, and the fee periods with an explicit fee_period_mismatch flag), check that every tab describes the same current event. A net event carries a call number and a distribution number (event_numbers_by_family): every tab that names the event must carry the same number for each family it names, and a tab that names only one of the two (e.g. an ITD header 'Net Capital Call #19' where the Allocation also issues 'Distribution #9') is a mismatch to report. ITD event headers always show the due date, the date the items are recorded for accounting purposes, so compare them with the due date, not the notice date.\n\nPass criteria: Every reference resolves to the same event number, the same notice date and the same due date, and the fee periods agree (fee_period_mismatch is false).\n\nFail criteria: Any tab references a different event number or date for the current event, or the fee tab is for a different period than the Allocation fee component (stale prior-event metadata). Do not explain a mismatch away (e.g. as a catch-up); report it.\n\nneeds_review when a reference cannot be normalized to a specific date or event.",
       "description": "The current event's label, number, notice date and due date are identical on every tab.",
       "acceptance_criteria": "One event number, notice date, due date and fee period across all tabs.",
       "severity": "major",
@@ -752,8 +776,7 @@
       "required_roles": [
         "allocation",
         "itd",
-        "summary",
-        "merge"
+        "summary"
       ],
       "evaluator": "hybrid"
     },
@@ -892,7 +915,7 @@
       "name": "ITD Balances Roll Forward from the Prior Workbook",
       "analysis_type": "text",
       "scope": "document",
-      "description": "For every investor and every ITD category (investment, cost and total contributions; recallable, non-recallable and total distributions), the ITD balance in the current workbook must equal the balance in the most recent prior workbook plus the current event's amount in that category, as classified by the current ITD block's X marks. For example, 150,000 of ITD distributions in the prior workbook plus a 25,000 distribution now must show 200,000 is wrong: 175,000 is expected, so 25,000 is double counted or entered wrong. An ITD event block that is in the current workbook but not in the prior one (other than the current event and transfers) also fails: the prior workbook is not the most recent one, or an event was entered twice. Not applicable on the fund's first event; needs review when the prior workbook was not supplied.",
+      "description": "For every investor and every ITD category (investment, cost and total contributions; recallable, non-recallable and total distributions), the ITD balance in the current workbook must equal the balance in the most recent prior workbook plus the current event's amount in that category, as classified by the current ITD block's X marks. For example, 150,000 of ITD distributions in the prior workbook plus a 25,000 distribution now must show 200,000 is wrong: 175,000 is expected, so 25,000 is double counted or entered wrong. An ITD event block that is in the current workbook but not in the prior one (other than the current event and transfers) also fails: the prior workbook is not the most recent one, or an event was entered twice. Not applicable on the fund's first event; needs review when the prior workbook was not supplied. A cumulative column derived by formula (e.g. a recycling cap) is not rolled forward event by event and needs review.",
       "acceptance_criteria": "Current ITD balance = prior workbook ITD balance + current event amount, per investor and category; no new non-current event blocks.",
       "severity": "critical",
       "group": "ce_cross_event",

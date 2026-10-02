@@ -97,6 +97,39 @@ def _rows(ref: _Ref) -> tuple[int, int] | None:
     return (ref.first_row, ref.last_row) if ref.first_row is not None else None
 
 
+def split_terms(formula: str) -> list[str]:
+    """Top-level '+' terms of a formula: ``=SUMIF(..)+SUMIF(..)+'Fees'!G91`` -> three terms."""
+    body = formula[1:] if formula.startswith("=") else formula
+    terms, depth, current, quoted = [], 0, "", False
+    for ch in body:
+        if ch in ("'", '"'):
+            quoted = not quoted
+        if not quoted:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "+" and depth == 0:
+                terms.append(current.strip())
+                current = ""
+                continue
+        current += ch
+    terms.append(current.strip())
+    return [t for t in terms if t]
+
+
+def parse_lookups(formula: str | None, row: int, home: str) -> tuple[_Lookup, ...]:
+    """Every per-investor lookup a formula adds up (an event may pull several periods at once)."""
+    if not formula:
+        return ()
+    found = []
+    for term in split_terms(formula):
+        lookup = parse_lookup("=" + term, row, home)
+        if lookup is not None:
+            found.append(lookup)
+    return tuple(found)
+
+
 def parse_lookup(formula: str | None, row: int, home: str) -> _Lookup | None:
     if not formula:
         return None
@@ -187,45 +220,61 @@ def tie_support_tabs(ctx: CheckContext, out: Outcome) -> str:
     tied: list[str] = []
     for comp in alloc.components:
         col = comp.column
-        lookups = {inv.row: parse_lookup(inv.formulas.get(col), inv.row, alloc.sheet.name) for inv in investors}
-        counts = Counter(lk for lk in lookups.values() if lk is not None and lk.sheet != alloc.sheet.name
-                         and ctx.model.has_sheet(lk.sheet) and roles.get(lk.sheet) not in _NOT_SUPPORT)
-        if not counts:
-            continue
-        pattern, n = counts.most_common(1)[0]
-        if n * 2 <= len(investors):
-            continue  # most investors are not fed from this tab
-        support = ctx.model.sheet(pattern.sheet)
-        rows = list(_support_rows(ctx, pattern))
-        pulled: set[tuple[str, ...]] = set()
-        allocated_total = ZERO
-        for inv in investors:
-            criteria = _criteria(pattern, alloc.sheet, inv.row)
-            pulled.add(criteria)
-            matches = [amount for _, keys, _, amount in rows if keys == criteria]
-            expected = (matches[0] if matches else ZERO) if pattern.first_match else sum(matches, ZERO)
-            actual = inv.amounts.get(col, ZERO)
-            allocated_total += actual
-            if differs(mag(actual), mag(expected), CENT):
-                formula = inv.formulas.get(col) or ""
-                message = (f"{inv.name}: {comp.header or col} is {money(actual)} on the Allocation but "
-                           f"{money(expected)} on {pattern.sheet} (column {pattern.value_column}).")
-                if lookups[inv.row] == pattern and _PLUG_RE.search(formula):
-                    out.review(message + " The cell adds a plug on top of the support figure.", alloc.sheet,
-                               f"{col}{inv.row}")
-                else:
-                    out.fail(message, alloc.sheet, f"{col}{inv.row}")
-        support_total = ZERO
-        for r, keys, label, amount in rows:
-            support_total += amount
-            if amount and keys not in pulled:
-                out.fail(f"{pattern.sheet} row {r} ({label}) carries {money(amount)} in column "
-                         f"{pattern.value_column} that no Allocation investor pulls into {comp.header or col}.",
-                         support, f"{pattern.value_column}{r}")
-        if differs(mag(allocated_total), mag(support_total), CENT):
-            out.fail(f"{comp.header or col}: Allocation investors total {money(allocated_total)}; {pattern.sheet} "
-                     f"column {pattern.value_column} totals {money(support_total)}.", alloc.sheet, f"{col}{alloc.layout.header_row}")
-        tied.append(f"{comp.header or col} <- {pattern.sheet}!{pattern.value_column} ({money(support_total)})")
+        # Patterns are found per vehicle block (each vehicle may pull from its own support tab(s));
+        # vehicles sharing a pattern are tied out together, since they share the support rows.
+        by_pattern: dict[tuple, list] = {}
+        lookups: dict[int, tuple | None] = {}
+        for vehicle in alloc.vehicles:
+            for inv in vehicle.investors:
+                found = tuple(lk for lk in parse_lookups(inv.formulas.get(col), inv.row, alloc.sheet.name)
+                              if lk.sheet != alloc.sheet.name and ctx.model.has_sheet(lk.sheet)
+                              and roles.get(lk.sheet) not in _NOT_SUPPORT)
+                lookups[inv.row] = found or None
+            counts = Counter(lookups[inv.row] for inv in vehicle.investors if lookups[inv.row])
+            if not counts:
+                continue
+            pattern, n = counts.most_common(1)[0]
+            if n * 2 <= len(vehicle.investors):
+                continue  # most investors are not fed from this tab
+            by_pattern.setdefault(pattern, []).append(vehicle)
+        for pattern, vehicles in by_pattern.items():
+            members = [inv for vehicle in vehicles for inv in vehicle.investors]
+            rows_by_lookup = {lk: list(_support_rows(ctx, lk)) for lk in pattern}
+            pulled: dict[_Lookup, set[tuple[str, ...]]] = {lk: set() for lk in pattern}
+            allocated_total = ZERO
+            where = ", ".join(f"{lk.sheet}!{lk.value_column}" for lk in pattern)
+            for inv in members:
+                expected = ZERO
+                for lk in pattern:
+                    criteria = _criteria(lk, alloc.sheet, inv.row)
+                    pulled[lk].add(criteria)
+                    matches = [amount for _, keys, _, amount in rows_by_lookup[lk] if keys == criteria]
+                    expected += (matches[0] if matches else ZERO) if lk.first_match else sum(matches, ZERO)
+                actual = inv.amounts.get(col, ZERO)
+                allocated_total += actual
+                if differs(mag(actual), mag(expected), CENT):
+                    formula = inv.formulas.get(col) or ""
+                    message = (f"{inv.name}: {comp.header or col} is {money(actual)} on the Allocation but "
+                               f"{money(expected)} on {where}.")
+                    if lookups[inv.row] == pattern and _PLUG_RE.search(formula):
+                        out.review(message + " The cell adds a plug on top of the support figure.", alloc.sheet,
+                                   f"{col}{inv.row}")
+                    else:
+                        out.fail(message, alloc.sheet, f"{col}{inv.row}")
+            support_total = ZERO
+            for lk in pattern:
+                support = ctx.model.sheet(lk.sheet)
+                for r, keys, label, amount in rows_by_lookup[lk]:
+                    support_total += amount
+                    if amount and keys not in pulled[lk]:
+                        out.fail(f"{lk.sheet} row {r} ({label}) carries {money(amount)} in column "
+                                 f"{lk.value_column} that no Allocation investor pulls into {comp.header or col}.",
+                                 support, f"{lk.value_column}{r}")
+            if differs(mag(allocated_total), mag(support_total), CENT):
+                scope = ", ".join(v.name for v in vehicles)
+                out.fail(f"{comp.header or col} ({scope}): Allocation investors total {money(allocated_total)}; "
+                         f"{where} total {money(support_total)}.", alloc.sheet, f"{col}{alloc.layout.header_row}")
+            tied.append(f"{comp.header or col} <- {where} ({money(support_total)})")
     if not tied:
         raise NotApplicable("No Allocation column is fed from a support tab by per-investor lookups.")
     return "Every support-fed Allocation column ties to its support tab investor by investor and in total: " \

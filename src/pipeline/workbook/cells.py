@@ -108,3 +108,36 @@ def sum_range_rows(formula: str | None) -> tuple[int, int] | None:
 
 def rows_between(span: list[int]) -> range:
     return range(span[0], span[-1] + 1)
+
+
+_SHEET_REF_RE = re.compile(
+    r"(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_.]*))!\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?")
+_LOCAL_REF_RE = re.compile(r"(?<![A-Za-z0-9_.!$'])\$?([A-Z]{1,3})\$?(\d+)(?![0-9(])")
+
+
+def sheet_cell_refs(formula: str | None) -> list[tuple[str, str, int]]:
+    """(sheet, column, row) for every sheet-qualified cell reference in a formula.
+
+    A single-row range such as ``Allocation!Q7:T7`` yields one entry per column; any other
+    range yields its two corners.
+    """
+    out: list[tuple[str, str, int]] = []
+    for quoted, bare, col, row, col2, row2 in _SHEET_REF_RE.findall(formula or ""):
+        sheet = quoted.replace("''", "'") if quoted else bare
+        first, last = int(row), int(row2) if row2 else int(row)
+        if col2 and first == last and col_idx(col2) - col_idx(col) <= 64:
+            for index in range(col_idx(col), col_idx(col2) + 1):
+                out.append((sheet, col_letter(index), first))
+        else:
+            out.append((sheet, col, first))
+            if col2:
+                out.append((sheet, col2, last))
+    return out
+
+
+def local_cell_refs(formula: str | None) -> list[tuple[str, int]]:
+    """(column, row) for every reference to the formula's own sheet (sheet-qualified ones excluded)."""
+    if not formula:
+        return []
+    stripped = _SHEET_REF_RE.sub(" ", formula)
+    return [(col, int(row)) for col, row in _LOCAL_REF_RE.findall(stripped)]

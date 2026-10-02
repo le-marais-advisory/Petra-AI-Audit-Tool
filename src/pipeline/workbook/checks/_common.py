@@ -92,6 +92,16 @@ def _present(data: WorkbookData, role: str) -> bool:
     return getattr(data, role, None) is not None
 
 
+def _headline(messages: list[str], noun: str) -> str:
+    """The rule's one-line summary: the first message, prefixed by the count when there are more.
+
+    Reports that show only the summary (the PDF export did) must not hide the other findings
+    behind the first one."""
+    if len(messages) <= 1:
+        return messages[0]
+    return f"{len(messages)} {noun}s; first: {messages[0]}"
+
+
 def _limited(items: list[str]) -> list[str]:
     if len(items) <= MAX_FINDINGS:
         return items
@@ -126,9 +136,11 @@ def run_check(spec: CheckSpec, ctx: CheckContext) -> AnalysisRuleResult:
     except NotApplicable as exc:
         return result(ctx.rule, "not_applicable", str(exc))
     if outcome.fails:
-        return result(ctx.rule, "fail", outcome.fails[0], outcome.fails + outcome.reviews, outcome.citations)
+        return result(ctx.rule, "fail", _headline(outcome.fails, "finding"), outcome.fails + outcome.reviews,
+                      outcome.citations)
     if outcome.reviews:
-        return result(ctx.rule, "needs_review", outcome.reviews[0], outcome.reviews, outcome.citations)
+        return result(ctx.rule, "needs_review", _headline(outcome.reviews, "item to review"), outcome.reviews,
+                      outcome.citations)
     return result(ctx.rule, "pass", pass_summary or "All checks passed.", outcome.notes, outcome.citations)
 
 
@@ -191,9 +203,48 @@ def round_digits(formula: str | None) -> int | None:
     return None
 
 
+def quarter_range(text: Any) -> list[str]:
+    """Every quarter a header covers, in order: 'Q3 2025 - Q3 2026' -> Q3-2025 ... Q3-2026.
+
+    A header naming one quarter gives that quarter; one naming two gives the inclusive range
+    between them (an event may bill several periods at once); anything else gives [].
+    """
+    found = []
+    for match in _QUARTER_RE.finditer(str(text or "")):
+        quarter = int(match.group(1) or match.group(2))
+        year = match.group(3)
+        year = int(f"20{year}" if len(year) == 2 else year)
+        found.append((year, quarter))
+    if not found:
+        return []
+    first, last = found[0], found[-1]
+    if len(found) == 1 or last < first:
+        return [f"Q{q}-{y}" for y, q in dict.fromkeys(found)]
+    out = []
+    year, quarter = first
+    while (year, quarter) <= last and len(out) < 40:
+        out.append(f"Q{quarter}-{year}")
+        quarter += 1
+        if quarter > 4:
+            quarter, year = 1, year + 1
+    return out
+
+
 _EVENT_NUMBER_RE = re.compile(r"#\s*(\d+)")
+_FAMILY_NUMBER_RE = re.compile(r"(capital\s*call|contribution|call|distribution|dist\.?)\b[^#&]*?#\s*(\d+)", re.I)
 
 
 def event_number(label: Any) -> int | None:
+    """The first '#N' in an event label."""
     match = _EVENT_NUMBER_RE.search(str(label or ""))
     return int(match.group(1)) if match else None
+
+
+def event_numbers(label: Any) -> dict[str, int]:
+    """Every numbered event family in a label: 'Capital Call #9 & Distribution #1 - 7/12/2021'
+    -> {'call': 9, 'distribution': 1}; 'Net Capital Call #19' -> {'call': 19}."""
+    out: dict[str, int] = {}
+    for word, number in _FAMILY_NUMBER_RE.findall(str(label or "")):
+        family = "distribution" if word.lower().startswith("dist") else "call"
+        out.setdefault(family, int(number))
+    return out

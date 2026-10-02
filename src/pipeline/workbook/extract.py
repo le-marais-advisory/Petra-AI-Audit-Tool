@@ -9,13 +9,23 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel
 
-from src.pipeline.workbook.cells import is_text, norm_text, rows_between, to_date, to_decimal, to_money
+from src.pipeline.workbook.cells import (
+    is_text,
+    local_cell_refs,
+    norm_text,
+    rows_between,
+    sheet_cell_refs,
+    to_date,
+    to_decimal,
+    to_money,
+)
 from src.pipeline.workbook.layout import (
     AllocationLayout,
     ComponentColumn,
@@ -73,10 +83,17 @@ class AllocationVehicle:
     gp_subtotals: dict[str, Decimal]
     investors: list[AllocationInvestor]
     subtotal_rows: dict[str, int | None]
+    # False for a look-through block whose driver re-allocates amounts already allocated in
+    # the other blocks (e.g. the GP entity's own partners), so it must not be added to them.
+    additive: bool = True
 
     @property
     def limited_partners(self) -> list[AllocationInvestor]:
         return [i for i in self.investors if not i.is_gp]
+
+    @property
+    def rows(self) -> set[int]:
+        return {i.row for i in self.investors}
 
 
 @dataclass
@@ -86,8 +103,24 @@ class AllocationData:
     event: EventInfo
     components: list[ComponentColumn]
     vehicles: list[AllocationVehicle]
-    fund_drivers: dict[str, Decimal]
+    fund_drivers: dict[str, Decimal]  # fund-level amount per column (see ``fund_driver_row_shared``)
     grand_totals: dict[str, Decimal]
+    # True when the layout's fund_driver_row is one vehicle's own driver row (a multi-vehicle
+    # sheet with no separate fund-level row): ``fund_drivers`` is then the sum of the additive
+    # vehicles' drivers rather than that row's values.
+    fund_driver_row_shared: bool = False
+
+    @property
+    def additive_vehicles(self) -> list[AllocationVehicle]:
+        return [v for v in self.vehicles if v.additive]
+
+    @property
+    def fund_investors(self) -> list[AllocationInvestor]:
+        """Investors whose amounts add up to the fund: every investor of the additive vehicles."""
+        return [i for v in self.additive_vehicles for i in v.investors]
+
+    def vehicle_of(self, inv: AllocationInvestor) -> AllocationVehicle | None:
+        return next((v for v in self.vehicles if inv in v.investors), None)
 
     @property
     def active_components(self) -> list[ComponentColumn]:
@@ -195,17 +228,34 @@ def extract_allocation(model: WorkbookModel, layout: AllocationLayout) -> Alloca
                 cells={c: sheet.cell(f"{c}{row}") for c in comp_cols},
             ))
         driver_row = vrows.driver_row or layout.fund_driver_row
+        lp_subtotals = _row_values(sheet, vrows.subtotal_rows.limited_partners, numeric)
+        gp_subtotals = _row_values(sheet, vrows.subtotal_rows.general_partner, numeric)
+        totals = _row_values(sheet, vrows.subtotal_rows.total, numeric)
+        if not totals:
+            # A block without a "Total" row (e.g. LPs only): its total is the subtotal(s) it has, else
+            # the sum of its rows, so vehicle-level ties still have a figure to compare.
+            if lp_subtotals or gp_subtotals:
+                totals = {col: lp_subtotals.get(col, Decimal("0")) + gp_subtotals.get(col, Decimal("0")) for col in numeric}
+            else:
+                totals = {col: sum((to_money(sheet.value(f"{col}{i.row}")) for i in investors), Decimal("0"))
+                          for col in numeric}
         vehicles.append(AllocationVehicle(
             name=vrows.name,
             driver_row=driver_row,
             driver=_row_values(sheet, driver_row, comp_cols + [t.column for t in layout.event_total_columns]),
-            totals=_row_values(sheet, vrows.subtotal_rows.total, numeric),
-            lp_subtotals=_row_values(sheet, vrows.subtotal_rows.limited_partners, numeric),
-            gp_subtotals=_row_values(sheet, vrows.subtotal_rows.general_partner, numeric),
+            totals=totals,
+            lp_subtotals=lp_subtotals,
+            gp_subtotals=gp_subtotals,
             investors=investors,
             subtotal_rows=vrows.subtotal_rows.model_dump(),
         ))
     grand_row = layout.grand_total_row or (layout.vehicles[-1].subtotal_rows.total if len(layout.vehicles) == 1 else None)
+    _flag_non_additive(sheet, layout, vehicles, comp_cols, grand_row)
+    shared = len(vehicles) > 1 and any(v.driver_row == layout.fund_driver_row for v in vehicles)
+    if shared:
+        columns = comp_cols + [t.column for t in layout.event_total_columns]
+        fund_drivers = {col: sum((v.driver.get(col, Decimal("0")) for v in vehicles if v.additive), Decimal("0"))
+                        for col in columns}
     return AllocationData(
         sheet=sheet,
         layout=layout,
@@ -214,7 +264,46 @@ def extract_allocation(model: WorkbookModel, layout: AllocationLayout) -> Alloca
         vehicles=vehicles,
         fund_drivers=fund_drivers,
         grand_totals=_row_values(sheet, grand_row, numeric),
+        fund_driver_row_shared=shared,
     )
+
+
+def _flag_non_additive(sheet: SheetModel, layout: AllocationLayout, vehicles: list[AllocationVehicle],
+                       comp_cols: list[str], grand_row: int | None) -> None:
+    """Mark look-through vehicle blocks from the sheet's own formulas.
+
+    Two signals, either of which marks a block non-additive: the grand-total row sums the
+    other blocks' total rows but not this one (``=Q65+Q95+Q134``), or this block's driver row
+    is built from the other blocks' investor rows (``=Q61+Q91+Q130``, the GP entity's share of
+    each fund re-allocated to the GP's own partners).
+    """
+    if len(vehicles) < 2:
+        return
+    total_rows = {v.subtotal_rows.get("total"): v for v in vehicles if v.subtotal_rows.get("total")}
+    if grand_row and grand_row not in total_rows:
+        referenced: set[int] = set()
+        ranged = False
+        for col in [layout.columns.commitment] + comp_cols:
+            cell = sheet.cell(f"{col}{grand_row}")
+            if cell is None or not cell.formula:
+                continue
+            ranged = ranged or ":" in cell.formula
+            referenced |= {row for _, row in local_cell_refs(cell.formula)}
+        if not ranged and len(referenced & set(total_rows)) >= 2:
+            for row, vehicle in total_rows.items():
+                if row not in referenced:
+                    vehicle.additive = False
+    for vehicle in vehicles:
+        if vehicle.driver_row == layout.fund_driver_row:
+            continue
+        others = {row for other in vehicles if other is not vehicle for row in other.rows}
+        for col in comp_cols:
+            cell = sheet.cell(f"{col}{vehicle.driver_row}")
+            if cell is None or not cell.formula or sheet_cell_refs(cell.formula):
+                continue
+            if any(row in others for _, row in local_cell_refs(cell.formula)):
+                vehicle.additive = False
+                break
 
 
 def layout_total(layout: AllocationLayout, side: str) -> str | None:
@@ -251,6 +340,13 @@ class ItdData:
     vehicles: list[ItdVehicle]
     marks: dict[str, list[str]]  # block column -> classification categories marked 'X'
     overlay_marks: dict[str, list[str]]
+    # cumulative key -> 'accumulator' (sums the marked event columns), 'derived' (computed from
+    # other figures, e.g. a recycling cap) or 'value' (typed numbers)
+    cumulative_kinds: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def derived_cumulatives(self) -> set[str]:
+        return {key for key, kind in self.cumulative_kinds.items() if kind == "derived"}
 
     @property
     def current_block(self) -> EventBlock | None:
@@ -307,8 +403,82 @@ def extract_itd(model: WorkbookModel, layout: ItdLayout) -> ItdData:
             subtotal_rows=vrows.subtotal_rows.model_dump(),
             totals=_row_values(sheet, vrows.subtotal_rows.total, all_cols + [c for c in cum_cols.values() if c]),
         ))
+    investor_rows = [inv.row for v in vehicles for inv in v.investors if not inv.is_gp]
+    kinds = _cumulative_kinds(sheet, cum_cols, set(block_cols) | set(totals_cols), investor_rows)
     return ItdData(sheet=sheet, layout=layout, event_blocks=list(layout.event_blocks), vehicles=vehicles,
-                   marks=marks, overlay_marks=overlay_marks)
+                   marks=marks, overlay_marks=overlay_marks, cumulative_kinds=kinds)
+
+
+_CUMULATIVE_ORDER = ("investment_contributions", "cost_contributions", "recallable_distributions",
+                     "non_recallable_distributions", "total_contributions", "total_distributions", "commitment",
+                     "unfunded")
+
+
+def _dominant_formula(sheet: SheetModel, column: str, rows: list[int]) -> tuple[str | None, int]:
+    """The most common formula shape in a column over ``rows`` (row numbers normalised), with its count."""
+    shapes: dict[str, tuple[str, int]] = {}
+    for row in rows:
+        cell = sheet.cell(f"{column}{row}")
+        formula = cell.formula if cell is not None else None
+        shape = re.sub(r"(?<=[A-Z])\$?" + str(row) + r"(?!\d)", "{r}", formula) if formula else ""
+        count = shapes.get(shape, (formula, 0))[1] + 1
+        shapes[shape] = (formula, count)
+    if not shapes:
+        return None, 0
+    formula, count = max(shapes.values(), key=lambda fc: fc[1])
+    return formula, count
+
+
+def _strip_calls(text: str, names: tuple[str, ...]) -> str:
+    """Remove every ``NAME(...)`` call (balanced parentheses) from an upper-cased formula."""
+    out = text
+    for name in names:
+        while True:
+            start = out.find(name)
+            if start < 0:
+                break
+            depth, index = 0, start + len(name) - 1
+            while index < len(out):
+                if out[index] == "(":
+                    depth += 1
+                elif out[index] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                index += 1
+            out = out[:start] + " " + out[index + 1:]
+    return out.replace("=", "").replace("-", "").replace("+", "").replace("(", "").replace(")", "").strip()
+
+
+def _cumulative_kinds(sheet: SheetModel, cum_cols: dict[str, str | None], event_cols: set[str],
+                      rows: list[int]) -> dict[str, str]:
+    """Classify each cumulative column as accumulator, derived or value (see ``ItdData``)."""
+    kinds: dict[str, str] = {}
+    columns = {key: col for key, col in cum_cols.items() if col}
+    accumulators = set(event_cols)
+    for _ in range(2):  # a total of accumulators is an accumulator; resolve in two passes
+        for key in _CUMULATIVE_ORDER:
+            col = columns.get(key)
+            if col is None or kinds.get(key) == "accumulator":
+                continue
+            formula, count = _dominant_formula(sheet, col, rows)
+            if not formula or count * 2 < len(rows):
+                kinds[key] = "value"
+                continue
+            upper = formula.upper()
+            refs = {c for c, _ in local_cell_refs(formula)}
+            remainder = _strip_calls(upper, ("SUMIFS(", "SUMIF("))
+            if "SUMIF" in upper and not re.search(r"[A-Z0-9*/]", remainder):
+                kinds[key] = "accumulator"  # only SUMIF terms, added or negated
+            elif upper.startswith("=SUM(") and refs & event_cols and not re.search(r"[*/]", upper):
+                kinds[key] = "accumulator"
+            elif refs and refs <= accumulators and not re.search(r"[*/]|MIN\(|MAX\(|IF\(", upper.replace("SUM(", "(")):
+                kinds[key] = "accumulator"
+            else:
+                kinds[key] = "derived"
+            if kinds[key] == "accumulator":
+                accumulators.add(col)
+    return kinds
 
 
 # --- Summary --------------------------------------------------------------------------------
@@ -324,6 +494,17 @@ class SummaryLineData:
 
 
 @dataclass
+class SummarySectionData:
+    vehicle: str | None
+    title: str | None
+    fund_commitment: Decimal | None
+    lines: list[SummaryLineData]
+    event_total: Decimal | None
+    check_values: list[Decimal]
+    check_cells: list[str]
+
+
+@dataclass
 class SummaryData:
     sheet: SheetModel
     layout: SummaryLayout
@@ -335,11 +516,11 @@ class SummaryData:
     event_total: Decimal
     check_values: list[Decimal]
     check_cells: list[str]
+    sections: list[SummarySectionData] = field(default_factory=list)  # one per vehicle block, when repeated
 
 
-def extract_summary(model: WorkbookModel, layout: SummaryLayout) -> SummaryData:
-    sheet = model.sheet(layout.sheet)
-    lines = [
+def _summary_lines(sheet: SheetModel, lines) -> list[SummaryLineData]:
+    return [
         SummaryLineData(
             label=str(sheet.value(line.label_cell)) if line.label_cell and sheet.value(line.label_cell) else None,
             amount=to_money(sheet.value(line.amount_cell)),
@@ -347,7 +528,25 @@ def extract_summary(model: WorkbookModel, layout: SummaryLayout) -> SummaryData:
             side=line.side,
             amount_cell=line.amount_cell,
         )
-        for line in layout.component_lines
+        for line in lines
+    ]
+
+
+def extract_summary(model: WorkbookModel, layout: SummaryLayout) -> SummaryData:
+    sheet = model.sheet(layout.sheet)
+    lines = _summary_lines(sheet, layout.component_lines)
+    sections = [
+        SummarySectionData(
+            vehicle=section.vehicle or (str(sheet.value(section.title_cell)).strip()
+                                        if section.title_cell and is_text(sheet.value(section.title_cell)) else None),
+            title=str(sheet.value(section.title_cell)) if section.title_cell and sheet.value(section.title_cell) else None,
+            fund_commitment=to_decimal(sheet.value(section.fund_commitment_cell)) if section.fund_commitment_cell else None,
+            lines=_summary_lines(sheet, section.component_lines),
+            event_total=to_decimal(sheet.value(section.event_total_cell)) if section.event_total_cell else None,
+            check_values=[to_money(sheet.value(cell)) for cell in section.check_cells],
+            check_cells=list(section.check_cells),
+        )
+        for section in layout.sections
     ]
     return SummaryData(
         sheet=sheet,
@@ -360,6 +559,7 @@ def extract_summary(model: WorkbookModel, layout: SummaryLayout) -> SummaryData:
         event_total=to_money(sheet.value(layout.event_total_cell)),
         check_values=[to_money(sheet.value(cell)) for cell in layout.check_cells],
         check_cells=list(layout.check_cells),
+        sections=sections,
     )
 
 
@@ -379,6 +579,8 @@ class MergeRow:
     commitment: Decimal | None
     amounts: dict[str, Decimal]
     event_total: Decimal | None
+    values: dict[str, Decimal] = field(default_factory=dict)  # every linked numeric column -> amount
+    source_row: int | None = None  # Allocation row this merge row reads
 
 
 @dataclass
@@ -387,6 +589,12 @@ class MergeData:
     layout: MergeLayout
     vehicle: str | None
     rows: list[MergeRow]
+    source_sheet: str | None = None  # the sheet the data rows pull from (normally the Allocation)
+    referenced_columns: dict[str, str] = field(default_factory=dict)  # merge column -> source column
+    header_refs: dict[str, str] = field(default_factory=dict)  # merge column -> source header column
+    headers: dict[str, str] = field(default_factory=dict)  # merge column -> header text
+    totals: dict[str, Decimal] = field(default_factory=dict)  # total row, per merge column
+    check_cells: list[tuple[str, Decimal]] = field(default_factory=list)  # (coord, value) that should be 0
 
 
 def _id(value: Any) -> Any:
@@ -402,11 +610,34 @@ def extract_merge(model: WorkbookModel, layout: MergeLayout) -> MergeData:
     def val(col: str | None, row: int) -> Any:
         return sheet.value(f"{col}{row}") if col else None
 
+    data_rows = [r for r in range(layout.first_data_row, layout.last_data_row + 1) if is_text(val(cols.investor, r))]
+    # Where the data rows pull from: the dominant sheet-qualified reference per column.
+    per_column: dict[str, Counter] = {}
+    source_rows: dict[int, Counter] = {}
+    for row in data_rows:
+        for cell in sheet.row_cells(row):
+            refs = [(s_, c_, r_) for s_, c_, r_ in sheet_cell_refs(cell.formula) if s_ != sheet.name]
+            for ref_sheet, _, ref_row in refs:
+                source_rows.setdefault(row, Counter())[(ref_sheet, ref_row)] += 1
+            # A column "pulls" a source column only through a plain link (=Allocation!Q7); a check
+            # formula such as =Allocation!AI7-Q4 references the source but is not a pull of it.
+            if len(refs) == 1 and _PURE_LINK_RE.match(cell.formula or ""):
+                per_column.setdefault(cell.column, Counter())[refs[0][:2]] += 1
+    sheet_votes = Counter(ref_sheet for counts in per_column.values() for (ref_sheet, _), n in counts.items()
+                          for _ in range(n))
+    source_sheet = sheet_votes.most_common(1)[0][0] if sheet_votes else None
+    referenced_columns = {}
+    for column, counts in per_column.items():
+        (ref_sheet, ref_col), n = counts.most_common(1)[0]
+        if ref_sheet == source_sheet and n * 2 > len(data_rows):
+            referenced_columns[column] = ref_col
+    linked_cols = sorted(set(referenced_columns) | {c.column for c in layout.component_columns},
+                         key=lambda c: (len(c), c))
     rows = []
-    for row in range(layout.first_data_row, layout.last_data_row + 1):
+    for row in data_rows:
         name = val(cols.investor, row)
-        if not is_text(name):
-            continue
+        votes = source_rows.get(row)
+        source_row = next((r for (s, r), _ in votes.most_common() if s == source_sheet), None) if votes else None
         rows.append(MergeRow(
             name=str(name).strip(),
             row=row,
@@ -419,8 +650,57 @@ def extract_merge(model: WorkbookModel, layout: MergeLayout) -> MergeData:
             commitment=to_decimal(val(cols.commitment, row)),
             amounts={c.column: to_money(val(c.column, row)) for c in layout.component_columns},
             event_total=to_decimal(val(cols.event_total, row)),
+            values={c: to_money(val(c, row)) for c in linked_cols},
+            source_row=source_row,
         ))
-    return MergeData(sheet=sheet, layout=layout, vehicle=layout.vehicle, rows=rows)
+    header_refs, headers = {}, {}
+    for cell in sheet.row_cells(layout.header_row):
+        if is_text(cell.value):
+            headers[cell.column] = str(cell.value).strip()
+        if _PURE_LINK_RE.match(cell.formula or ""):
+            for ref_sheet, ref_col, _ in sheet_cell_refs(cell.formula):
+                if ref_sheet == source_sheet:
+                    header_refs[cell.column] = ref_col
+    totals = {}
+    if layout.total_row:
+        for col in linked_cols:
+            cell = sheet.cell(f"{col}{layout.total_row}")
+            if cell is not None and cell.formula and not is_text(cell.value):
+                totals[col] = to_money(cell.value)
+    check_cells: list[tuple[str, Decimal]] = []
+    if cols.check:
+        for row in data_rows:
+            cell = sheet.cell(f"{cols.check}{row}")
+            if cell is not None and not is_text(cell.value):
+                check_cells.append((cell.coord, to_money(cell.value)))
+    check_rows = list(layout.check_rows) or _merge_check_rows(sheet, layout, source_sheet)
+    for row in check_rows:
+        for cell in sheet.row_cells(row):
+            if cell.formula and not is_text(cell.value) and cell.value is not None:
+                check_cells.append((cell.coord, to_money(cell.value)))
+    return MergeData(sheet=sheet, layout=layout, vehicle=layout.vehicle, rows=rows, source_sheet=source_sheet,
+                     referenced_columns=referenced_columns, header_refs=header_refs, headers=headers, totals=totals,
+                     check_cells=check_cells)
+
+
+_PURE_LINK_RE = re.compile(r"^=\s*[+]?(?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!\$?[A-Z]{1,3}\$?\d+\s*$")
+
+
+def _merge_check_rows(sheet: SheetModel, layout: MergeLayout, source_sheet: str | None) -> list[int]:
+    """Rows below the data that compare the tab with its source: a formula subtracting a
+    source-sheet cell from a cell of this sheet (``=Allocation!X95-I22``)."""
+    if source_sheet is None:
+        return []
+    start = (layout.total_row or layout.last_data_row) + 1
+    found = []
+    for row in range(start, min(sheet.max_row, start + 6) + 1):
+        for cell in sheet.row_cells(row):
+            formula = cell.formula or ""
+            if "-" in formula and any(s == source_sheet for s, _, _ in sheet_cell_refs(formula)) \
+                    and local_cell_refs(formula):
+                found.append(row)
+                break
+    return found
 
 
 # --- Mgmt fee -------------------------------------------------------------------------------
