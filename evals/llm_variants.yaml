@@ -1,0 +1,44 @@
+# Comparison variants. Each one departs from the production defaults (settings plus the rules' own
+# model/effort fields); anything unset falls through to them. See docs/model-comparison.md.
+#
+#   defaults:        {model, effort} for every call
+#   stages:          {text_rule|vision_rule|hybrid_rule|layout|roles: {model, effort}}
+#   rule_overrides:  {RULE-ID: {model, effort}}  (beats the rule's own fields)
+#   ignore_rule_overrides: true  ignores the model/effort fields in the rule files
+#   prompt_cache:    false sends no cache markers
+baseline: current
+
+variants:
+  current:
+    description: Production defaults (Sonnet 5.5 at its default effort; layout mapping at medium)
+
+  sonnet-5:
+    description: The previous default model, to check the Sonnet 5.5 upgrade for regressions
+    defaults: {model: claude-sonnet-5}
+
+  sonnet-5-5-medium:
+    description: Rule calls and role assignment at medium effort
+    stages:
+      text_rule: {effort: medium}
+      vision_rule: {effort: medium}
+      hybrid_rule: {effort: medium}
+      roles: {effort: medium}
+
+  sonnet-5-5-low:
+    description: Rule calls and role assignment at low effort (layout mapping stays at medium)
+    stages:
+      text_rule: {effort: low}
+      vision_rule: {effort: low}
+      hybrid_rule: {effort: low}
+      roles: {effort: low}
+
+  haiku-formatting-rules:
+    description: Haiku 4.5 on the formatting and spelling rules only
+    rule_overrides:
+      FMT-HEADINGS: {model: claude-haiku-4-5}
+      FMT-DOLLAR-SIGNS: {model: claude-haiku-4-5}
+      FMT-GLOBAL: {model: claude-haiku-4-5}
+      BS-FMT: {model: claude-haiku-4-5}
+      SOI-FMT: {model: claude-haiku-4-5}
+      OPS-FMT: {model: claude-haiku-4-5}
+      GRAM-SPELL: {model: claude-haiku-4-5}

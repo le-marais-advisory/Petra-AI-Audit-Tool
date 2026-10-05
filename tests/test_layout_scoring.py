@@ -5,7 +5,7 @@ import copy
 
 import pytest
 
-from tests.evals.layout_scoring import ANCHORS, score_layout
+from src.evaluation.layout_scoring import ANCHORS, score_layout
 
 
 @pytest.mark.parametrize("variant", ["standard", "shifted", "two_vehicles"])

@@ -10,7 +10,7 @@ import importlib
 
 import pytest
 
-from tests.evals.layout_scoring import score_layout
+from src.evaluation.layout_scoring import score_layout
 from tests.fixtures.generate_capital_event_fixtures import EVENT_TYPES, VARIANTS
 
 pytestmark = pytest.mark.eval

@@ -1,0 +1,8 @@
+# Default comparison suite: committed, labelled fixtures only (no client data).
+# Real documents go in a local suite under temp/ (git-ignored); see docs/model-comparison.md.
+cases:
+  # PDF financial statements with expected verdicts per rule
+  - from: tests/integration/cases.yaml
+  # synthetic capital-event workbooks: hybrid-rule expectations plus the fixture's deterministic
+  # verdicts and golden layouts
+  - from: tests/evals/capital_event_cases.yaml
