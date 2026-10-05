@@ -76,15 +76,23 @@ Analyzes extracted text and tables against text-type rules using an LLM:
    reach the LLM
 3. Submits all remaining work to **one thread pool**, broad-scope calls first: they carry
    the most content and take longest, so starting them early keeps them off the tail.
-   Pool size is `pipeline.concurrent_requests` (see `docs/configuration.md`)
-4. Uses a system prompt from `config/text_analysis_system_prompt.md`. Broad-scope
+   Pool size is `pipeline.concurrent_requests` (see `docs/configuration.md`). With
+   `pipeline.prompt_cache` on, one call per page (and per shared broad payload) runs before
+   the rest of that group, so they can read the prompt cache it writes
+4. Builds each prompt shared-content-first: the page text and tables, then the layout
+   metadata for the rules that need it, then the arithmetic note and the rule. Every rule
+   on a page therefore starts with the same bytes (see Prompt caching in
+   `docs/configuration.md`). Broad-scope payloads keep each page's layout metadata inside
+   its `<page>` tag: gathered into one block after the content, it measurably pushed
+   `SCP-SECTIONS-PRESENT` towards `needs_review`
+5. Uses a system prompt from `config/text_analysis_system_prompt.md`. Broad-scope
    payloads are prefixed with a `CONTENT SCOPE` note stating whether they carry the
    whole document or only the sections the rule covers, and warning that the
    `<page number="...">` tags are physical file positions rather than printed page
    numbers. Without it these rules inherit the prompt's single-page framing and hedge
    to `needs_review` on content they wrongly believe was withheld
-5. The LLM evaluates each rule and returns structured JSON with verdicts, findings, and citations
-6. Page-scope results are aggregated per rule; broad-scope results are committed directly
+6. The LLM evaluates each rule and returns structured JSON with verdicts, findings, and citations
+7. Page-scope results are aggregated per rule; broad-scope results are committed directly
    (they carry their own `scope` and `matched_pages`) alongside one synthetic page result
    attributed to the first gathered page
 
@@ -115,7 +123,8 @@ These images are used as input for vision rule analysis.
 Analyzes rendered page images against vision-type rules using an LLM with vision capabilities:
 
 1. Filters selected rules to `analysis_type: "vision"` only
-2. For each page image, sends the image + rule to the LLM vision model
+2. For each page image, sends the image + rule to the LLM vision model, image first so the
+   rules on one page share a cacheable prefix
 3. Uses a system prompt from `config/vision_analysis_system_prompt.md`
 4. Supports concurrent requests (configurable via `concurrent_requests` and `global_max_concurrent` in `app.yaml`)
 5. The LLM evaluates visual elements and returns structured verdicts

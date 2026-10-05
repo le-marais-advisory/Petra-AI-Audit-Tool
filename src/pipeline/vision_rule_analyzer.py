@@ -7,13 +7,13 @@ import shutil
 import tempfile
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
-from concurrent.futures import as_completed
 from datetime import timedelta
 from pathlib import Path
 
 from src.core.config import AppYaml, Settings
-from src.core.llm_usage import ContextThreadPoolExecutor
+from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed
 from src.core.prompting import load_prompt
 from src.pipeline.page_classifier import rule_applies_to_page
 from src.pipeline.pdf_renderer import PdfRenderer
@@ -232,6 +232,15 @@ class VisionRuleAnalyzer:
                 for pi in matching:
                     applicable_pairs.append((rule, pi))
 
+        def _page_of(pair: tuple[dict, dict]) -> int:
+            return int(pair[1].get("page", 0) or 0)
+
+        # Rules on the same page share the image, so with prompt_cache on the image is cached
+        # when another rule will read it, and one rule per page runs before the others.
+        prompt_cache = bool(getattr(self.app_config.pipeline, "prompt_cache", False))
+        rules_per_page = Counter(_page_of(pair) for pair in applicable_pairs)
+        cached_pages = {page for page, count in rules_per_page.items() if count > 1} if prompt_cache else set()
+
         def _call(rule: dict, page_image: dict) -> dict | None:
             if is_cancelled and is_cancelled():
                 return None
@@ -244,7 +253,12 @@ class VisionRuleAnalyzer:
             try:
                 _t0 = time.perf_counter()
                 logger.info("LLM call start: type=vision rule=%s page=%d", rule_id, page_number)
-                raw_result = provider.evaluate_rule(page_image=page_image_for_rule, rule=rule, system_prompt=self.system_prompt)
+                raw_result = provider.evaluate_rule(
+                    page_image=page_image_for_rule,
+                    rule=rule,
+                    system_prompt=self.system_prompt,
+                    cache_content=page_number in cached_pages,
+                )
                 _elapsed = time.perf_counter() - _t0
                 logger.info("LLM call done: type=vision rule=%s page=%d elapsed=%s", rule_id, page_number, timedelta(seconds=_elapsed))
                 return {
@@ -287,13 +301,10 @@ class VisionRuleAnalyzer:
 
         try:
             with ContextThreadPoolExecutor(max_workers=self._max_workers()) as executor:
-                future_to_rule = {executor.submit(_call, rule, pi): rule for rule, pi in applicable_pairs}
-                for future in as_completed(future_to_rule):
-                    if is_cancelled and is_cancelled():
-                        for f in future_to_rule:
-                            f.cancel()
-                        break
-                    rule = future_to_rule[future]
+                cache_key = _page_of if prompt_cache else (lambda pair: None)
+                for (rule, _), future in run_cache_primed(
+                    executor, applicable_pairs, lambda pair: _call(*pair), cache_key, is_cancelled
+                ):
                     rule_id = rule.get("id", "")
                     page_result = future.result()
                     if page_result is None:

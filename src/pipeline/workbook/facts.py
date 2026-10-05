@@ -54,7 +54,7 @@ def build_facts(rule_id: str, model: WorkbookModel, data: WorkbookData, options:
 def render_facts(rule_id: str, facts: dict[str, Any]) -> str:
     return (
         "COMPUTED FACTS (derived by code from the workbook's stored values and formulas; treat them as accurate and "
-        f"base the verdict on them, using the sheet excerpts below only for context) for {rule_id}:\n"
+        f"base the verdict on them, using the sheet excerpts above only for context) for {rule_id}:\n"
         + json.dumps(facts, indent=1, default=str)
         + "\n"
     )

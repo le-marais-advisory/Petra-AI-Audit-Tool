@@ -17,7 +17,7 @@ from src.services.rule_service import RuleService
 
 
 class _Stub:
-    def evaluate_rule(self, content, rule, system_prompt):
+    def evaluate_rule(self, content, rule, system_prompt, **kwargs):
         return {"rule_id": rule["id"], "rule_name": rule["name"], "verdict": "pass", "summary": "ok", "reasoning": "ok",
                 "findings": [], "confidence": "high", "citations": []}
 

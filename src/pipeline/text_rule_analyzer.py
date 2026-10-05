@@ -5,14 +5,14 @@ import logging
 import re
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
-from concurrent.futures import as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from typing import Literal
 
 from src.core.config import AppYaml, Settings
-from src.core.llm_usage import ContextThreadPoolExecutor
+from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed
 from src.core.prompting import load_prompt
 from src.pipeline.page_classifier import rule_applies_to_page, SECTION_TO_KEY
 from src.providers.text.base import TextAnalysisProvider
@@ -49,6 +49,22 @@ class _TextWorkItem:
     gathered_pages: list[dict] = field(default_factory=list)
     gathered_page_nums: list[int] = field(default_factory=list)
     group_by_section: bool = False
+    # set once every item is built: another call shares this item's content (or content plus
+    # layout metadata), so that part of the prompt is worth caching
+    cache_content: bool = False
+    cache_layout: bool = False
+
+    def cache_key(self) -> tuple:
+        """Items with equal keys send identical document content, so they can share a cached prefix."""
+        if self.kind == "page":
+            return ("page", int((self.page or {}).get("page", 0)))
+        sections = tuple(self.rule.get("sections") or []) if self.group_by_section else ()
+        # broad payloads carry layout metadata inside each page, so it is part of the content
+        return ("broad", tuple(self.gathered_page_nums), self.group_by_section, sections, self.needs_layout)
+
+    @property
+    def needs_layout(self) -> bool:
+        return _rule_needs_layout_context(self.rule)
 
 
 def _page_blob(page: dict) -> str:
@@ -135,21 +151,42 @@ def _layout_blob(page: dict) -> str:
     )
 
 
-def _serialize_page_content(page: dict, rule: dict) -> str:
+_ARITHMETIC_NOTE = (
+    "Arithmetic note: when verifying totals or cross-footing, source all numeric values from "
+    "the Extracted Tables block above rather than the Plain Extracted Text. "
+    "The plain text uses layout-preserved spacing that can cause a single number to appear split "
+    "across tokens; the table cells contain each value as a single parsed string."
+)
+
+
+def _serialize_page_content(page: dict, include_layout: bool = False) -> str:
+    """The page's text and tables: the same for every rule, so it can lead a cached prompt.
+
+    ``include_layout`` keeps the page's layout metadata inside it. Broad-scope rules need that:
+    with the metadata of every page gathered into one block after the content, a sections check
+    lost track of which lines sit on which page and hedged to needs_review far more often.
+    """
     sections = [
         _page_blob(page),
         "Extracted Tables:\n" + _tables_blob(page),
     ]
-    if _rule_needs_layout_context(rule):
+    if include_layout:
         sections.append("Layout Metadata:\n" + _layout_blob(page))
-    if _rule_prefers_table_numbers(rule):
-        sections.append(
-            "Arithmetic note: when verifying totals or cross-footing, source all numeric values from "
-            "the Extracted Tables block above rather than the Plain Extracted Text. "
-            "The plain text uses layout-preserved spacing that can cause a single number to appear split "
-            "across tokens; the table cells contain each value as a single parsed string."
-        )
     return "\n\n".join(section for section in sections if section.strip())
+
+
+def _serialize_layout_context(page: dict, rule: dict) -> str:
+    """A page-scope rule's layout metadata. The same for every layout rule on the page, so it
+    follows the page content as a second cacheable block. (Broad-scope payloads keep it inside each
+    page instead; see _serialize_page_content.)"""
+    if not _rule_needs_layout_context(rule):
+        return ""
+    return "Layout Metadata:\n" + _layout_blob(page)
+
+
+def _serialize_rule_context(rule: dict) -> str:
+    """What only this rule needs; it goes last, with the rule."""
+    return _ARITHMETIC_NOTE if _rule_prefers_table_numbers(rule) else ""
 
 
 def _build_skipped_result(rule: dict, message: str, execution_status: str = "skipped", page: int | None = None) -> dict:
@@ -233,13 +270,14 @@ def _broad_scope_preamble(pages: list[dict], group_by_section: bool) -> str:
 
 def _serialize_broad_scope_content(pages: list[dict], rule: dict, group_by_section: bool = False) -> str:
     preamble = _broad_scope_preamble(pages, group_by_section)
+    include_layout = _rule_needs_layout_context(rule)
 
     if not group_by_section:
         parts: list[str] = [preamble]
         for page in pages:
             page_num = page.get("page", "?")
             parts.append(f'<page number="{page_num}">')
-            parts.append(_serialize_page_content(page, rule))
+            parts.append(_serialize_page_content(page, include_layout))
             parts.append("</page>")
         return "\n\n".join(parts)
 
@@ -252,7 +290,7 @@ def _serialize_broad_scope_content(pages: list[dict], rule: dict, group_by_secti
             for page in section_pages:
                 page_num = page.get("page", "?")
                 parts.append(f'<page number="{page_num}">')
-                parts.append(_serialize_page_content(page, rule))
+                parts.append(_serialize_page_content(page, include_layout))
                 parts.append("</page>")
             parts.append("</section>")
     return "\n\n".join(parts)
@@ -398,11 +436,17 @@ class TextRuleAnalyzer:
         page = item.page or {}
         page_number = int(page.get("page", 0))
         try:
-            document_content = _serialize_page_content(page, rule)
+            document_content = _serialize_page_content(page)
             _t0 = time.perf_counter()
             logger.info("LLM call start: type=text rule=%s page=%d", rule_id, page_number)
             raw_result = provider.evaluate_rule(
-                document_content=document_content, rule=rule, system_prompt=self.system_prompt
+                document_content=document_content,
+                rule=rule,
+                system_prompt=self.system_prompt,
+                rule_context=_serialize_rule_context(rule),
+                cache_content=item.cache_content,
+                shared_context=_serialize_layout_context(page, rule),
+                cache_shared_context=item.cache_layout,
             )
             _elapsed = time.perf_counter() - _t0
             logger.info(
@@ -463,7 +507,11 @@ class TextRuleAnalyzer:
                 "LLM call start: type=text scope=%s rule=%s pages=%s", scope, rule_id, gathered_page_nums
             )
             raw_result = provider.evaluate_rule(
-                document_content=document_content, rule=rule, system_prompt=self.system_prompt
+                document_content=document_content,
+                rule=rule,
+                system_prompt=self.system_prompt,
+                rule_context=_serialize_rule_context(rule),
+                cache_content=item.cache_content,
             )
             _elapsed = time.perf_counter() - _t0
             logger.info(
@@ -606,6 +654,23 @@ class TextRuleAnalyzer:
         # whole document, so submitting them last would leave their latency as a tail
         # after the pool drains — rebuilding the serial prologue this replaced.
         work_items = broad_items + page_items
+        prompt_cache = bool(getattr(self.app_config.pipeline, "prompt_cache", False))
+        if prompt_cache:
+            # Mark only prefixes another call will read: a cache write costs more than plain input.
+            shared = Counter(item.cache_key() for item in work_items)
+            with_layout = Counter(item.cache_key() for item in work_items if item.needs_layout)
+            work_items = [
+                replace(
+                    item,
+                    cache_content=shared[item.cache_key()] > 1,
+                    cache_layout=item.needs_layout and with_layout[item.cache_key()] > 1,
+                )
+                for item in work_items
+            ]
+            # The first item of each group primes the cache for the rest, so let a rule with layout
+            # metadata go first: it writes both the content entry and the content-plus-layout entry.
+            # Stable, so broad items still precede page items.
+            work_items.sort(key=lambda item: (item.kind != "broad", not item.needs_layout))
 
         def _run(item: _TextWorkItem) -> tuple[dict | None, list[dict]]:
             """Returns (rule_result_override, page_results_to_append).
@@ -619,14 +684,11 @@ class TextRuleAnalyzer:
                 return self._evaluate_broad_scope_rule(item, provider)
             return None, [self._evaluate_page_scope_rule(item, provider)]
 
+        # With prompt_cache on, one call per page (or per shared broad payload) runs first and the
+        # rest of its group follows once it has written the cache.
+        cache_key = (lambda item: item.cache_key()) if prompt_cache else (lambda item: None)
         with ContextThreadPoolExecutor(max_workers=self._max_workers()) as executor:
-            future_to_item = {executor.submit(_run, item): item for item in work_items}
-            for future in as_completed(future_to_item):
-                if is_cancelled and is_cancelled():
-                    for f in future_to_item:
-                        f.cancel()
-                    break
-                item = future_to_item[future]
+            for item, future in run_cache_primed(executor, work_items, _run, cache_key, is_cancelled):
                 rule_result, new_page_results = future.result()
                 if rule_result is None and not new_page_results:
                     continue

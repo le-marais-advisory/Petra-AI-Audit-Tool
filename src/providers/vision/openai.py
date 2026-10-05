@@ -8,7 +8,7 @@ import httpx
 from openai import OpenAI
 
 from src.core.llm_usage import record_openai_responses_usage
-from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, build_vector_data_text, compact_rule_payload
+from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, vision_rule_prompt
 from src.providers.vision.base import VisionProvider
 
 
@@ -95,28 +95,21 @@ class OpenAIVisionProvider(VisionProvider):
 
         raise ValueError("Model returned no structured text content.")
 
-    def evaluate_rule(self, page_image: dict[str, Any], rule: dict, system_prompt: str) -> dict[str, Any]:
+    def evaluate_rule(
+        self, page_image: dict[str, Any], rule: dict, system_prompt: str, cache_content: bool = False
+    ) -> dict[str, Any]:
+        # OpenAI caches long prompt prefixes automatically, so cache_content needs no marker here;
+        # putting the page first is what lets every rule on it share the prefix.
         page_number = int(page_image.get("page", 0) or 0)
         content: list[dict[str, Any]] = [
-            {
-                "type": "input_text",
-                "text": (
-                    "Evaluate the following vision rule against the rendered PDF page image.\n"
-                    f"{compact_rule_payload(rule)}\n"
-                    f"{build_vector_data_text(page_image)}"
-                    "RENDERED PDF PAGE:\n"
-                    f"PDF page {page_number}\n"
-                ),
-            }
-        ]
-        content.append({"type": "input_text", "text": f"PDF page {page_number}"})
-        content.append(
+            {"type": "input_text", "text": f"RENDERED PDF PAGE:\nPDF page {page_number}\n"},
             {
                 "type": "input_image",
                 "image_url": page_image["image_url"],
                 "detail": page_image.get("detail", self._detail),
-            }
-        )
+            },
+            {"type": "input_text", "text": vision_rule_prompt(page_image, rule)},
+        ]
 
         input_items: list[dict[str, Any]] = []
         if system_prompt.strip():

@@ -40,6 +40,11 @@ class PipelineConfig(BaseModel):
     # already runs at 12 in production. Floored and capped by
     # TextRuleAnalyzer._max_workers, and overridable via PIPELINE_CONCURRENT_REQUESTS.
     concurrent_requests: int = 12
+    # Mark the shared start of rule prompts (document content, page image, sheet excerpts)
+    # for Claude's prompt cache, and start one call per shared prefix before the rest so
+    # they can read it. Applies to text, vision and workbook hybrid rules. Off sends no
+    # markers and starts every call at once; the prompt order is content-first either way.
+    prompt_cache: bool = True
 
 
 class WorkbookConfig(BaseModel):

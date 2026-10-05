@@ -43,6 +43,10 @@ pipeline:
   # overridable with the PIPELINE_CONCURRENT_REQUESTS env var. Jobs run one at a time,
   # so this is also the pipeline's total in-flight ceiling. Lower it to 8 if 429s appear.
   concurrent_requests: 12
+  # Cache the document content that rule prompts start with, so every rule on the same
+  # page (or sheet set) reuses it, and start one call per page first so the rest can read
+  # the cache. Off sends no cache markers and starts every call at once.
+  prompt_cache: true
 
 # Capital-event workbooks (and other .xlsx document types)
 workbook:

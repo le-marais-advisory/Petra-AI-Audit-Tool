@@ -229,4 +229,6 @@ Copy `env.example` to `.env` and fill in:
 
 `config/app.yaml` controls PDF rendering (DPI defaults to 300), vision settings (concurrency, temperature, seed, max tokens, image detail), and report toggles (e.g. `include_thumbnails`).
 
+Rule prompts are ordered shared-content-first (document content, then layout metadata, then the rule) so they can reuse a cached prefix; `pipeline.prompt_cache` adds Claude cache markers and starts one call per shared prefix first. See "Prompt caching" in `docs/configuration.md`, and keep new prompt content that varies per rule after the shared part.
+
 `rules/rules.json` rule objects carry: `id`, `name`, `analysis_type` (text|vision), `query`, `description`, `acceptance_criteria`, `severity` (major|minor|critical), and optional `group`/`bypassable` fields.

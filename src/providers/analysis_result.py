@@ -81,3 +81,32 @@ def compact_rule_payload(rule: dict) -> str:
         f"RULE QUERY: {rule.get('query', '')}\n"
         f"RULE ACCEPTANCE CRITERIA: {rule.get('acceptance_criteria', '')}\n"
     )
+
+
+def text_rule_prompt(
+    document_content: str, rule: dict, rule_context: str = "", shared_context: str = ""
+) -> tuple[str, str, str]:
+    """The user message for a text rule as (shared, shared by some rules, rule-specific).
+
+    The document content comes first and is identical for every rule run on the same content, so
+    it can be cached as a prompt prefix. ``shared_context`` (empty when unused) is shared by a
+    subset of those rules and can be cached as a longer prefix. The rule's own context and the rule
+    itself come last.
+    """
+    shared = f"EXTRACTED DOCUMENT CONTENT:\n{document_content}\n"
+    subset = f"{shared_context}\n" if shared_context.strip() else ""
+    context = f"{rule_context}\n\n" if rule_context.strip() else ""
+    tail = (
+        f"{context}Evaluate the following text/content rule against the extracted document content above.\n"
+        f"{compact_rule_payload(rule)}"
+    )
+    return shared, subset, tail
+
+
+def vision_rule_prompt(page_image: dict[str, Any], rule: dict) -> str:
+    """The rule-specific text that follows the page image in a vision rule's user message."""
+    return (
+        "Evaluate the following vision rule against the rendered PDF page image above.\n"
+        f"{compact_rule_payload(rule)}\n"
+        f"{build_vector_data_text(page_image)}"
+    )

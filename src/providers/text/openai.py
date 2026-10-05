@@ -7,7 +7,7 @@ import httpx
 from openai import OpenAI
 
 from src.core.llm_usage import record_openai_chat_usage
-from src.providers.analysis_result import AnalysisRuleResult, compact_rule_payload
+from src.providers.analysis_result import AnalysisRuleResult, text_rule_prompt
 from src.providers.text.base import TextAnalysisProvider
 
 
@@ -53,21 +53,23 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         content = message.content or ""
         raise ValueError(f"Model returned no structured content. Raw content: {content!r}")
 
-    def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str) -> dict[str, Any]:
+    def evaluate_rule(
+        self,
+        document_content: str,
+        rule: dict,
+        system_prompt: str,
+        rule_context: str = "",
+        cache_content: bool = False,
+        shared_context: str = "",
+        cache_shared_context: bool = False,
+    ) -> dict[str, Any]:
+        # OpenAI caches long prompt prefixes automatically, so the cache flags need no marker here;
+        # putting the shared content first is what lets the cache apply.
+        shared, subset, tail = text_rule_prompt(document_content, rule, rule_context, shared_context)
         messages: list[dict[str, Any]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "Evaluate the following text/content rule against the extracted document content.\n"
-                    f"{compact_rule_payload(rule)}\n"
-                    "EXTRACTED DOCUMENT CONTENT:\n"
-                    f"{document_content}\n"
-                ),
-            }
-        )
+        messages.append({"role": "user", "content": f"{shared}{subset}\n{tail}"})
         return self._call_openai_with_retry(messages, rule_id=rule.get("id"))
 
     def complete_structured(

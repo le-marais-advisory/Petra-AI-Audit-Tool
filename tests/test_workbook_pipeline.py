@@ -19,9 +19,12 @@ from tests.fixtures.generate_capital_event_fixtures import DETERMINISTIC_RULE_ID
 class FakeTextProvider:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.requests: dict[str, dict] = {}
 
-    def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str) -> dict:
-        self.calls.append((rule["id"], document_content))
+    def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str, rule_context: str = "",
+                      cache_content: bool = False, **kwargs) -> dict:
+        self.calls.append((rule["id"], document_content + rule_context))
+        self.requests[rule["id"]] = {"sheets": document_content, "facts": rule_context, "cache": cache_content}
         return {
             "rule_id": rule["id"],
             "rule_name": rule["name"],
@@ -104,6 +107,22 @@ def test_hybrid_prompts_carry_facts_and_only_relevant_sheets(run_pipeline):
         assert "COMPUTED FACTS" in content, rule_id
         for sheet in irrelevant:
             assert f"<sheet name=\"{sheet}\"" not in content, (rule_id, sheet)
+
+
+def test_hybrid_prompts_lead_with_sheets_shared_by_rules_needing_the_same_roles(run_pipeline):
+    _, _, provider, _ = run_pipeline()
+    by_id = {rule["id"]: rule for rule in RuleService().load_rules(document_type="capital_event_workbook",
+                                                                   event_type="capital_call")}
+    groups: dict[tuple, set[str]] = {}
+    for rule_id, request in provider.requests.items():
+        assert "COMPUTED FACTS" in request["facts"] and "COMPUTED FACTS" not in request["sheets"], rule_id
+        roles = tuple(sorted(by_id[rule_id].get("required_roles") or []))
+        groups.setdefault(roles, set()).add(request["sheets"])
+        # cached only when another rule reads the same excerpts
+        shared = sum(1 for other in provider.requests
+                     if tuple(sorted(by_id[other].get("required_roles") or [])) == roles) > 1
+        assert request["cache"] == shared, rule_id
+    assert all(len(contents) == 1 for contents in groups.values()), "same roles must send identical excerpts"
 
 
 def test_deterministic_verdicts_flow_into_the_assessments(run_pipeline):

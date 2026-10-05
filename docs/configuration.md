@@ -163,11 +163,13 @@ report:
 ```yaml
 pipeline:
   concurrent_requests: 12
+  prompt_cache: true
 ```
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `concurrent_requests` | int | `12` | Concurrent text-analysis LLM calls |
+| `prompt_cache` | bool | `true` | Cache the shared start of rule prompts and start one call per shared prefix first (text, vision and workbook hybrid rules) |
 
 Notes:
 
@@ -182,6 +184,26 @@ Notes:
   is the only way to change the value without a rebuild.
 - `load_app_yaml()` is cached for the process lifetime, so a YAML edit needs a restart.
 - If you see HTTP 429s from the provider, lower this to 8 and re-measure.
+
+#### Prompt caching
+
+Every rule prompt runs from the most shared content to the least: the document content
+(page text and tables, a page image, or sheet excerpts), then content only some rules
+need (layout metadata), then the rule's own context and the rule. With `prompt_cache`
+on:
+
+- the shared parts carry Claude `cache_control` markers, but only when another call will
+  read them, because a cache write costs 1.25x plain input and a read 0.1x;
+- one call per shared prefix (per page, per broad-scope payload, per hybrid sheet set)
+  runs first and the rest of its group starts when it finishes, because calls that start
+  together cannot read each other's cache entries. Layout rules go first on their page,
+  so the first call writes both entries.
+
+OpenAI caches long prefixes automatically and gets no markers; the content-first order is
+what lets it apply. Off sends no markers and starts every call at once; the prompt order
+stays content-first. Check the effect in the Token Usage tab (`VITE_SHOW_TOKEN_USAGE`):
+on Claude, cached input is 0 without caching. A prefix shorter than the model's minimum
+(1024 tokens on Claude Sonnet 5) is not cached even when marked.
 
 ## Key Files
 

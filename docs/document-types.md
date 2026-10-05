@@ -86,7 +86,7 @@ The pipeline is `src/pipeline/workbook/pipeline.py`.
 6. **Extract.** `extract.py` reads typed data (`AllocationData`, `ItdData`, ...) from the validated layouts.
 7. **Evaluate.**
    - **Deterministic rules** (`evaluator: "deterministic"`) run in code (`checks/`). They cover arithmetic, ties, formulas, dates, formats and structure.
-   - **Hybrid rules** (`evaluator: "hybrid"`) go to the LLM. Each gets a `COMPUTED FACTS` block from `facts.py` plus skeletons of only the sheets the rule reads (its `required_roles`).
+   - **Hybrid rules** (`evaluator: "hybrid"`) go to the LLM. Each gets skeletons of only the sheets the rule reads (its `required_roles`), then a `COMPUTED FACTS` block from `facts.py`, then the rule. Rules with the same `required_roles` send identical skeletons, so with `pipeline.prompt_cache` on the skeletons are cached and one rule per sheet set runs before the others.
 8. **Result.** The response has the usual `DocumentValidationResponse` shape. Each processed sheet is one unit: `page` holds the sheet index, `label` the sheet name and `page_type` the role. Citations carry `sheet` and `cell`. A deterministic rule keeps up to ten itemised `findings`; its `summary` states the count and the first one, and the PDF export lists them all.
 
 On the reference sample, a 17-sheet workbook, 7 sheets are processed. A run needs about 42k LLM input tokens, against about 209k for the raw workbook.

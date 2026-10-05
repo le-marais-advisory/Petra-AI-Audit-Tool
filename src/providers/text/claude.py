@@ -8,11 +8,13 @@ import httpx
 from anthropic import Anthropic
 
 from src.core.llm_usage import record_anthropic_usage
-from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, compact_rule_payload
+from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, text_rule_prompt
 from src.providers.errors import TruncatedResponseError, claude_response_text
 from src.providers.text.base import TextAnalysisProvider
 
 logger = logging.getLogger("petra.providers.text.claude")
+
+_CACHE = {"type": "ephemeral"}  # 5-minute TTL: rules sharing a prefix start seconds apart
 
 
 class ClaudeTextAnalysisProvider(TextAnalysisProvider):
@@ -46,6 +48,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         system_prompt: str,
         schema: dict[str, Any] | None = None,
         rule_id: str | None = None,
+        cache_system: bool = False,
         max_tokens: int | None = None,
         effort: str | None = None,
         stream: bool = False,
@@ -67,7 +70,12 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             "output_config": output_config,
         }
         if system_prompt.strip():
-            request_kwargs["system"] = system_prompt
+            # A one-block list either way, so the rendered prefix is the same whether or not it is
+            # marked. Below the model's minimum cacheable length the marker is silently ignored.
+            system_block: dict[str, Any] = {"type": "text", "text": system_prompt}
+            if cache_system:
+                system_block["cache_control"] = _CACHE
+            request_kwargs["system"] = [system_block]
         if self._temperature is not None:
             request_kwargs["temperature"] = self._temperature
 
@@ -117,19 +125,31 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
                 ) from exc
             raise
 
-    def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str) -> dict[str, Any]:
-        messages: list[dict[str, Any]] = [
-            {
-                "role": "user",
-                "content": (
-                    "Evaluate the following text/content rule against the extracted document content.\n"
-                    f"{compact_rule_payload(rule)}\n"
-                    "EXTRACTED DOCUMENT CONTENT:\n"
-                    f"{document_content}\n"
-                ),
-            }
-        ]
-        return self._call_claude_with_retry(messages, system_prompt, rule_id=rule.get("id"))
+    def evaluate_rule(
+        self,
+        document_content: str,
+        rule: dict,
+        system_prompt: str,
+        rule_context: str = "",
+        cache_content: bool = False,
+        shared_context: str = "",
+        cache_shared_context: bool = False,
+    ) -> dict[str, Any]:
+        shared, subset, tail = text_rule_prompt(document_content, rule, rule_context, shared_context)
+        # Separate blocks, so a rule that reads only the document content still finds the entry a
+        # rule with layout metadata wrote at the end of the content block.
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": shared}]
+        if cache_content:
+            blocks[0]["cache_control"] = _CACHE
+        if subset:
+            blocks.append({"type": "text", "text": subset})
+            if cache_shared_context:
+                blocks[-1]["cache_control"] = _CACHE
+        blocks.append({"type": "text", "text": tail})
+        messages: list[dict[str, Any]] = [{"role": "user", "content": blocks}]
+        return self._call_claude_with_retry(
+            messages, system_prompt, rule_id=rule.get("id"), cache_system=cache_content or cache_shared_context
+        )
 
     def complete_structured(
         self,

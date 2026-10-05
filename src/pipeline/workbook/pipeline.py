@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from concurrent.futures import as_completed
 from datetime import timedelta
 from pathlib import Path
@@ -20,7 +21,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from src.core.llm_usage import ContextThreadPoolExecutor, track_usage, usage_stage
+from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed, track_usage, usage_stage
 from src.pipeline.result_builder import build_document_result
 from src.pipeline.workbook.checks import run_deterministic_checks
 from src.pipeline.workbook.checks._common import ROLE_LABELS
@@ -51,20 +52,24 @@ def _timestamp_id() -> str:
 
 class WorkbookPipeline:
     def __init__(self, text_provider=None, role_assigner=None, layout_mapper: LayoutMapper | None = None,
-                 layout_concurrency: int | None = None, hybrid_concurrency: int | None = None) -> None:
+                 layout_concurrency: int | None = None, hybrid_concurrency: int | None = None,
+                 prompt_cache: bool | None = None) -> None:
         self._provider = text_provider
         self._role_assigner = role_assigner
         self._layout_mapper = layout_mapper
-        workbook_cfg = None
-        if layout_concurrency is None or hybrid_concurrency is None:
+        app_cfg = None
+        if layout_concurrency is None or hybrid_concurrency is None or prompt_cache is None:
             try:
                 from src.core.config import load_app_yaml
 
-                workbook_cfg = load_app_yaml().workbook
+                app_cfg = load_app_yaml()
             except Exception:
-                workbook_cfg = None
+                app_cfg = None
+        workbook_cfg = app_cfg.workbook if app_cfg else None
         self.layout_concurrency = layout_concurrency or (workbook_cfg.layout_concurrency if workbook_cfg else 6)
         self.hybrid_concurrency = hybrid_concurrency or (workbook_cfg.hybrid_concurrency if workbook_cfg else 6)
+        self.prompt_cache = prompt_cache if prompt_cache is not None else (
+            app_cfg.pipeline.prompt_cache if app_cfg else True)
 
     # -- collaborators -------------------------------------------------------------------------
 
@@ -211,16 +216,19 @@ class WorkbookPipeline:
     # -- hybrid rules ----------------------------------------------------------------------------
 
     def _rule_content(self, model: WorkbookModel, data: WorkbookData, rule: dict, options: dict,
-                      roles: dict[str, str]) -> str:
+                      roles: dict[str, str]) -> tuple[str, str]:
+        """(sheet excerpts, computed facts). The excerpts depend only on the rule's required roles, so
+        rules needing the same sheets send the same excerpts and can share them as a cached prefix;
+        the facts are the rule's own and follow them."""
         facts = build_facts(rule["id"], model, data, options)
         needed = set(rule.get("required_roles") or [])
         sheets = [name for name in data.processed_sheets if not needed or roles.get(name) in needed]
-        parts = [render_facts(rule["id"], facts)]
+        parts = []
         for name in sheets:
             sheet = model.sheet(name)
             parts.append(f'<sheet name="{name}" index="{sheet.index}" role="{roles.get(name)}">\n'
                          f"{build_skeleton(sheet)}</sheet>")
-        return "\n".join(parts)
+        return "\n".join(parts), render_facts(rule["id"], facts)
 
     def _run_hybrid(self, model, data, rules, options, roles, cancelled):
         system_prompt = _PROMPT_PATH.read_text(encoding="utf-8")
@@ -235,21 +243,29 @@ class WorkbookPipeline:
                                       f"The {labels} sheet layout could not be mapped or validated, so this rule "
                                       "could not be evaluated.", reasons), 0.0
 
+        def sheet_set(rule) -> tuple[str, ...]:
+            return tuple(sorted(rule.get("required_roles") or []))
+
+        shared = Counter(sheet_set(rule) for rule, _ in runnable) if self.prompt_cache else Counter()
+
         def evaluate(rule):
             started = time.perf_counter()
-            content = self._rule_content(model, data, rule, options, roles)
+            sheets, facts = self._rule_content(model, data, rule, options, roles)
             with usage_stage("Hybrid rules"):
-                raw = self.provider.evaluate_rule(content, rule, system_prompt)
+                raw = self.provider.evaluate_rule(sheets, rule, system_prompt, rule_context=facts,
+                                                  cache_content=shared[sheet_set(rule)] > 1)
             try:
                 parsed = AnalysisRuleResult(**{**raw, "rule_id": rule["id"], "rule_name": rule.get("name", rule["id"])})
             except ValidationError as exc:
                 parsed = _result(rule, "needs_review", "The model returned an invalid result.", [str(exc)[:300]])
             return parsed, (time.perf_counter() - started) * 1000
 
+        # With prompt_cache on, one rule per sheet set runs first and the rest of its group follows
+        # once it has written the cache.
+        cache_key = sheet_set if self.prompt_cache else (lambda rule: None)
+        to_run = [rule for rule, _ in runnable] if not cancelled() else []
         with ContextThreadPoolExecutor(max_workers=max(1, min(self.hybrid_concurrency, len(runnable) or 1))) as pool:
-            futures = {pool.submit(evaluate, rule): rule for rule, _ in runnable if not cancelled()}
-            for future in as_completed(futures):
-                rule = futures[future]
+            for rule, future in run_cache_primed(pool, to_run, evaluate, cache_key, cancelled):
                 try:
                     parsed, elapsed = future.result()
                 except Exception as exc:

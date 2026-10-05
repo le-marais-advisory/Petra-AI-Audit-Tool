@@ -1,4 +1,4 @@
-"""Per-run LLM token telemetry.
+"""Per-run LLM token telemetry, and the cache-primed dispatch that lets rule calls reuse cached prompts.
 
 A run opens a meter with ``track_usage()``; every provider call made while it is open records the
 token counts the API reported. The meter lives in a context variable, so it follows the run into
@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import contextvars
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any, Callable, Hashable, Iterable, Iterator, TypeVar
+
+T = TypeVar("T")
+R = TypeVar("R")
 
 _METER: contextvars.ContextVar["UsageMeter | None"] = contextvars.ContextVar("llm_usage_meter", default=None)
 _STAGE: contextvars.ContextVar[str | None] = contextvars.ContextVar("llm_usage_stage", default=None)
@@ -109,6 +112,47 @@ class ContextThreadPoolExecutor(ThreadPoolExecutor):
 
     def submit(self, fn, /, *args, **kwargs):
         return super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
+
+
+def run_cache_primed(
+    executor: ThreadPoolExecutor,
+    items: Iterable[T],
+    fn: Callable[[T], R],
+    cache_key: Callable[[T], Hashable | None],
+    is_cancelled: Callable[[], bool] | None = None,
+) -> Iterator[tuple[T, Future[R]]]:
+    """Run ``fn`` over ``items`` and yield ``(item, future)`` as each finishes.
+
+    Items that share a prompt prefix (the same non-None ``cache_key``) would all miss the cache if
+    they started together, because an entry is only readable once the request that writes it is
+    under way. So the first item of each group (the primer) is submitted straight away and the rest
+    only once it has finished. Items keyed ``None`` are submitted straight away, in input order.
+    When ``is_cancelled`` turns true, pending work is cancelled, followers are never submitted and
+    nothing more is yielded.
+    """
+    followers: dict[Hashable, list[T]] = {}
+    pending: dict[Future[R], tuple[T, Hashable | None]] = {}
+    for item in items:
+        key = cache_key(item)
+        if key is not None and key in followers:
+            followers[key].append(item)
+            continue
+        if key is not None:
+            followers[key] = []
+        pending[executor.submit(fn, item)] = (item, key)
+
+    while pending:
+        done, _ = wait(pending, return_when=FIRST_COMPLETED)
+        if is_cancelled and is_cancelled():
+            for future in pending:
+                future.cancel()
+            return
+        for future in done:
+            item, key = pending.pop(future)
+            if key is not None:
+                for follower in followers.pop(key, []):
+                    pending[executor.submit(fn, follower)] = (follower, None)
+            yield item, future
 
 
 def _int(value: Any) -> int:

@@ -8,7 +8,7 @@ import httpx
 from anthropic import Anthropic
 
 from src.core.llm_usage import record_anthropic_usage
-from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, build_vector_data_text, compact_rule_payload
+from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, vision_rule_prompt
 from src.providers.errors import claude_response_text
 from src.providers.vision.base import VisionProvider
 
@@ -16,6 +16,7 @@ from src.providers.vision.base import VisionProvider
 _GLOBAL_ANTHROPIC_SEMAPHORE = None
 _SEMAPHORE_LOCK = threading.Lock()
 _SUPPORTED_IMAGE_MEDIA_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_CACHE = {"type": "ephemeral"}  # 5-minute TTL: rules on the same page start seconds apart
 
 
 def get_global_semaphore(max_concurrent: int = 10) -> threading.Semaphore:
@@ -67,7 +68,11 @@ class ClaudeVisionProvider(VisionProvider):
         self._semaphore = get_global_semaphore(max_concurrent)
 
     def _call_claude_with_retry(
-        self, messages: list[dict[str, Any]], system_prompt: str, rule_id: str | None = None
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str,
+        rule_id: str | None = None,
+        cache_system: bool = False,
     ) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {
             "model": self._model,
@@ -81,7 +86,10 @@ class ClaudeVisionProvider(VisionProvider):
             },
         }
         if system_prompt.strip():
-            request_kwargs["system"] = system_prompt
+            system_block: dict[str, Any] = {"type": "text", "text": system_prompt}
+            if cache_system:
+                system_block["cache_control"] = _CACHE
+            request_kwargs["system"] = [system_block]
         if self._temperature is not None:
             request_kwargs["temperature"] = self._temperature
 
@@ -90,32 +98,29 @@ class ClaudeVisionProvider(VisionProvider):
         record_anthropic_usage(response, self._model, "Vision rules", rule_id)
         return json.loads(claude_response_text(response, self._max_tokens, "CLAUDE_VISION_MAX_TOKENS"))
 
-    def evaluate_rule(self, page_image: dict[str, Any], rule: dict, system_prompt: str) -> dict[str, Any]:
+    def evaluate_rule(
+        self, page_image: dict[str, Any], rule: dict, system_prompt: str, cache_content: bool = False
+    ) -> dict[str, Any]:
         page_number = int(page_image.get("page", 0) or 0)
+        # The page comes first, so every rule evaluated on it shares the prefix up to the image.
+        image_block: dict[str, Any] = {"type": "image", "source": _build_image_source(page_image["image_url"])}
+        if cache_content:
+            image_block["cache_control"] = _CACHE
         messages: list[dict[str, Any]] = [
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "Evaluate the following vision rule against the rendered PDF page image.\n"
-                            f"{compact_rule_payload(rule)}\n"
-                            f"{build_vector_data_text(page_image)}"
-                            "RENDERED PDF PAGE:\n"
-                            f"PDF page {page_number}\n"
-                        ),
-                    },
-                    {
-                        "type": "image",
-                        "source": _build_image_source(page_image["image_url"]),
-                    },
+                    {"type": "text", "text": f"RENDERED PDF PAGE:\nPDF page {page_number}\n"},
+                    image_block,
+                    {"type": "text", "text": vision_rule_prompt(page_image, rule)},
                 ],
             }
         ]
 
         try:
-            return self._call_claude_with_retry(messages, system_prompt, rule_id=rule.get("id"))
+            return self._call_claude_with_retry(
+                messages, system_prompt, rule_id=rule.get("id"), cache_system=cache_content
+            )
         except Exception as exc:
             return {
                 "rule_id": rule.get("id", ""),

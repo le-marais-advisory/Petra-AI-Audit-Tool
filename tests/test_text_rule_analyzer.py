@@ -34,7 +34,7 @@ class StubTextProvider(TextAnalysisProvider):
         self._in_flight = 0
         self._lock = threading.Lock()
 
-    def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str) -> dict[str, Any]:
+    def evaluate_rule(self, document_content: str, rule: dict, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
         rule_id = rule.get("id", "")
         with self._lock:
             self._in_flight += 1
