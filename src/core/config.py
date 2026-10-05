@@ -92,6 +92,14 @@ class Settings(BaseSettings):
     # 4096 truncated 6 calls and 8192 truncated 3; 24000 truncated none.
     # This is a ceiling the model cannot see, not a target, so headroom costs nothing.
     CLAUDE_TEXT_MAX_TOKENS: int = 24000
+    # Role assignment and workbook layout mapping (streamed). The widest ITD sheet seen so
+    # far (FTV V, ~32 event blocks) used 20.3k output tokens at medium effort.
+    CLAUDE_STRUCTURED_MAX_TOKENS: int = 64000
+    # Reasoning effort for layout mapping. At the model default (high) the FTV V ITD sheet
+    # thought past 24k tokens without answering; medium mapped it correctly; low finished
+    # fast but mis-mapped the block headers. On a truncated answer the mapper retries one
+    # level lower. Empty means the model default.
+    LAYOUT_MAPPING_EFFORT: Literal["low", "medium", "high", ""] = "medium"
     CLAUDE_VISION_MAX_TOKENS: int = 1600
 
     # Overrides pipeline.concurrent_requests from app.yaml. config/ is baked into the

@@ -69,7 +69,12 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         return self._call_openai_with_retry(messages)
 
     def complete_structured(
-        self, system_prompt: str, user_content: str, json_schema: dict[str, Any], name: str = "result"
+        self,
+        system_prompt: str,
+        user_content: str,
+        json_schema: dict[str, Any],
+        name: str = "result",
+        effort: str | None = None,  # not mapped: reasoning_effort is rejected by non-reasoning models
     ) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
         if system_prompt:

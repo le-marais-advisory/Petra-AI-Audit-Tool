@@ -8,6 +8,7 @@ import httpx
 from anthropic import Anthropic
 
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, build_vector_data_text, compact_rule_payload
+from src.providers.errors import claude_response_text
 from src.providers.vision.base import VisionProvider
 
 
@@ -22,17 +23,6 @@ def get_global_semaphore(max_concurrent: int = 10) -> threading.Semaphore:
         if _GLOBAL_ANTHROPIC_SEMAPHORE is None:
             _GLOBAL_ANTHROPIC_SEMAPHORE = threading.Semaphore(max_concurrent)
     return _GLOBAL_ANTHROPIC_SEMAPHORE
-
-
-def _extract_text_content(content_blocks: list[Any]) -> str:
-    parts = [
-        block.text.strip()
-        for block in content_blocks
-        if getattr(block, "type", None) == "text" and getattr(block, "text", "").strip()
-    ]
-    if parts:
-        return "\n".join(parts)
-    raise ValueError("Claude returned no structured text content.")
 
 
 def _build_image_source(image_url: str) -> dict[str, str]:
@@ -94,7 +84,7 @@ class ClaudeVisionProvider(VisionProvider):
 
         with self._semaphore:
             response = self._client.messages.create(**request_kwargs)
-        return json.loads(_extract_text_content(response.content))
+        return json.loads(claude_response_text(response, self._max_tokens, "CLAUDE_VISION_MAX_TOKENS"))
 
     def evaluate_rule(self, page_image: dict[str, Any], rule: dict, system_prompt: str) -> dict[str, Any]:
         page_number = int(page_image.get("page", 0) or 0)

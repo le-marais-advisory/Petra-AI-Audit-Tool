@@ -25,6 +25,7 @@ def build_text_provider(settings: Settings) -> TextAnalysisProvider:
             model_id=settings.CLAUDE_TEXT_MODEL,
             temperature=settings.CLAUDE_TEXT_TEMPERATURE,
             max_tokens=settings.CLAUDE_TEXT_MAX_TOKENS,
+            structured_max_tokens=settings.CLAUDE_STRUCTURED_MAX_TOKENS,
         )
 
     raise ValueError(f"Unsupported text provider: {settings.TEXT_PROVIDER}")

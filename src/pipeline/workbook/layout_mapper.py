@@ -2,7 +2,9 @@
 
 One structured-output call per relevant sheet. The result is checked with
 ``validate_layout``; on issues the mapper re-prompts once with the validator's
-findings. Accepted layouts are cached by (workbook SHA-256, sheet, role).
+findings. A truncated answer (the model spent its token budget reasoning) is
+retried one effort level lower and does not use up a validation attempt.
+Accepted layouts are cached by (workbook SHA-256, sheet, role).
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from src.pipeline.workbook.layout import from_llm_output, layout_json_schema, pa
 from src.pipeline.workbook.layout_validator import LayoutIssue, validate_layout
 from src.pipeline.workbook.loader import WorkbookModel
 from src.pipeline.workbook.skeleton import build_skeleton
+from src.providers.errors import TruncatedResponseError
 
 logger = logging.getLogger("petra.pipeline")
 
@@ -27,6 +30,10 @@ _PROMPT_PATH = Path(__file__).resolve().parents[3] / "config" / "workbook_layout
 _CACHE: dict[tuple[str, str, str], BaseModel] = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_LIMIT = 256
+
+
+# None is the model default, which is high on the current Claude models.
+_LOWER_EFFORT: dict[str | None, str | None] = {None: "medium", "high": "medium", "medium": "low", "low": None}
 
 
 def _system_prompt() -> str:
@@ -75,6 +82,7 @@ def map_sheet_layout(
     event_type: str | None = None,
     max_attempts: int = 2,
     use_cache: bool = True,
+    effort: str | None = None,
 ) -> tuple[BaseModel | None, list[LayoutIssue]]:
     key = (_workbook_hash(model), sheet_name, role)
     if use_cache:
@@ -82,19 +90,35 @@ def map_sheet_layout(
             cached = _CACHE.get(key)
         if cached is not None:
             return cached, []
-    if provider is None:
+    if provider is None or effort is None:
         from src.core.config import get_settings
-        from src.providers.text.factory import build_text_provider
 
-        provider = build_text_provider(get_settings())
+        settings = get_settings()
+        if effort is None:
+            effort = settings.LAYOUT_MAPPING_EFFORT or None
+        if provider is None:
+            from src.providers.text.factory import build_text_provider
+
+            provider = build_text_provider(settings)
 
     schema = layout_json_schema(role)
     system = _system_prompt()
     first = _user_prompt(model, sheet_name, role, event_type)
     prompt = first
     issues: list[LayoutIssue] = []
-    for attempt in range(1, max_attempts + 1):
-        raw = provider.complete_structured(system, prompt, schema, name=f"{role}_layout")
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            raw = provider.complete_structured(system, prompt, schema, name=f"{role}_layout", effort=effort)
+        except TruncatedResponseError as exc:
+            lower = _LOWER_EFFORT.get(effort)
+            if lower is None:
+                raise
+            logger.warning("Layout for %s truncated at effort=%s, retrying at %s: %s",
+                           sheet_name, effort or "default", lower, exc)
+            effort = lower
+            continue
+        attempt += 1
         raw = {**_drop_none(from_llm_output(raw)), "role": role, "sheet": sheet_name}
         try:
             layout = parse_layout(raw)
