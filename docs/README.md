@@ -11,7 +11,8 @@ Petra Vision is an AI-powered document validation and audit tool. It validates P
 - [Rule System](rules.md) - Validation rules, schema, and customization
 - [Validation Pipeline](pipeline.md) - PDF extraction, text analysis, vision analysis
 - [Document Types](document-types.md) - Choosing a document type; the capital-event workbook pipeline
-- [AI Providers](providers.md) - OpenAI and Claude provider configuration
+- [AI Models](providers.md) - Claude models, effort levels, per-rule overrides
+- [Comparing Models](model-comparison.md) - Measure a model or effort change before making it
 - [Frontend](frontend.md) - React UI components and workflows
 - [Deployment](deployment.md) - Docker, Azure Container Apps, infrastructure
 - [Configuration](configuration.md) - Environment variables and app.yaml reference
@@ -23,7 +24,8 @@ Petra Vision is an AI-powered document validation and audit tool. It validates P
 | Run locally for the first time | [Getting Started](getting-started.md) |
 | Add or modify a validation rule | [Rule System](rules.md) |
 | Validate a capital-event workbook | [Document Types](document-types.md) |
-| Switch AI providers (OpenAI/Claude) | [AI Providers](providers.md) |
+| Change the model or effort for a rule or a call type | [AI Models](providers.md) |
+| Compare models or effort levels on labelled documents | [Comparing Models](model-comparison.md) |
 | Deploy to Azure | [Deployment](deployment.md) |
 | Understand the API | [API Reference](api-reference.md) |
 | Configure authentication | [Authentication](authentication.md) |

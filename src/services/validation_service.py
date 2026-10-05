@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from src.core.config import get_settings, load_app_yaml
+from src.core.config import AppYaml, Settings, get_settings, load_app_yaml
 from src.document_types.registry import get_document_type, validate_options
 from src.pipeline.orchestrator import ValidationPipeline
+from src.providers.router import LlmRouter
 from src.services.rule_service import RuleService
 
 
 class ValidationService:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-        self.app_config = load_app_yaml()
+    def __init__(self, settings: Settings | None = None, app_config: AppYaml | None = None,
+                 router: LlmRouter | None = None) -> None:
+        """``router`` decides each LLM call's model and effort; the comparison tool passes one per variant."""
+        self.settings = settings or get_settings()
+        self.app_config = app_config or load_app_yaml()
+        self.router = router or LlmRouter(self.settings, self.app_config)
         self.rule_service = RuleService()
-        self.pipeline = ValidationPipeline(app_config=self.app_config, settings=self.settings)
+        self.pipeline = ValidationPipeline(app_config=self.app_config, settings=self.settings, router=self.router)
 
     def load_rules_for(
         self,
@@ -47,6 +51,6 @@ class ValidationService:
         selected_rules = self.load_rules_for(document_type, options, rules_json_path, rules_json_str)
         if document_type == "financial_statements":
             return self.pipeline.run(pdf_path=file_path, source_filename=source_filename, rules=selected_rules)
-        pipeline = spec.pipeline_factory()
+        pipeline = spec.pipeline_factory(router=self.router)
         return pipeline.run(file_path, rules=selected_rules, options=options, source_filename=source_filename,
                             prior_file_path=prior_file_path, prior_source_filename=prior_source_filename)

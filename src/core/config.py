@@ -18,15 +18,10 @@ class PdfConfig(BaseModel):
 
 
 class VisionConfig(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
+    # The vision model and its budget are Settings (CLAUDE_VISION_MODEL, CLAUDE_VISION_MAX_TOKENS).
+    model_config = ConfigDict(extra="ignore")
 
-    provider: str = "openai"
-    model_id: str = "gpt-5.4"
     max_images_per_request: int = 10
-    temperature: float = 0.1
-    seed: int = 42
-    max_completion_tokens: int = 1600
-    image_detail: str = "high"
     concurrent_requests: int = 12
     global_max_concurrent: int = 24
 
@@ -71,23 +66,16 @@ class Settings(BaseSettings):
     ENABLE_UI: bool = False
     AUTH_ENABLED: bool = True
 
-    OPENAI_API_KEY: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("OPENAI_API_KEY", "OPEN_AI_API_KEY"),
-    )
     ANTHROPIC_API_KEY: str | None = Field(
         default=None,
         validation_alias=AliasChoices("ANTHROPIC_API_KEY", "ANTHROPIC_AI_API_KEY", "ANTROPIC_AI_API_KEY"),
     )
     COHERE_API_KEY: str | None = None
-    TEXT_PROVIDER: Literal["openai", "claude"] = "openai"
-    VISION_PROVIDER: Literal["openai", "claude"] = "openai"
-    OPENAI_TEXT_MODEL: str = "gpt-5.4-mini"
-    OPENAI_VISION_MODEL: str | None = None
-    OPENAI_TEXT_TEMPERATURE: float | None = None
-    OPENAI_TEXT_MAX_COMPLETION_TOKENS: int | None = None
-    CLAUDE_TEXT_MODEL: str = "claude-sonnet-5"
-    CLAUDE_VISION_MODEL: str | None = None
+    # Default models; a rule or a comparison variant can override them (see config/models.yaml).
+    # The text model also runs workbook hybrid rules, role assignment and layout mapping.
+    CLAUDE_TEXT_MODEL: str = "claude-sonnet-5-5"
+    CLAUDE_VISION_MODEL: str | None = None  # falls back to CLAUDE_TEXT_MODEL
+    # Only sent to models that accept a non-default temperature (Sonnet 5 and 5.5 do not).
     CLAUDE_TEXT_TEMPERATURE: float | None = None
     CLAUDE_VISION_TEMPERATURE: float | None = None
     # Covers reasoning as well as the response on models that think by default, so too
@@ -104,8 +92,15 @@ class Settings(BaseSettings):
     # thought past 24k tokens without answering; medium mapped it correctly; low finished
     # fast but mis-mapped the block headers. On a truncated answer the mapper retries one
     # level lower. Empty means the model default.
-    LAYOUT_MAPPING_EFFORT: Literal["low", "medium", "high", ""] = "medium"
-    CLAUDE_VISION_MAX_TOKENS: int = 1600
+    LAYOUT_MAPPING_EFFORT: Literal["low", "medium", "high", "xhigh", "max", ""] = "medium"
+    # Default effort for rule calls and role assignment. Empty means the model default (high on
+    # Sonnet 5.5). A rule's own "effort" field overrides these.
+    TEXT_RULE_EFFORT: Literal["low", "medium", "high", "xhigh", "max", ""] = ""  # PDF text and workbook hybrid rules
+    VISION_RULE_EFFORT: Literal["low", "medium", "high", "xhigh", "max", ""] = ""
+    ROLE_ASSIGNMENT_EFFORT: Literal["low", "medium", "high", "xhigh", "max", ""] = ""
+    # Covers thinking as well as the answer, like CLAUDE_TEXT_MAX_TOKENS. 1600 left no room to
+    # think at the default effort; a ceiling the model cannot see, so headroom costs nothing.
+    CLAUDE_VISION_MAX_TOKENS: int = 16000
 
     # Overrides pipeline.concurrent_requests from app.yaml. config/ is baked into the
     # container image, so without this the most tuning-prone number in the pipeline
@@ -130,20 +125,6 @@ class Settings(BaseSettings):
     AZURE_ALLOWED_CLIENT_APP_IDS: list[str] = Field(default_factory=list)
     AZURE_AUTHORITY_HOST: str = "https://login.microsoftonline.com"
     AZURE_ACCEPTED_TOKEN_VERSIONS: list[Literal["1.0", "2.0"]] = Field(default_factory=lambda: ["1.0", "2.0"])
-
-    @field_validator("TEXT_PROVIDER", "VISION_PROVIDER", mode="before")
-    @classmethod
-    def normalize_provider(cls, value: str) -> str:
-        normalized = str(value or "openai").strip().lower().replace("_", " ").replace("-", " ")
-        provider_aliases = {
-            "openai": "openai",
-            "open ai": "openai",
-            "claude": "claude",
-            "anthropic": "claude",
-        }
-        if normalized not in provider_aliases:
-            raise ValueError(f"Unsupported provider '{value}'. Expected one of: openai, claude.")
-        return provider_aliases[normalized]
 
     @field_validator("API_ALLOWED_ORIGINS", "AZURE_ALLOWED_CLIENT_APP_IDS", "AZURE_ACCEPTED_TOKEN_VERSIONS", mode="before")
     @classmethod

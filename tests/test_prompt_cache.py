@@ -15,9 +15,7 @@ from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed
 from src.pipeline.text_rule_analyzer import TextRuleAnalyzer
 from src.providers.text.base import TextAnalysisProvider
 from src.providers.text.claude import ClaudeTextAnalysisProvider
-from src.providers.text.openai import OpenAITextAnalysisProvider
 from src.providers.vision.claude import ClaudeVisionProvider
-from src.providers.vision.openai import OpenAIVisionProvider
 
 RESULT_JSON = ('{"rule_id": "R1", "rule_name": "n", "verdict": "pass", "summary": "", "reasoning": "", '
                '"findings": [], "confidence": "high", "citations": []}')
@@ -126,35 +124,6 @@ def test_claude_vision_puts_the_image_first_and_marks_it_only_when_asked():
         assert ("cache_control" in image) is cache
 
 
-def test_openai_providers_use_the_same_order_without_markers():
-    sent: dict = {}
-
-    def chat_create(**kwargs):
-        sent.update(kwargs)
-        return NS(model="gpt", usage=None, choices=[NS(message=NS(parsed=NS(model_dump=lambda: {}), refusal=None))])
-
-    text = OpenAITextAnalysisProvider(api_key="k", model_id="gpt", temperature=None, max_completion_tokens=None)
-    text._client = NS(beta=NS(chat=NS(completions=NS(parse=chat_create))))
-    text.evaluate_rule("PAGE TEXT", RULE, "SYSTEM", rule_context="NOTE", cache_content=True,
-                       shared_context="LAYOUT")
-    user = sent["messages"][-1]["content"]
-    assert user.index("PAGE TEXT") < user.index("LAYOUT") < user.index("NOTE") < user.index("RULE NAME")
-
-    vision_sent: dict = {}
-
-    def responses_create(**kwargs):
-        vision_sent.update(kwargs)
-        return NS(model="gpt", usage=None, output_text=RESULT_JSON)
-
-    vision = OpenAIVisionProvider(api_key="k", model_id="gpt", temperature=0.0, seed=None, max_completion_tokens=100,
-                                  image_detail="high", max_concurrent=2)
-    vision._client = NS(responses=NS(create=responses_create))
-    vision.evaluate_rule({"page": 1, "image_url": "data:image/png;base64,AAAA"}, RULE, "SYSTEM", cache_content=True)
-    types = [part["type"] for part in vision_sent["input"][-1]["content"]]
-    assert types == ["input_text", "input_image", "input_text"]
-    assert "cache_control" not in str(vision_sent)
-
-
 # -- text analyzer --------------------------------------------------------------------------------
 
 class RecordingProvider(TextAnalysisProvider):
@@ -163,11 +132,11 @@ class RecordingProvider(TextAnalysisProvider):
         self._lock = threading.Lock()
 
     def evaluate_rule(self, document_content, rule, system_prompt, rule_context="", cache_content=False,
-                      shared_context="", cache_shared_context=False):
+                      shared_context="", cache_shared_context=False, effort=None):
         with self._lock:
             self.requests.append({"rule": rule["id"], "content": document_content, "context": rule_context,
                                   "cache": cache_content, "layout": shared_context,
-                                  "cache_layout": cache_shared_context})
+                                  "cache_layout": cache_shared_context, "effort": effort})
         return {"verdict": "pass", "summary": "", "reasoning": "", "findings": [], "citations": [],
                 "confidence": "high"}
 

@@ -38,7 +38,7 @@ class DocumentTypeSpec:
     description: str
     accepted_formats: list[str]
     rule_files: list[str]
-    pipeline_factory: Callable[[], Any]
+    pipeline_factory: Callable[..., Any]  # (router: LlmRouter | None = None) -> pipeline
     options_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "required": []})
     config: dict[str, Any] = field(default_factory=dict)
     # A second upload the type needs (e.g. the prior event's workbook): label, accepted
@@ -56,17 +56,17 @@ class DocumentTypeSpec:
         }
 
 
-def _pdf_pipeline_factory():
+def _pdf_pipeline_factory(router=None):
     from src.core.config import get_settings, load_app_yaml
     from src.pipeline.orchestrator import ValidationPipeline
 
-    return ValidationPipeline(app_config=load_app_yaml(), settings=get_settings())
+    return ValidationPipeline(app_config=load_app_yaml(), settings=get_settings(), router=router)
 
 
-def _workbook_pipeline_factory():
+def _workbook_pipeline_factory(router=None):
     from src.pipeline.workbook.pipeline import WorkbookPipeline
 
-    return WorkbookPipeline()
+    return WorkbookPipeline(router=router)
 
 
 def _load_yaml(name: str) -> dict[str, Any]:

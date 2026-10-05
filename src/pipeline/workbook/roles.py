@@ -150,7 +150,7 @@ def _role_schema(sheet_names: list[str]) -> dict:
     }
 
 
-def llm_role_assigner(provider=None) -> RoleAssigner:
+def llm_role_assigner(provider=None, effort: str | None = None) -> RoleAssigner:
     def assign(model: WorkbookModel, inventory: list[SheetInventoryEntry], proposed: dict[str, str]) -> dict[str, str]:
         from src.core.config import get_settings
         from src.providers.text.factory import build_text_provider
@@ -165,7 +165,9 @@ def llm_role_assigner(provider=None) -> RoleAssigner:
             )
         user = "Confirm or correct the proposed role for every sheet.\n\n" + "\n".join(lines)
         names = [e.name for e in inventory]
-        result = active.complete_structured(_ROLE_SYSTEM_PROMPT, user, _role_schema(names), name="sheet_roles")
+        extra = {"effort": effort} if effort else {}
+        result = active.complete_structured(_ROLE_SYSTEM_PROMPT, user, _role_schema(names), name="sheet_roles",
+                                            **extra)
         assigned = {item["sheet"]: item["role"] for item in result.get("roles", []) if item.get("sheet") in names}
         merged = {name: assigned.get(name, proposed.get(name, "other")) for name in names}
         for entry in inventory:

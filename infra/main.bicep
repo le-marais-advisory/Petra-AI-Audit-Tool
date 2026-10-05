@@ -38,21 +38,16 @@ param localFrontendOrigin string = 'http://localhost:5173'
 param localWorkdir string = '/tmp/petra-data'
 param apiAllowedOrigins string = ''
 
-param textProvider string = 'openai'
-param visionProvider string = 'openai'
-param openAiTextModel string = ''
-param openAiVisionModel string = ''
-param openAiTextTemperature string = ''
-param openAiTextMaxCompletionTokens string = ''
 param claudeTextModel string = ''
 param claudeVisionModel string = ''
 param claudeTextTemperature string = ''
 param claudeVisionTemperature string = ''
 param claudeTextMaxTokens string = ''
 param claudeVisionMaxTokens string = ''
-
-@secure()
-param openAiApiKey string = ''
+// Effort defaults (low | medium | high | xhigh | max); empty keeps the app default.
+param textRuleEffort string = ''
+param visionRuleEffort string = ''
+param layoutMappingEffort string = ''
 
 @secure()
 param anthropicApiKey string = ''
@@ -73,12 +68,6 @@ var apiAllowedOriginsValue = empty(apiAllowedOrigins)
   : apiAllowedOrigins
 
 var backendSecrets = concat(
-  !empty(openAiApiKey) ? [
-    {
-      name: 'openai-api-key'
-      value: openAiApiKey
-    }
-  ] : [],
   !empty(anthropicApiKey) ? [
     {
       name: 'anthropic-api-key'
@@ -114,14 +103,6 @@ var backendEnv = concat(
       value: apiAllowedOriginsValue
     }
     {
-      name: 'TEXT_PROVIDER'
-      value: textProvider
-    }
-    {
-      name: 'VISION_PROVIDER'
-      value: visionProvider
-    }
-    {
       name: 'AZURE_TENANT_ID'
       value: azureTenantId
     }
@@ -146,40 +127,10 @@ var backendEnv = concat(
       value: '1.0,2.0'
     }
   ],
-  !empty(openAiApiKey) ? [
-    {
-      name: 'OPENAI_API_KEY'
-      secretRef: 'openai-api-key'
-    }
-  ] : [],
   !empty(anthropicApiKey) ? [
     {
       name: 'ANTHROPIC_API_KEY'
       secretRef: 'anthropic-api-key'
-    }
-  ] : [],
-  !empty(openAiTextModel) ? [
-    {
-      name: 'OPENAI_TEXT_MODEL'
-      value: openAiTextModel
-    }
-  ] : [],
-  !empty(openAiTextTemperature) ? [
-    {
-      name: 'OPENAI_TEXT_TEMPERATURE'
-      value: openAiTextTemperature
-    }
-  ] : [],
-  !empty(openAiTextMaxCompletionTokens) ? [
-    {
-      name: 'OPENAI_TEXT_MAX_COMPLETION_TOKENS'
-      value: openAiTextMaxCompletionTokens
-    }
-  ] : [],
-  !empty(openAiVisionModel) ? [
-    {
-      name: 'OPENAI_VISION_MODEL'
-      value: openAiVisionModel
     }
   ] : [],
   !empty(claudeTextModel) ? [
@@ -216,6 +167,24 @@ var backendEnv = concat(
     {
       name: 'CLAUDE_VISION_MAX_TOKENS'
       value: claudeVisionMaxTokens
+    }
+  ] : [],
+  !empty(textRuleEffort) ? [
+    {
+      name: 'TEXT_RULE_EFFORT'
+      value: textRuleEffort
+    }
+  ] : [],
+  !empty(visionRuleEffort) ? [
+    {
+      name: 'VISION_RULE_EFFORT'
+      value: visionRuleEffort
+    }
+  ] : [],
+  !empty(layoutMappingEffort) ? [
+    {
+      name: 'LAYOUT_MAPPING_EFFORT'
+      value: layoutMappingEffort
     }
   ] : []
 )

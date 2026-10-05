@@ -5,7 +5,7 @@
 - **Python 3.11+** (backend)
 - **Node.js 18+** and **npm** (frontend)
 - **Docker** and **Docker Compose** (recommended for local dev)
-- An **OpenAI** or **Anthropic** API key (for AI-powered analysis)
+- An **Anthropic** API key (for AI-powered analysis)
 
 ## Quick Start with Docker Compose
 
@@ -26,9 +26,7 @@ The fastest way to run the full stack locally:
    Edit `.env` and set at minimum:
 
    ```env
-   OPENAI_API_KEY=sk-...        # or ANTHROPIC_API_KEY=sk-ant-...
-   TEXT_PROVIDER=openai          # or claude
-   VISION_PROVIDER=openai        # or claude
+   ANTHROPIC_API_KEY=sk-ant-...
    AUTH_ENABLED=false            # disable auth for local dev
    ```
 
@@ -133,7 +131,7 @@ petra-data-file/
     api/               # API routers, middleware, dependencies
     core/              # Configuration, auth, logging
     pipeline/          # PDF extraction and analysis pipeline
-    providers/         # AI provider implementations (OpenAI, Claude)
+    providers/         # Claude providers, model registry and per-call routing
     schemas/           # Pydantic request/response models
     services/          # Business logic and job management
   frontend/            # React/TypeScript frontend

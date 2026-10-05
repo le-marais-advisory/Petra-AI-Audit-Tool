@@ -60,6 +60,8 @@ class RuleAssessmentSchema(BaseModel):
         default=None,
         description="Total LLM execution time attributed to this rule, in milliseconds.",
     )
+    llm_model: Optional[str] = Field(default=None, description="Model the rule's LLM calls were sent to.")
+    llm_effort: Optional[str] = Field(default=None, description="Effort sent with them; None is the model default.")
 
 
 class PageRuleAssessmentSchema(BaseModel):
@@ -102,11 +104,12 @@ class LlmUsageRowSchema(BaseModel):
     input_tokens: int = Field(default=0, description="All prompt tokens billed, cached or not.")
     cache_read_tokens: int = Field(default=0, description="Prompt tokens served from the cache (part of input_tokens).")
     cache_creation_tokens: int = Field(
-        default=0, description="Prompt tokens written to the cache (part of input_tokens; Anthropic only)."
+        default=0, description="Prompt tokens written to the cache (part of input_tokens)."
     )
-    output_tokens: int = Field(default=0, description="All generated tokens, reasoning included.")
-    reasoning_tokens: int = Field(
-        default=0, description="Reasoning share of output_tokens (OpenAI only; Claude does not report it separately)."
+    output_tokens: int = Field(default=0, description="All generated tokens, thinking included.")
+    reasoning_tokens: int = Field(default=0, description="Thinking share of output_tokens.")
+    cost_usd: Optional[float] = Field(
+        default=None, description="Priced from config/models.yaml; None when a call's model is not listed there."
     )
 
 

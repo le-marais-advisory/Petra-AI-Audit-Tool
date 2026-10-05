@@ -125,20 +125,12 @@ AZURE_REQUIRED_SCOPE=access_as_user
 AZURE_ALLOWED_CLIENT_APP_IDS=<your-frontend-client-id>
 ```
 
-**AI Provider (at least one):**
-```env
-OPENAI_API_KEY=sk-...
-TEXT_PROVIDER=openai
-VISION_PROVIDER=openai
-```
-
-or
-
+**Claude (required):**
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
-TEXT_PROVIDER=claude
-VISION_PROVIDER=claude
 ```
+
+Every LLM call goes to Claude; OpenAI is no longer supported. An Azure environment provisioned before that change defaulted to OpenAI: set `ANTHROPIC_API_KEY` (`azd env set-secret ANTHROPIC_API_KEY`) before the next `azd provision` / `azd up`, or every rule is skipped. Leftover `TEXT_PROVIDER`, `VISION_PROVIDER` and `OPENAI_*` values are ignored. Default models and effort levels are optional settings; see [AI Models](providers.md).
 
 **Application:**
 ```env

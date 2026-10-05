@@ -1,0 +1,62 @@
+# Claude models the pipeline may call, with what each accepts and what it costs.
+#
+# This is the allowlist for model overrides: a rule (rules/*.json) or a comparison variant
+# (evals/llm_variants.yaml) can only name a model listed here. It is also the price list for
+# the per-run cost in llm_usage and in the comparison report.
+#
+# Prices are USD per million tokens, from https://platform.claude.com/docs/en/about-claude/pricing
+# (Claude API, global routing). cache_write_5m is the 5-minute TTL the providers use.
+#
+#   effort             accepts output_config.effort (low | medium | high | xhigh | max)
+#   sampling           accepts a non-default temperature (Sonnet 5.5 returns a 400 on one)
+#   refusal_fallback   accepts server-side refusal fallbacks (fallbacks: "default")
+#   max_output         output-token ceiling; larger max_tokens values are clamped to it
+pricing_checked: 2026-10-05
+
+models:
+  claude-sonnet-5-5:
+    input: 2.00
+    output: 10.00
+    cache_read: 0.20
+    cache_write_5m: 2.50
+    effort: true
+    sampling: false
+    refusal_fallback: true
+    max_output: 128000
+  claude-sonnet-5:
+    input: 2.00
+    output: 10.00
+    cache_read: 0.20
+    cache_write_5m: 2.50
+    effort: true
+    sampling: false
+    refusal_fallback: false
+    max_output: 128000
+  claude-opus-5-5:
+    input: 4.00
+    output: 20.00
+    cache_read: 0.20
+    cache_write_5m: 5.00
+    effort: true
+    sampling: false
+    refusal_fallback: true
+    max_output: 128000
+  claude-haiku-4-5:
+    input: 1.00
+    output: 5.00
+    cache_read: 0.10
+    cache_write_5m: 1.25
+    effort: false
+    sampling: true
+    refusal_fallback: false
+    max_output: 64000
+  # A refusal-fallback target: priced so a served-by-fallback call still has a cost.
+  claude-opus-4-8:
+    input: 5.00
+    output: 25.00
+    cache_read: 0.50
+    cache_write_5m: 6.25
+    effort: true
+    sampling: false
+    refusal_fallback: false
+    max_output: 128000

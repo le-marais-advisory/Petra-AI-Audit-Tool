@@ -35,24 +35,6 @@
     "apiAllowedOrigins": {
       "value": "${API_ALLOWED_ORIGINS}"
     },
-    "textProvider": {
-      "value": "${TEXT_PROVIDER}"
-    },
-    "visionProvider": {
-      "value": "${VISION_PROVIDER}"
-    },
-    "openAiTextModel": {
-      "value": "${OPENAI_TEXT_MODEL}"
-    },
-    "openAiVisionModel": {
-      "value": "${OPENAI_VISION_MODEL}"
-    },
-    "openAiTextTemperature": {
-      "value": "${OPENAI_TEXT_TEMPERATURE}"
-    },
-    "openAiTextMaxCompletionTokens": {
-      "value": "${OPENAI_TEXT_MAX_COMPLETION_TOKENS}"
-    },
     "claudeTextModel": {
       "value": "${CLAUDE_TEXT_MODEL}"
     },
@@ -71,8 +53,14 @@
     "claudeVisionMaxTokens": {
       "value": "${CLAUDE_VISION_MAX_TOKENS}"
     },
-    "openAiApiKey": {
-      "value": "${OPENAI_API_KEY}"
+    "textRuleEffort": {
+      "value": "${TEXT_RULE_EFFORT}"
+    },
+    "visionRuleEffort": {
+      "value": "${VISION_RULE_EFFORT}"
+    },
+    "layoutMappingEffort": {
+      "value": "${LAYOUT_MAPPING_EFFORT}"
     },
     "anthropicApiKey": {
       "value": "${ANTHROPIC_API_KEY}"

@@ -22,7 +22,7 @@ Usage:
 
 Environment:
     ANTHROPIC_API_KEY     Required (unless --skip-llm).
-    CLAUDE_TEXT_MODEL     Optional. Defaults to claude-sonnet-5.
+    CLAUDE_TEXT_MODEL     Optional. Defaults to claude-sonnet-5-5.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 FAIL_VERDICTS = {"fail", "needs_review"}
 DEFAULT_DIR = Path.home() / "Desktop" / "feedback_audit_tool"
 DEFAULT_INPUT = DEFAULT_DIR / "feedback.json"
@@ -269,13 +269,18 @@ def _ask_claude(prompt: str, model: str) -> str:
     if not api_key:
         raise typer.BadParameter("ANTHROPIC_API_KEY is not set in the environment.")
     client = Anthropic(api_key=api_key)
+    # Thinking counts against max_tokens, so a small budget can be spent before any report text is
+    # written. 16000 is a ceiling, not a target.
     response = client.messages.create(
         model=model,
-        max_tokens=2048,
+        max_tokens=16000,
         messages=[{"role": "user", "content": prompt}],
     )
     parts = [block.text for block in response.content if getattr(block, "type", None) == "text"]
-    return "\n".join(parts).strip()
+    text = "\n".join(parts).strip()
+    if not text:
+        raise RuntimeError(f"Claude returned no report text (stop_reason={response.stop_reason}).")
+    return text
 
 
 # ---------------------------------------------------------------------------

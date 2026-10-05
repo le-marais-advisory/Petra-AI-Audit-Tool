@@ -9,7 +9,8 @@ from anthropic import Anthropic
 
 from src.core.llm_usage import record_anthropic_usage
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, vision_rule_prompt
-from src.providers.errors import claude_response_text
+from src.providers.errors import claude_response_text, served_by_fallback
+from src.providers.text.claude import REFUSAL_FALLBACK_BETA, salted_system_prompt
 from src.providers.vision.base import VisionProvider
 
 
@@ -54,18 +55,26 @@ class ClaudeVisionProvider(VisionProvider):
         temperature: float | None,
         max_tokens: int,
         max_concurrent: int,
+        refusal_fallback: bool = False,
+        cache_salt: str = "",
     ) -> None:
         # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
         # 2 retries, and timeouts are themselves retried, so an unresponsive call could
-        # occupy a worker for ~30 minutes. 180s rather than the text providers' 300s:
-        # vision is capped at CLAUDE_VISION_MAX_TOKENS (1600), so it cannot legitimately
-        # run as long as a reasoning-heavy text call. The SDK's own 429/5xx retries
+        # occupy a worker for ~30 minutes. 180s rather than the text providers' 300s: a
+        # vision call reads one page and answers one rule, so it does not legitimately run
+        # as long as a whole-document text call. The SDK's own 429/5xx retries
         # (which honour retry-after) are kept as the rate-limit defence.
         self._client = Anthropic(api_key=api_key, timeout=httpx.Timeout(180.0, connect=5.0), max_retries=2)
         self._model = model_id
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._semaphore = get_global_semaphore(max_concurrent)
+        self._refusal_fallback = refusal_fallback
+        self._cache_salt = cache_salt
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     def _call_claude_with_retry(
         self,
@@ -73,18 +82,18 @@ class ClaudeVisionProvider(VisionProvider):
         system_prompt: str,
         rule_id: str | None = None,
         cache_system: bool = False,
+        effort: str | None = None,
     ) -> dict[str, Any]:
+        output_config: dict[str, Any] = {"format": {"type": "json_schema", "schema": RULE_RESULT_JSON_SCHEMA}}
+        if effort:
+            output_config["effort"] = effort
         request_kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
             "messages": messages,
-            "output_config": {
-                "format": {
-                    "type": "json_schema",
-                    "schema": RULE_RESULT_JSON_SCHEMA,
-                }
-            },
+            "output_config": output_config,
         }
+        system_prompt = salted_system_prompt(system_prompt, self._cache_salt)
         if system_prompt.strip():
             system_block: dict[str, Any] = {"type": "text", "text": system_prompt}
             if cache_system:
@@ -93,13 +102,27 @@ class ClaudeVisionProvider(VisionProvider):
         if self._temperature is not None:
             request_kwargs["temperature"] = self._temperature
 
+        messages_api = self._client.messages
+        if self._refusal_fallback:
+            messages_api = self._client.beta.messages
+            request_kwargs["betas"] = [REFUSAL_FALLBACK_BETA]
+            request_kwargs["fallbacks"] = "default"
         with self._semaphore:
-            response = self._client.messages.create(**request_kwargs)
-        record_anthropic_usage(response, self._model, "Vision rules", rule_id)
-        return json.loads(claude_response_text(response, self._max_tokens, "CLAUDE_VISION_MAX_TOKENS"))
+            response = messages_api.create(**request_kwargs)
+        record_anthropic_usage(response, self._model, "Vision rules", rule_id, effort=effort)
+        result = json.loads(claude_response_text(response, self._max_tokens, "CLAUDE_VISION_MAX_TOKENS"))
+        served_by = served_by_fallback(response)
+        if served_by:
+            result["served_by"] = served_by
+        return result
 
     def evaluate_rule(
-        self, page_image: dict[str, Any], rule: dict, system_prompt: str, cache_content: bool = False
+        self,
+        page_image: dict[str, Any],
+        rule: dict,
+        system_prompt: str,
+        cache_content: bool = False,
+        effort: str | None = None,
     ) -> dict[str, Any]:
         page_number = int(page_image.get("page", 0) or 0)
         # The page comes first, so every rule evaluated on it shares the prefix up to the image.
@@ -119,7 +142,7 @@ class ClaudeVisionProvider(VisionProvider):
 
         try:
             return self._call_claude_with_retry(
-                messages, system_prompt, rule_id=rule.get("id"), cache_system=cache_content
+                messages, system_prompt, rule_id=rule.get("id"), cache_system=cache_content, effort=effort
             )
         except Exception as exc:
             return {

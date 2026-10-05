@@ -1,37 +1,25 @@
 from __future__ import annotations
 
 from src.core.config import AppYaml, Settings
+from src.providers.models import get_model
 from src.providers.vision.base import VisionProvider
 from src.providers.vision.claude import ClaudeVisionProvider
-from src.providers.vision.openai import OpenAIVisionProvider
 
 
-def build_vision_provider(app_config: AppYaml, settings: Settings) -> VisionProvider:
-    if settings.VISION_PROVIDER == "openai":
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OpenAI API key is not configured. Vision analysis was skipped.")
-        return OpenAIVisionProvider(
-            api_key=settings.OPENAI_API_KEY,
-            model_id=settings.OPENAI_VISION_MODEL or app_config.vision.model_id,
-            temperature=app_config.vision.temperature,
-            seed=app_config.vision.seed,
-            max_completion_tokens=app_config.vision.max_completion_tokens,
-            image_detail=app_config.vision.image_detail,
-            max_concurrent=app_config.vision.global_max_concurrent,
-        )
-
-    if settings.VISION_PROVIDER == "claude":
-        if not settings.ANTHROPIC_API_KEY:
-            raise ValueError("Anthropic API key is not configured. Vision analysis was skipped.")
-        return ClaudeVisionProvider(
-            api_key=settings.ANTHROPIC_API_KEY,
-            model_id=settings.CLAUDE_VISION_MODEL or settings.CLAUDE_TEXT_MODEL,
-            # Only sent when explicitly configured — Claude Sonnet 5 rejects a
-            # non-default temperature with a 400, so don't inherit the OpenAI
-            # default from app.yaml.
-            temperature=settings.CLAUDE_VISION_TEMPERATURE,
-            max_tokens=settings.CLAUDE_VISION_MAX_TOKENS,
-            max_concurrent=app_config.vision.global_max_concurrent,
-        )
-
-    raise ValueError(f"Unsupported vision provider: {settings.VISION_PROVIDER}")
+def build_vision_provider(app_config: AppYaml, settings: Settings, model: str | None = None,
+                          cache_salt: str = "") -> VisionProvider:
+    """A Claude vision provider for ``model`` (default CLAUDE_VISION_MODEL, else CLAUDE_TEXT_MODEL), shaped
+    by what that model accepts, as in build_text_provider."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise ValueError("Anthropic API key is not configured. Vision analysis was skipped.")
+    model = model or settings.CLAUDE_VISION_MODEL or settings.CLAUDE_TEXT_MODEL
+    spec = get_model(model)
+    return ClaudeVisionProvider(
+        api_key=settings.ANTHROPIC_API_KEY,
+        model_id=model,
+        temperature=settings.CLAUDE_VISION_TEMPERATURE if spec is None or spec.sampling else None,
+        max_tokens=min(settings.CLAUDE_VISION_MAX_TOKENS, spec.max_output if spec else settings.CLAUDE_VISION_MAX_TOKENS),
+        max_concurrent=app_config.vision.global_max_concurrent,
+        refusal_fallback=bool(spec and spec.refusal_fallback),
+        cache_salt=cache_salt,
+    )

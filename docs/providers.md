@@ -1,188 +1,120 @@
-# AI Providers
+# AI Models
 
-Petra Vision supports two AI providers for document analysis: **OpenAI** and **Anthropic (Claude)**. Each provider can be configured independently for text analysis and vision analysis.
+Every LLM call goes to Anthropic's Claude. Each call has a model and an effort level. There is a default for each kind of call, and any rule can override both. To measure a change before making it, use the comparison tool ([Comparing models](model-comparison.md)).
 
-## Provider Architecture
+## Which model and effort a call uses
 
-The provider system uses an abstract base class pattern:
+Calls have one of five purposes:
 
+| Purpose | Calls | Default model | Default effort |
+|---|---|---|---|
+| `text_rule` | PDF text rules (page and broad scope) | `CLAUDE_TEXT_MODEL` | `TEXT_RULE_EFFORT` |
+| `vision_rule` | PDF vision rules | `CLAUDE_VISION_MODEL`, else `CLAUDE_TEXT_MODEL` | `VISION_RULE_EFFORT` |
+| `hybrid_rule` | Workbook rules judged by the LLM | `CLAUDE_TEXT_MODEL` | `TEXT_RULE_EFFORT` |
+| `layout` | Workbook layout mapping | `CLAUDE_TEXT_MODEL` | `LAYOUT_MAPPING_EFFORT` (`medium`) |
+| `roles` | Workbook sheet-role confirmation | `CLAUDE_TEXT_MODEL` | `ROLE_ASSIGNMENT_EFFORT` |
+
+`CLAUDE_TEXT_MODEL` defaults to `claude-sonnet-5-5`.
+
+An empty effort means the model's own default, which is `high` on Sonnet 5.5. Effort controls how much the model thinks before answering. Thinking counts against `max_tokens` and is billed as output.
+
+`src/providers/router.py` (`LlmRouter`) resolves the model and the effort separately. For each one, the first match wins:
+
+1. a comparison variant's override for the rule;
+2. the rule's own `model` / `effort` fields;
+3. the comparison variant's setting for the purpose;
+4. the comparison variant's defaults;
+5. the settings default in the table above.
+
+Steps 1, 3 and 4 only exist in the comparison tool. In production a call uses the rule's override if it has one, and the settings default otherwise.
+
+## Per-rule overrides
+
+Any rule in `rules/*.json` or `rules/capital_event/*.json` can set `model` and/or `effort`:
+
+```json
+{ "id": "GRAM-SPELL", "name": "...", "query": "...", "model": "claude-haiku-4-5" }
+{ "id": "SOI-PERCENTAGE-TIE", "name": "...", "query": "...", "effort": "max" }
 ```
-providers/
-  text/
-    base.py       # TextAnalysisProvider (abstract)
-    openai.py     # OpenAI GPT implementation
-    claude.py     # Anthropic Claude implementation
-    factory.py    # Factory for instantiating text provider
-  vision/
-    base.py       # VisionProvider (abstract)
-    openai.py     # OpenAI vision implementation
-    claude.py     # Claude vision implementation
-    factory.py    # Factory for instantiating vision provider
-```
 
-The factory pattern selects the provider based on the `TEXT_PROVIDER` and `VISION_PROVIDER` environment variables.
+- The model must be listed in `config/models.yaml`.
+- The effort must be one of `low`, `medium`, `high`, `xhigh` or `max`, and the model must accept it. Haiku 4.5 accepts no effort setting.
+- A bad override fails when the rules are loaded, and the error names the rule.
+- Overrides are taken from the server's rule files only. Rule objects round-trip through the browser, so any `model` or `effort` a client sends is replaced by the rule file's value for the same rule id.
 
-## Switching Providers
+Each rule assessment records the model and effort its calls used, in `llm_model` and `llm_effort`.
 
-Set these environment variables in your `.env` file:
+## Model registry (`config/models.yaml`)
+
+The registry lists every model the pipeline may call. For each one it records:
+- its prices per million tokens: input, output, cache read, and 5-minute cache write;
+- whether it accepts an effort setting;
+- whether it accepts a non-default temperature;
+- whether it offers the server-side refusal fallback;
+- its output-token ceiling.
+
+The registry is used in three ways:
+- **As the allowlist** for rule and variant overrides.
+- **To shape each request.** Temperature is sent only where the model allows it; Sonnet 5 and 5.5 reject a non-default value with a 400. Effort is sent only where the model accepts it. Token budgets are clamped to the model's ceiling.
+- **As the price list** for the cost figures (`cost_usd`) in the run's `llm_usage` and in the comparison report.
+
+Update the prices when Anthropic's pricing page changes, and set `pricing_checked` to that date.
+
+## Refusal fallback
+
+Models flagged with `refusal_fallback` (Sonnet 5.5, Opus 5.5) are called through the beta endpoint, with `fallbacks: "default"` and the beta header `server-side-fallback-2026-07-01`.
+
+If the model declines a request, the API re-runs it on a fallback model chosen by refusal category, inside the same request. The rule gets an answer instead of a needs-review.
+
+When that happens:
+- the rule's notes say which model answered;
+- the usage meter prices the call at that model's rates.
+
+## Settings
 
 ```env
-# Use OpenAI for both text and vision
-TEXT_PROVIDER=openai
-VISION_PROVIDER=openai
-
-# Use Claude for both
-TEXT_PROVIDER=claude
-VISION_PROVIDER=claude
-
-# Mix: Claude for text, OpenAI for vision
-TEXT_PROVIDER=claude
-VISION_PROVIDER=openai
+ANTHROPIC_API_KEY=sk-ant-...           # also ANTHROPIC_AI_API_KEY / ANTROPIC_AI_API_KEY
+CLAUDE_TEXT_MODEL=claude-sonnet-5-5
+CLAUDE_VISION_MODEL=                   # falls back to CLAUDE_TEXT_MODEL
+TEXT_RULE_EFFORT=                      # empty: model default
+VISION_RULE_EFFORT=
+ROLE_ASSIGNMENT_EFFORT=
+LAYOUT_MAPPING_EFFORT=medium
+CLAUDE_TEXT_MAX_TOKENS=24000           # text and hybrid rule calls
+CLAUDE_STRUCTURED_MAX_TOKENS=64000     # role assignment and layout mapping (streamed)
+CLAUDE_VISION_MAX_TOKENS=16000
+CLAUDE_TEXT_TEMPERATURE=               # only sent to models that accept it
+CLAUDE_VISION_TEMPERATURE=
 ```
 
-Provider aliases are accepted: `"openai"`, `"open ai"` map to OpenAI; `"claude"`, `"anthropic"` map to Claude.
+The `max_tokens` values cover thinking as well as the answer. They are ceilings the model can't see, so headroom costs nothing.
 
-## OpenAI Configuration
+If a budget runs out before the answer is written, the call fails with a `TruncatedResponseError` that names the setting to raise. In layout mapping, the mapper first retries one effort level lower.
 
-### API Key
+## Provider interface
 
-```env
-OPENAI_API_KEY=sk-...
-```
-
-The key also accepts the alias `OPEN_AI_API_KEY`.
-
-### Models
-
-```env
-OPENAI_TEXT_MODEL=gpt-5.4-mini       # Default text model
-OPENAI_VISION_MODEL=gpt-5.4          # Default vision model (falls back to text model)
-```
-
-### Parameters
-
-```env
-OPENAI_TEXT_TEMPERATURE=              # Optional, uses provider default
-OPENAI_TEXT_MAX_COMPLETION_TOKENS=    # Optional, uses provider default
-```
-
-Vision model parameters are configured in `config/app.yaml` under the `vision` section.
-
-### Behavior
-
-- Text analysis: sends extracted text + rule as a structured prompt, expects JSON response
-- Vision analysis: sends page images as base64-encoded data URLs or HTTP URLs
-- Uses JSON schema enforcement for structured output
-- Retry logic with exponential backoff (via `tenacity`)
-
-## Claude (Anthropic) Configuration
-
-### API Key
-
-```env
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Also accepts aliases `ANTHROPIC_AI_API_KEY` and `ANTROPIC_AI_API_KEY`.
-
-### Models
-
-```env
-CLAUDE_TEXT_MODEL=claude-sonnet-5         # Default text model
-CLAUDE_VISION_MODEL=claude-sonnet-5       # Default vision model (falls back to text model)
-```
-
-### Parameters
-
-```env
-CLAUDE_TEXT_TEMPERATURE=           # Optional — leave unset on Sonnet 5 (see below)
-CLAUDE_VISION_TEMPERATURE=         # Optional — leave unset on Sonnet 5 (see below)
-CLAUDE_TEXT_MAX_TOKENS=1600        # Max tokens for text analysis
-CLAUDE_VISION_MAX_TOKENS=1600     # Max tokens for vision analysis
-```
-
-Both temperature settings are unset by default and are omitted from the request
-when unset. Leave them unset unless you have pointed `CLAUDE_TEXT_MODEL` /
-`CLAUDE_VISION_MODEL` at an older model that accepts sampling parameters —
-Claude Sonnet 5 rejects a non-default `temperature` with a 400, so setting
-either one will fail every analysis call. Steer the model through the system
-prompts in `config/` instead.
-
-### Behavior
-
-- Text analysis: uses the Anthropic messages API with system prompts
-- Vision analysis: sends page images as base64-encoded media blocks
-- Supports image formats: JPEG, PNG, GIF, WebP
-- Concurrency controlled via semaphores
-- Retry logic with exponential backoff
-
-## Provider Interface
-
-Both text and vision providers implement a common evaluation method:
-
-### Text Provider
+`src/providers/text/base.py` and `src/providers/vision/base.py` define the interfaces that the Claude providers implement (`claude.py`) and that tests fake:
 
 ```python
 class TextAnalysisProvider(ABC):
-    @abstractmethod
-    def evaluate_rule(
-        self,
-        document_content: str,
-        rule: dict,
-        system_prompt: str,
-    ) -> dict:
-        """Evaluate a single rule against document text content."""
-```
+    def evaluate_rule(self, document_content, rule, system_prompt, rule_context="", cache_content=False,
+                      shared_context="", cache_shared_context=False, effort=None) -> dict: ...
+    def complete_structured(self, system_prompt, user_content, json_schema, name="result", effort=None) -> dict: ...
 
-### Vision Provider
-
-```python
 class VisionProvider(ABC):
-    @abstractmethod
-    def evaluate_rule(
-        self,
-        page_image: str,  # base64 data URL or file path
-        rule: dict,
-        system_prompt: str,
-    ) -> dict:
-        """Evaluate a single rule against a page image."""
+    def evaluate_rule(self, page_image, rule, system_prompt, cache_content=False, effort=None) -> dict: ...
 ```
 
-Both return a structured dict matching the `RuleAssessmentSchema` format (verdict, summary, findings, citations, etc.).
+- **One provider per model.** `build_text_provider(settings, model=...)` and `build_vision_provider(app_config, settings, model=...)` build a provider for one model. The router builds one on first use for each model a run needs.
+- **Injecting fakes in tests.** Pass `provider=` to `TextRuleAnalyzer` or `VisionRuleAnalyzer`, or `text_provider=` to `WorkbookPipeline`. That fake receives every call.
+- **Passing a router.** `ValidationService(router=...)` passes it through to every pipeline.
 
-## Retry and Error Handling
+## Key files
 
-Both providers use `tenacity` for retry logic:
-
-- Exponential backoff on transient failures (rate limits, server errors)
-- Configurable retry count
-- Structured error responses when all retries are exhausted
-
-## Vision-Specific Configuration
-
-Additional vision settings in `config/app.yaml`:
-
-```yaml
-vision:
-  provider: "openai"              # Default vision provider
-  model_id: "gpt-5.4"            # Default vision model
-  max_images_per_request: 10     # Max images per single LLM request
-  temperature: 0.1               # Low temperature for consistency
-  seed: 42                        # Seed for reproducibility
-  max_completion_tokens: 1600     # Max response tokens
-  image_detail: "high"            # Image detail level (OpenAI-specific)
-  concurrent_requests: 12         # Per-rule concurrent requests
-  global_max_concurrent: 24       # Global concurrent request cap
-```
-
-## Key Files
-
-- `src/providers/text/base.py` - Text provider abstract base
-- `src/providers/text/openai.py` - OpenAI text implementation
-- `src/providers/text/claude.py` - Claude text implementation
-- `src/providers/text/factory.py` - Text provider factory
-- `src/providers/vision/base.py` - Vision provider abstract base
-- `src/providers/vision/openai.py` - OpenAI vision implementation
-- `src/providers/vision/claude.py` - Claude vision implementation
-- `src/providers/vision/factory.py` - Vision provider factory
-- `src/providers/analysis_result.py` - JSON schema and payload utilities
+- `config/models.yaml`: the model registry.
+- `src/providers/models.py`: loads the registry and validates effort levels.
+- `src/providers/router.py`: `LlmRouter`, `RoutingOverrides` and `FixedProviderRouter`.
+- `src/providers/text/claude.py` and `src/providers/vision/claude.py`: the Claude providers.
+- `src/providers/text/factory.py` and `src/providers/vision/factory.py`: build a provider for a model.
+- `src/providers/errors.py`: `TruncatedResponseError`, reading an answer, and detecting a refusal fallback.
+- `src/core/llm_usage.py`: per-run token and cost metering.

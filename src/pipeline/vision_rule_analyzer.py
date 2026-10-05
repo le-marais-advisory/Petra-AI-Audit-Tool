@@ -17,7 +17,7 @@ from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed
 from src.core.prompting import load_prompt
 from src.pipeline.page_classifier import rule_applies_to_page
 from src.pipeline.pdf_renderer import PdfRenderer
-from src.providers.vision.factory import build_vision_provider
+from src.providers.router import FixedProviderRouter, LlmRouter
 
 logger = logging.getLogger("petra.pipeline.vision")
 
@@ -66,11 +66,22 @@ def _image_to_data_url(image_path: Path) -> str:
 
 
 class VisionRuleAnalyzer:
-    def __init__(self, app_config: AppYaml, settings: Settings) -> None:
+    def __init__(self, app_config: AppYaml, settings: Settings, router: LlmRouter | None = None,
+                 provider=None) -> None:
         self.app_config = app_config
         self.settings = settings
+        # ``provider`` is injected by tests only: every call goes to it.
+        if router is None and provider is not None:
+            router = FixedProviderRouter(vision_provider=provider, settings=settings)
+        self._router = router
         self.renderer = PdfRenderer()
         self.system_prompt = load_prompt(VISION_PROMPT_PATH)
+
+    @property
+    def router(self) -> LlmRouter:
+        if self._router is None:
+            self._router = LlmRouter(self.settings, self.app_config)
+        return self._router
 
     def estimate_step_count(self, page_count: int, rules: list[dict]) -> int:
         vision_rules = [rule for rule in rules if rule.get("analysis_type", "text") == "vision"]
@@ -159,7 +170,6 @@ class VisionRuleAnalyzer:
                 "page": index,
                 "image_path": path,
                 "image_url": _image_to_data_url(Path(path)),
-                "detail": self.app_config.vision.image_detail,
             }
             for index, path in enumerate(image_paths, start=1)
         ]
@@ -187,8 +197,10 @@ class VisionRuleAnalyzer:
         if not vision_rules:
             return {"rule_results": unsupported_scope_results, "page_results": []}
 
+        router = self.router
+        targets = {rule.get("id", ""): router.rule_target(rule, "vision_rule") for rule in vision_rules}
         try:
-            provider = build_vision_provider(self.app_config, self.settings)
+            providers = {target.model: router.vision_provider(target.model) for target in set(targets.values())}
         except ValueError as exc:
             return {
                 "rule_results": {
@@ -232,14 +244,15 @@ class VisionRuleAnalyzer:
                 for pi in matching:
                     applicable_pairs.append((rule, pi))
 
-        def _page_of(pair: tuple[dict, dict]) -> int:
-            return int(pair[1].get("page", 0) or 0)
+        def _page_of(pair: tuple[dict, dict]) -> tuple:
+            # caches are per model, so rules share a page's cached image only on the same target
+            return int(pair[1].get("page", 0) or 0), targets[pair[0].get("id", "")]
 
         # Rules on the same page share the image, so with prompt_cache on the image is cached
         # when another rule will read it, and one rule per page runs before the others.
-        prompt_cache = bool(getattr(self.app_config.pipeline, "prompt_cache", False))
+        prompt_cache = router.prompt_cache(bool(getattr(self.app_config.pipeline, "prompt_cache", False)))
         rules_per_page = Counter(_page_of(pair) for pair in applicable_pairs)
-        cached_pages = {page for page, count in rules_per_page.items() if count > 1} if prompt_cache else set()
+        cached_pages = {key for key, count in rules_per_page.items() if count > 1} if prompt_cache else set()
 
         def _call(rule: dict, page_image: dict) -> dict | None:
             if is_cancelled and is_cancelled():
@@ -253,11 +266,13 @@ class VisionRuleAnalyzer:
             try:
                 _t0 = time.perf_counter()
                 logger.info("LLM call start: type=vision rule=%s page=%d", rule_id, page_number)
-                raw_result = provider.evaluate_rule(
+                target = targets[rule_id]
+                raw_result = providers[target.model].evaluate_rule(
                     page_image=page_image_for_rule,
                     rule=rule,
                     system_prompt=self.system_prompt,
-                    cache_content=page_number in cached_pages,
+                    cache_content=(page_number, target) in cached_pages,
+                    effort=target.effort,
                 )
                 _elapsed = time.perf_counter() - _t0
                 logger.info("LLM call done: type=vision rule=%s page=%d elapsed=%s", rule_id, page_number, timedelta(seconds=_elapsed))
@@ -282,7 +297,9 @@ class VisionRuleAnalyzer:
                         for item in raw_result.get("citations", [])
                         if int(item.get("page", page_number) or page_number) == page_number
                     ],
-                    "notes": [f"Confidence: {raw_result.get('confidence', 'unknown')}"],
+                    "notes": [f"Confidence: {raw_result.get('confidence', 'unknown')}"]
+                    + ([f"Answered by {raw_result['served_by']} after the configured model declined (refusal fallback)."]
+                       if raw_result.get("served_by") else []),
                 }
             except Exception as exc:
                 return {
@@ -324,4 +341,8 @@ class VisionRuleAnalyzer:
         finally:
             shutil.rmtree(render_dir, ignore_errors=True)
 
+        for rule_id, result in results.items():
+            target = targets.get(rule_id)
+            if target is not None and result.get("execution_status") in {"completed", "error"}:
+                result["llm_model"], result["llm_effort"] = target.model, target.effort
         return {"rule_results": results, "page_results": page_results}

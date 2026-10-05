@@ -84,12 +84,6 @@ def map_sheet_layout(
     use_cache: bool = True,
     effort: str | None = None,
 ) -> tuple[BaseModel | None, list[LayoutIssue]]:
-    key = (_workbook_hash(model), sheet_name, role)
-    if use_cache:
-        with _CACHE_LOCK:
-            cached = _CACHE.get(key)
-        if cached is not None:
-            return cached, []
     if provider is None or effort is None:
         from src.core.config import get_settings
 
@@ -100,7 +94,14 @@ def map_sheet_layout(
             from src.providers.text.factory import build_text_provider
 
             provider = build_text_provider(settings)
-
+    effort = effort or None  # "" is the model default
+    # Different models or efforts can map a sheet differently, so they never share a cached layout.
+    key = (_workbook_hash(model), sheet_name, role, getattr(provider, "model", None), effort)
+    if use_cache:
+        with _CACHE_LOCK:
+            cached = _CACHE.get(key)
+        if cached is not None:
+            return cached, []
     schema = layout_json_schema(role)
     system = _system_prompt()
     first = _user_prompt(model, sheet_name, role, event_type)

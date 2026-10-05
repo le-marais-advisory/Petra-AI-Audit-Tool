@@ -15,8 +15,8 @@ from src.core.config import AppYaml, Settings
 from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed
 from src.core.prompting import load_prompt
 from src.pipeline.page_classifier import rule_applies_to_page, SECTION_TO_KEY
+from src.providers.router import FixedProviderRouter, LlmRouter, LlmTarget
 from src.providers.text.base import TextAnalysisProvider
-from src.providers.text.factory import build_text_provider
 
 logger = logging.getLogger("petra.pipeline.text")
 
@@ -53,18 +53,36 @@ class _TextWorkItem:
     # layout metadata), so that part of the prompt is worth caching
     cache_content: bool = False
     cache_layout: bool = False
+    # model and effort for this call; caches are per model, so items only share one on the same target
+    target: LlmTarget | None = None
 
     def cache_key(self) -> tuple:
-        """Items with equal keys send identical document content, so they can share a cached prefix."""
+        """Items with equal keys send identical document content to the same model, so they can share a
+        cached prefix."""
         if self.kind == "page":
-            return ("page", int((self.page or {}).get("page", 0)))
+            return ("page", int((self.page or {}).get("page", 0)), self.target)
         sections = tuple(self.rule.get("sections") or []) if self.group_by_section else ()
         # broad payloads carry layout metadata inside each page, so it is part of the content
-        return ("broad", tuple(self.gathered_page_nums), self.group_by_section, sections, self.needs_layout)
+        return ("broad", tuple(self.gathered_page_nums), self.group_by_section, sections, self.needs_layout,
+                self.target)
 
     @property
     def needs_layout(self) -> bool:
         return _rule_needs_layout_context(self.rule)
+
+
+def _fallback_note(raw_result: dict) -> list[str]:
+    served_by = raw_result.get("served_by")
+    return [f"Answered by {served_by} after the configured model declined (refusal fallback)."] if served_by else []
+
+
+def _stamp_targets(results: dict[str, dict], targets: dict[str, LlmTarget]) -> None:
+    """Record on each rule result that reached the LLM which model and effort it was sent with."""
+    for rule_id, result in results.items():
+        target = targets.get(rule_id)
+        if target is not None and result.get("execution_status") in {"completed", "error"}:
+            result["llm_model"] = target.model
+            result["llm_effort"] = target.effort
 
 
 def _page_blob(page: dict) -> str:
@@ -302,14 +320,23 @@ class TextRuleAnalyzer:
         app_config: AppYaml,
         settings: Settings,
         provider: TextAnalysisProvider | None = None,
+        router: LlmRouter | None = None,
     ) -> None:
         self.app_config = app_config
         self.settings = settings
-        # Injected by tests only. Production resolves the provider lazily inside
-        # analyze() so a missing API key still yields per-rule "skipped" results
-        # rather than failing construction.
-        self._provider = provider
+        # ``provider`` is injected by tests only: every call goes to it. Providers are built lazily
+        # inside analyze() so a missing API key still yields per-rule "skipped" results rather than
+        # failing construction.
+        if router is None and provider is not None:
+            router = FixedProviderRouter(text_provider=provider, settings=settings)
+        self._router = router
         self.system_prompt = load_prompt(TEXT_PROMPT_PATH)
+
+    @property
+    def router(self) -> LlmRouter:
+        if self._router is None:
+            self._router = LlmRouter(self.settings, self.app_config)
+        return self._router
 
     def _max_workers(self) -> int:
         """Concurrency for text LLM calls.
@@ -447,6 +474,7 @@ class TextRuleAnalyzer:
                 cache_content=item.cache_content,
                 shared_context=_serialize_layout_context(page, rule),
                 cache_shared_context=item.cache_layout,
+                effort=item.target.effort if item.target else None,
             )
             _elapsed = time.perf_counter() - _t0
             logger.info(
@@ -474,7 +502,7 @@ class TextRuleAnalyzer:
                     }
                     for citation in citations
                 ],
-                "notes": [f"Confidence: {raw_result.get('confidence', 'unknown')}"],
+                "notes": [f"Confidence: {raw_result.get('confidence', 'unknown')}"] + _fallback_note(raw_result),
             }
         except Exception as exc:
             return _build_skipped_result(
@@ -512,6 +540,7 @@ class TextRuleAnalyzer:
                 system_prompt=self.system_prompt,
                 rule_context=_serialize_rule_context(rule),
                 cache_content=item.cache_content,
+                effort=item.target.effort if item.target else None,
             )
             _elapsed = time.perf_counter() - _t0
             logger.info(
@@ -529,7 +558,7 @@ class TextRuleAnalyzer:
                 {"page": int(c.get("page", 0) or 0), "evidence": c.get("evidence", "")}
                 for c in raw_result.get("citations", [])
             ][:4]
-            notes = [f"Confidence: {raw_result.get('confidence', 'unknown')}"]
+            notes = [f"Confidence: {raw_result.get('confidence', 'unknown')}"] + _fallback_note(raw_result)
 
             rule_result = {
                 "rule_id": rule_id,
@@ -604,8 +633,10 @@ class TextRuleAnalyzer:
         # classified not_applicable, rather than being dropped from the results entirely.
         broad_rules = [r for r in text_rules if r.get("scope", "page") != "page"]
 
+        router = self.router
+        targets = {rule.get("id", ""): router.rule_target(rule, "text_rule") for rule in text_rules}
         try:
-            provider = self._provider or build_text_provider(self.settings)
+            providers = {target.model: router.text_provider(target.model) for target in set(targets.values())}
         except ValueError as exc:
             error_message = str(exc)
             skipped_page_results = [
@@ -653,8 +684,8 @@ class TextRuleAnalyzer:
         # Broad items first. ThreadPoolExecutor dispatches FIFO and a broad call carries a
         # whole document, so submitting them last would leave their latency as a tail
         # after the pool drains — rebuilding the serial prologue this replaced.
-        work_items = broad_items + page_items
-        prompt_cache = bool(getattr(self.app_config.pipeline, "prompt_cache", False))
+        work_items = [replace(item, target=targets[item.rule_id]) for item in broad_items + page_items]
+        prompt_cache = router.prompt_cache(bool(getattr(self.app_config.pipeline, "prompt_cache", False)))
         if prompt_cache:
             # Mark only prefixes another call will read: a cache write costs more than plain input.
             shared = Counter(item.cache_key() for item in work_items)
@@ -680,6 +711,7 @@ class TextRuleAnalyzer:
             """
             if is_cancelled and is_cancelled():
                 return None, []
+            provider = providers[item.target.model]
             if item.kind == "broad":
                 return self._evaluate_broad_scope_rule(item, provider)
             return None, [self._evaluate_page_scope_rule(item, provider)]
@@ -714,4 +746,5 @@ class TextRuleAnalyzer:
             if rule_id not in results:
                 results[rule_id] = self._aggregate_rule_results(rule, per_rule_page_results[rule_id])
 
+        _stamp_targets(results, targets)
         return {"rule_results": results, "page_results": page_results}

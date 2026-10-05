@@ -37,8 +37,7 @@ This is required before running the API, the tests, or any of the scripts.
 1. **Configure**
    - Copy `env.example` to `.env`.
    - Copy `frontend/.env.example` to `frontend/.env`.
-   - Choose providers with `TEXT_PROVIDER` and `VISION_PROVIDER` using `openai` or `claude`.
-   - For Claude, configure `ANTHROPIC_API_KEY` (the app also accepts `ANTHROPIC_AI_API_KEY` and `ANTROPIC_AI_API_KEY`).
+   - Configure `ANTHROPIC_API_KEY` (the app also accepts `ANTHROPIC_AI_API_KEY` and `ANTROPIC_AI_API_KEY`). Every LLM call goes to Claude; see `docs/providers.md` for models and effort.
   - Configure Microsoft Entra ID values for the backend API and frontend SPA. The repository templates are already set for:
      - tenant `dce78d1e-e927-4f5a-8d06-0035eaf8cc08`
      - frontend app `fa60a728-3038-450f-ba94-8e89667048a4`
@@ -131,22 +130,18 @@ Minimum flow:
 ```bash
 azd env new personal
 azd env set AZURE_LOCATION eastus
-azd env set-secret OPENAI_API_KEY
+azd env set-secret ANTHROPIC_API_KEY
 azd up
 ```
 
-Use `azd env set-secret` for provider API keys so the raw secret does not get passed directly in the command line or stored in plain text in the local `azd` environment file.
+Use `azd env set-secret` for the API key so the raw secret does not get passed directly in the command line or stored in plain text in the local `azd` environment file.
 
 Useful optional settings:
 
 ```bash
-azd env set TEXT_PROVIDER openai
-azd env set VISION_PROVIDER openai
-azd env set OPENAI_TEXT_MODEL gpt-5.4-mini
-azd env set OPENAI_VISION_MODEL gpt-5.4
-azd env set CLAUDE_TEXT_MODEL claude-sonnet-5
-azd env set CLAUDE_VISION_MODEL claude-sonnet-5
-azd env set-secret ANTHROPIC_API_KEY
+azd env set CLAUDE_TEXT_MODEL claude-sonnet-5-5
+azd env set CLAUDE_VISION_MODEL claude-sonnet-5-5
+azd env set TEXT_RULE_EFFORT medium      # default: the model's own (high)
 ```
 
 After deployment:
@@ -165,7 +160,7 @@ az login
 azd auth login
 azd env new prod
 azd env set AZURE_LOCATION eastus
-azd env set-secret OPENAI_API_KEY
+azd env set-secret ANTHROPIC_API_KEY
 azd up
 ```
 
@@ -224,7 +219,7 @@ The pipeline returns results grouped by **page**, and it also returns a dedicate
 - **API**: FastAPI routers under `src/api/routers/` (validations, rules, export, feedback, health, auth)
 - **Pipeline**: PDF extraction and derived analysis live in `src/pipeline/`; `orchestrator.py` drives the five-stage sequence
 - **Services**: business orchestration lives in `src/services/`; `validation_job_service.py` manages the in-memory threaded job queue
-- **Providers**: text and vision integrations live in `src/providers/` (`text/` and `vision/` subdirs, each with `base.py`, `openai.py`, `claude.py`, `factory.py`)
+- **Providers**: Claude text and vision integrations live in `src/providers/` (`text/` and `vision/` subdirs, each with `base.py`, `claude.py`, `factory.py`); `router.py` picks each call's model and effort, `config/models.yaml` lists the allowed models and their prices
 - **Schemas**: request and response contracts live in `src/schemas/`
 - **Core**: settings, Azure auth, logging, and security middleware live in `src/core/`
 - **Rules**: validation rule definitions in `rules/rules.json`
@@ -234,9 +229,9 @@ The pipeline returns results grouped by **page**, and it also returns a dedicate
 - **Infra**: Azure Bicep templates (Container Apps, ACR, Log Analytics) live in `infra/`
 - **Docs**: detailed documentation for pipeline, providers, auth, and deployment live in `docs/`
 
-### Provider Abstraction
+### Models and effort
 
-Text and vision analysis are provider-agnostic. The active provider is set via `.env` (`TEXT_PROVIDER=openai|claude`, `VISION_PROVIDER=openai|claude`). Provider adapters implement a shared base class interface; the factory pattern in each `factory.py` resolves the correct adapter at startup.
+Every LLM call goes to Claude. Each kind of call (text, vision and hybrid rules, layout mapping, role assignment) has a default model and effort from the settings, and any rule can override either with its own `model` / `effort` fields. See `docs/providers.md`; to measure a change before making it, see `docs/model-comparison.md`.
 
 ### Async Job Queue
 
@@ -260,9 +255,7 @@ The service does not persist uploaded PDFs, validation runs, or feedback records
   - image format
   - report toggles
 - Environment variables control:
-  - text provider selection via `TEXT_PROVIDER`
-  - vision provider selection via `VISION_PROVIDER`
-  - OpenAI or Claude model selection
+  - the default Claude models and effort levels (`CLAUDE_TEXT_MODEL`, `TEXT_RULE_EFFORT`, ...)
   - Microsoft Entra ID tenant, audience, scope, and allowed SPA client app IDs
   - temporary workspace location via `LOCAL_WORKDIR`
   - legacy `ENABLE_UI` parsing for backward compatibility only; the backend no longer mounts the built-in UI

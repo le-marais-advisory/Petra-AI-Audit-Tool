@@ -3,7 +3,7 @@
 # Each case runs a PDF through the real validation pipeline (live LLM calls)
 # and asserts that every listed rule produces the expected verdict.
 #
-# Requires a valid .env with API keys (OPENAI_API_KEY or ANTHROPIC_API_KEY).
+# Requires a valid .env with ANTHROPIC_API_KEY.
 #
 # ─────────────────────────────────────────────────────────────
 # HOW TO ADD A NEW CASE

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Petra Vision is an AI-powered document validation tool. It validates PDF financial statements and capital-event Excel workbooks against configurable rules, using LLMs (OpenAI or Anthropic) plus deterministic checks for workbooks, and produces structured audit reports. The user picks the document type per run (`GET /document-types`); see `docs/document-types.md`. It exposes both a REST API (FastAPI) and a React SPA frontend with Microsoft Entra ID authentication.
+Petra Vision is an AI-powered document validation tool. It validates PDF financial statements and capital-event Excel workbooks against configurable rules, using Claude (Anthropic) plus deterministic checks for workbooks, and produces structured audit reports. The user picks the document type per run (`GET /document-types`); see `docs/document-types.md`. It exposes both a REST API (FastAPI) and a React SPA frontend with Microsoft Entra ID authentication.
 
 ## Commands
 
@@ -49,6 +49,8 @@ Unit test files:
 - `tests/test_number_normalization.py` — pdfplumber number-artifact normalization helper
 - `tests/test_double_underline.py` — double-underline vector-hint extraction and detection logic
 - `tests/smoke_test.py` — full pipeline structural check against `tests/sample.pdf`; skips silently if the file is absent
+- `tests/test_llm_routing.py` — model/effort routing, rule overrides, refusal fallback, cache grouping per target
+- `tests/test_llm_compare.py` — the model comparison tool end to end with a fake router
 
 Capital-event workbook tests (TDD; written ahead of the implementation in `src/pipeline/workbook/`):
 - `tests/fixtures/generate_capital_event_fixtures.py` — synthetic workbook generator (event type x layout variant x seeded defect); each fixture's manifest carries sheet roles, golden layouts, truth values and expected verdicts. `tests/conftest.py` exposes it as the session fixture `capital_event_fixtures`. Never commit real client workbooks
@@ -69,6 +71,22 @@ CAPITAL_EVENT_NET_SAMPLE_PATH="temp/test-run-2026-10-02/BPCP IV - Capital Call #
 CAPITAL_EVENT_NET_PRIOR_PATH="temp/test-run-2026-10-02/BPCP IV - Distribution #8 - 12.11.2025 V4.xlsm" \
   pytest tests/evals/test_real_sample_eval.py -m eval -k net
 ```
+
+### Comparing Models (live LLM)
+
+Measure a model or effort change on labelled documents before making it (see `docs/model-comparison.md`):
+
+```bash
+python -m src.evaluation.llm_compare run                                   # plan + cost estimate, no API calls
+python -m src.evaluation.llm_compare run --variant current --variant sonnet-5-5-medium --repeats 3 --yes
+python -m src.evaluation.llm_compare run --suite temp/my_suite.yaml --yes  # local real documents (never commit)
+python -m src.evaluation.llm_compare report data/llm_compare/<run> [<other run> ...]   # re-render / merge
+python -m src.evaluation.llm_compare bootstrap data/llm_compare/<run> --variant current  # draft expected verdicts
+```
+
+- Variants live in `evals/llm_variants.yaml` (defaults, per-purpose stages, per-rule overrides); the default suite `evals/llm_suite.yaml` imports `tests/integration/cases.yaml` and `tests/evals/capital_event_cases.yaml`
+- Output (`results.json`, self-contained `report.html`) goes to git-ignored `data/llm_compare/<timestamp>/`; runs start with a cold prompt cache unless `--warm-cache`
+- Code: `src/evaluation/llm_compare/` (suite, variants, runner, metrics, report); `tests/test_llm_compare.py` covers it offline with a fake router
 
 ### Integration Tests
 
@@ -134,7 +152,7 @@ docker compose up --build   # API on :8000, frontend on :5173
 ```bash
 azd env new <environment>
 azd env set AZURE_LOCATION eastus
-azd env set-secret ANTHROPIC_API_KEY   # or OPENAI_API_KEY
+azd env set-secret ANTHROPIC_API_KEY
 azd up
 ```
 
@@ -190,7 +208,7 @@ Rules declare `evaluator`, `required_roles` and `event_types`.
 
 - `src/api/routers/` — FastAPI route handlers (validations, rules, export, feedback, health, auth)
 - `src/pipeline/` — core processing stages
-- `src/providers/` — AI provider adapters (`text/` and `vision/` subdirs, each with `base.py`, `openai.py`, `claude.py`, `factory.py`)
+- `src/providers/` — Claude providers (`text/` and `vision/` subdirs, each with `base.py`, `claude.py`, `factory.py`); `router.py` picks each call's model and effort; `models.py` loads the model registry `config/models.yaml` (allowlist, capabilities, prices)
 - `src/services/` — business logic layer; `validation_job_service.py` manages the in-memory threaded job queue
 - `src/schemas/` — Pydantic request/response models
 - `src/core/` — settings (`pydantic-settings` + `config/app.yaml`), Azure auth, logging, security middleware
@@ -206,9 +224,9 @@ Rules declare `evaluator`, `required_roles` and `event_types`.
 - `infra/` — Azure Bicep templates (Container Apps, ACR, Log Analytics)
 - `docs/` — detailed documentation for pipeline, providers, auth, deployment, etc.
 
-### Provider Abstraction
+### Models and Effort
 
-Text and vision analysis are provider-agnostic. The active provider is set via `.env` (`TEXT_PROVIDER=openai|claude`, `VISION_PROVIDER=openai|claude`). Provider adapters implement a shared base class interface; the factory pattern in each `factory.py` resolves the correct adapter at startup.
+Every LLM call goes to Claude; OpenAI is no longer supported. Each call has a purpose (`text_rule`, `vision_rule`, `hybrid_rule`, `layout`, `roles`) whose default model and effort come from settings (`CLAUDE_TEXT_MODEL` = `claude-sonnet-5-5`, `CLAUDE_VISION_MODEL`, `TEXT_RULE_EFFORT`, `VISION_RULE_EFFORT`, `LAYOUT_MAPPING_EFFORT`, `ROLE_ASSIGNMENT_EFFORT`; empty effort = the model default). A rule can override either with its own `model` / `effort` fields, validated against `config/models.yaml` at load and re-applied from the server rule files (client-sent values are ignored). `LlmRouter` (`src/providers/router.py`) resolves them and builds one provider per model; `ValidationService(router=...)` threads it through every pipeline, and tests inject fakes via `provider=` / `text_provider=` (`FixedProviderRouter`). Rule assessments record `llm_model` / `llm_effort`; `llm_usage` rows carry `cost_usd`. See `docs/providers.md`.
 
 ### Async Job Queue
 
@@ -223,12 +241,11 @@ PDFs are written to `data/tmp/` during processing and deleted afterwards. Feedba
 Copy `env.example` to `.env` and fill in:
 
 - `AZURE_*` — Microsoft Entra ID tenant/client IDs for auth
-- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (also accepts `ANTHROPIC_AI_API_KEY` / `ANTROPIC_AI_API_KEY` aliases)
-- `TEXT_PROVIDER` / `VISION_PROVIDER` — select active LLM provider per analysis type
-- `OPENAI_TEXT_MODEL`, `CLAUDE_TEXT_MODEL`, etc. — optional model overrides
+- `ANTHROPIC_API_KEY` (also accepts `ANTHROPIC_AI_API_KEY` / `ANTROPIC_AI_API_KEY` aliases)
+- `CLAUDE_TEXT_MODEL`, `CLAUDE_VISION_MODEL`, `*_EFFORT` — optional default model and effort (see `docs/providers.md`)
 
-`config/app.yaml` controls PDF rendering (DPI defaults to 300), vision settings (concurrency, temperature, seed, max tokens, image detail), and report toggles (e.g. `include_thumbnails`).
+`config/app.yaml` controls PDF rendering (DPI defaults to 300), vision concurrency, and report toggles (e.g. `include_thumbnails`).
 
 Rule prompts are ordered shared-content-first (document content, then layout metadata, then the rule) so they can reuse a cached prefix; `pipeline.prompt_cache` adds Claude cache markers and starts one call per shared prefix first. See "Prompt caching" in `docs/configuration.md`, and keep new prompt content that varies per rule after the shared part.
 
-`rules/rules.json` rule objects carry: `id`, `name`, `analysis_type` (text|vision), `query`, `description`, `acceptance_criteria`, `severity` (major|minor|critical), and optional `group`/`bypassable` fields.
+`rules/rules.json` rule objects carry: `id`, `name`, `analysis_type` (text|vision), `query`, `description`, `acceptance_criteria`, `severity` (major|minor|critical), and optional `group`/`bypassable` fields, plus optional `model`/`effort` overrides.

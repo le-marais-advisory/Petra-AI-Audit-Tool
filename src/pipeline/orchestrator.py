@@ -13,6 +13,7 @@ from src.pipeline.pdf_extractor import PdfExtractor
 from src.pipeline.text_rule_analyzer import TextRuleAnalyzer
 from src.pipeline.vision_rule_analyzer import VisionRuleAnalyzer
 from src.pipeline.result_builder import build_document_result
+from src.providers.router import LlmRouter
 
 
 def _timestamp_id() -> str:
@@ -20,12 +21,13 @@ def _timestamp_id() -> str:
 
 
 class ValidationPipeline:
-    def __init__(self, app_config: AppYaml, settings: Settings) -> None:
+    def __init__(self, app_config: AppYaml, settings: Settings, router: LlmRouter | None = None) -> None:
         self.app_config = app_config
         self.settings = settings
+        router = router or LlmRouter(settings, app_config)
         self.extractor = PdfExtractor(app_config=app_config)
-        self.text_rule_analyzer = TextRuleAnalyzer(app_config=app_config, settings=settings)
-        self.vision_rule_analyzer = VisionRuleAnalyzer(app_config=app_config, settings=settings)
+        self.text_rule_analyzer = TextRuleAnalyzer(app_config=app_config, settings=settings, router=router)
+        self.vision_rule_analyzer = VisionRuleAnalyzer(app_config=app_config, settings=settings, router=router)
 
     def build_rule_assessments(
         self,

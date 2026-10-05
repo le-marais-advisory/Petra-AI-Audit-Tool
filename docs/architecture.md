@@ -43,7 +43,6 @@ Petra Vision follows a three-tier architecture: a React frontend communicates wi
 | PDF text extraction | pdfplumber 0.11+ |
 | PDF page rendering | PyMuPDF (fitz) 1.24+ |
 | Image processing | Pillow 10.3+ |
-| AI (OpenAI) | openai 2.21+ |
 | AI (Anthropic) | anthropic 0.86+ |
 | Auth tokens | PyJWT 2.9+ |
 | Retry logic | tenacity 9.0+ |
@@ -127,8 +126,10 @@ petra-data-file/
       vision_rule_analyzer.py  # LLM-based vision rule analysis
       result_builder.py        # Final response construction
     providers/
-      text/                    # Text analysis providers (OpenAI, Claude)
-      vision/                  # Vision analysis providers (OpenAI, Claude)
+      text/                    # Claude text provider
+      vision/                  # Claude vision provider
+      router.py                # Model and effort per call (defaults, rule overrides)
+      models.py                # Model registry (config/models.yaml)
       analysis_result.py       # JSON schema + payload compaction
     schemas/                   # Pydantic models for all request/response types
     services/

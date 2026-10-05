@@ -26,6 +26,10 @@ class RuleSchema(BaseModel):
     required_roles: Optional[list[str]] = None  # workbook sheet roles the rule reads
     evaluator: Literal["llm", "deterministic", "hybrid"] = "llm"
     requires_documents: Optional[list[str]] = None  # reference inputs (e.g. fund_terms) - not yet supported
+    # Overrides of the default model / effort for this rule's LLM calls (see config/models.yaml).
+    # Taken from the server's rule files only; values sent by a client are ignored.
+    model: Optional[str] = None
+    effort: Optional[str] = None
 
     @model_validator(mode="after")
     def _query_matches_evaluator(self) -> "RuleSchema":

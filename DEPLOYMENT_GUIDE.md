@@ -143,7 +143,7 @@ This creates the local `azd` environment metadata for the deployment.
 
 At minimum, set the Azure region, auth mode, provider selection, and the API key you intend to use.
 
-For secrets such as provider API keys, use `azd env set-secret` instead of `azd env set`.
+For secrets such as the Anthropic API key, use `azd env set-secret` instead of `azd env set`.
 
 This is the recommended approach because:
 
@@ -151,29 +151,18 @@ This is the recommended approach because:
 - it avoids leaving the raw key in shell history
 - it avoids storing the raw key in plain text in the local `azd` environment file
 
-Example using OpenAI:
+Example:
 
 ```bash
 azd env set AZURE_LOCATION eastus
 azd env set AUTH_ENABLED true
-azd env set TEXT_PROVIDER openai
-azd env set VISION_PROVIDER openai
-azd env set OPENAI_TEXT_MODEL gpt-5.4-mini
-azd env set OPENAI_VISION_MODEL gpt-5.4
-azd env set-secret OPENAI_API_KEY
-```
-
-Example using Claude:
-
-```bash
-azd env set AZURE_LOCATION eastus
-azd env set AUTH_ENABLED true
-azd env set TEXT_PROVIDER claude
-azd env set VISION_PROVIDER claude
-azd env set CLAUDE_TEXT_MODEL claude-sonnet-5
-azd env set CLAUDE_VISION_MODEL claude-sonnet-5
 azd env set-secret ANTHROPIC_API_KEY
+# optional: the defaults are claude-sonnet-5-5 at the model's own effort
+azd env set CLAUDE_TEXT_MODEL claude-sonnet-5-5
+azd env set TEXT_RULE_EFFORT medium
 ```
+
+Every LLM call goes to Claude; OpenAI is no longer supported. An environment provisioned before that change may still carry `TEXT_PROVIDER`, `VISION_PROVIDER` and `OPENAI_*` values; they are ignored, but `ANTHROPIC_API_KEY` must be set before the next `azd provision` / `azd up`, or every rule is skipped.
 
 When `azd env set-secret` runs, `azd` prompts for the value securely and stores a protected secret reference instead of the raw secret value.
 
@@ -187,11 +176,8 @@ azd env get-values
 
 - `AZURE_LOCATION`
 - `AUTH_ENABLED`
-- `TEXT_PROVIDER`
-- `VISION_PROVIDER`
-- `OPENAI_*`
-- `CLAUDE_*`
-- provider API keys with `azd env set-secret`
+- `CLAUDE_*` and the `*_EFFORT` defaults (`TEXT_RULE_EFFORT`, `VISION_RULE_EFFORT`, `LAYOUT_MAPPING_EFFORT`)
+- `ANTHROPIC_API_KEY` with `azd env set-secret`
 
 ### Values that are normally derived automatically
 
@@ -345,12 +331,9 @@ azd deploy
 
 Examples:
 
-- `TEXT_PROVIDER`
-- `VISION_PROVIDER`
 - `AUTH_ENABLED`
-- `OPENAI_*`
 - `CLAUDE_*`
-- `OPENAI_API_KEY`
+- `TEXT_RULE_EFFORT`, `VISION_RULE_EFFORT`, `LAYOUT_MAPPING_EFFORT`
 - `ANTHROPIC_API_KEY`
 
 Run:
@@ -556,10 +539,6 @@ azd auth login
 azd env new personal
 azd env set AZURE_LOCATION eastus
 azd env set AUTH_ENABLED true
-azd env set TEXT_PROVIDER claude
-azd env set VISION_PROVIDER claude
-azd env set CLAUDE_TEXT_MODEL claude-sonnet-5
-azd env set CLAUDE_VISION_MODEL claude-sonnet-5
 azd env set-secret ANTHROPIC_API_KEY
 azd hooks run preprovision
 azd provision --preview

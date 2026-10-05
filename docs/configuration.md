@@ -19,41 +19,28 @@ Set these in the root `.env` file (see `env.example` for a template).
 | `LOCAL_WORKDIR` | string | `data/tmp` | Temporary directory for PDF processing |
 | `API_ALLOWED_ORIGINS` | string | `http://localhost:5173` | Comma-separated CORS origins |
 
-### AI Providers
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `TEXT_PROVIDER` | string | `openai` | Text analysis provider (`openai` or `claude`) |
-| `VISION_PROVIDER` | string | `openai` | Vision analysis provider (`openai` or `claude`) |
-
-### OpenAI
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `OPENAI_API_KEY` | string | - | OpenAI API key (required if using OpenAI) |
-| `OPENAI_TEXT_MODEL` | string | `gpt-5.4-mini` | Model for text analysis |
-| `OPENAI_VISION_MODEL` | string | - | Model for vision analysis (falls back to text model) |
-| `OPENAI_TEXT_TEMPERATURE` | float | - | Temperature for text analysis |
-| `OPENAI_TEXT_MAX_COMPLETION_TOKENS` | int | - | Max tokens for text analysis |
-
 ### Anthropic (Claude)
 
+Every LLM call goes to Claude. How a call's model and effort are chosen, and how a rule overrides them, is covered in [AI Models](providers.md).
+
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `ANTHROPIC_API_KEY` | string | - | Anthropic API key (required if using Claude) |
-| `CLAUDE_TEXT_MODEL` | string | `claude-sonnet-5` | Model for text analysis |
+| `ANTHROPIC_API_KEY` | string | - | Anthropic API key (required) |
+| `CLAUDE_TEXT_MODEL` | string | `claude-sonnet-5-5` | Default model for text rules, workbook hybrid rules, role assignment and layout mapping. It must be listed in `config/models.yaml` for cost figures |
 | `CLAUDE_VISION_MODEL` | string | - | Model for vision analysis (falls back to text model) |
-| `CLAUDE_TEXT_TEMPERATURE` | float | - | Temperature for text analysis. Unsupported on Sonnet 5 — leave unset |
-| `CLAUDE_VISION_TEMPERATURE` | float | - | Temperature for vision analysis. Unsupported on Sonnet 5 — leave unset |
+| `CLAUDE_TEXT_TEMPERATURE` | float | - | Temperature for text calls. Sent only to models that accept it; Sonnet 5 and 5.5 don't |
+| `CLAUDE_VISION_TEMPERATURE` | float | - | Temperature for vision calls. Same rule |
 | `CLAUDE_TEXT_MAX_TOKENS` | int | `24000` | Max tokens for text analysis. Covers reasoning as well as the response on models that think by default. Measured peak across fixtures is 15.2k output tokens; 4096 truncated 6 of 328 calls and 8192 truncated 3 |
-| `CLAUDE_VISION_MAX_TOKENS` | int | `1600` | Max tokens for vision analysis |
+| `CLAUDE_VISION_MAX_TOKENS` | int | `16000` | Max tokens for vision calls. Covers thinking as well as the answer; 1600 left no room to think at the default effort |
 | `CLAUDE_STRUCTURED_MAX_TOKENS` | int | `64000` | Max tokens for workbook role assignment and layout mapping (streamed). A wide ITD sheet (~32 event blocks) used 20.3k at medium effort |
-| `LAYOUT_MAPPING_EFFORT` | `low`/`medium`/`high`/empty | `medium` | Reasoning effort for workbook layout mapping. On a truncated answer the mapper retries one level lower. Empty uses the model default (`high`), which ran out of tokens on a wide ITD sheet. Ignored by the OpenAI provider |
+| `LAYOUT_MAPPING_EFFORT` | effort or empty | `medium` | Effort for workbook layout mapping. On a truncated answer the mapper retries one level lower. Empty uses the model default (`high`), which ran out of tokens on a wide ITD sheet on Sonnet 5 |
+| `TEXT_RULE_EFFORT` | effort or empty | empty | Default effort for PDF text rules and workbook hybrid rules. Empty is the model default. A rule's `effort` field overrides it |
+| `VISION_RULE_EFFORT` | effort or empty | empty | Default effort for PDF vision rules |
+| `ROLE_ASSIGNMENT_EFFORT` | effort or empty | empty | Effort for workbook sheet-role confirmation |
 
-Claude Sonnet 5 rejects a non-default `temperature` with a 400. Both temperature
-settings are omitted from the request when unset (the default) — only set them if
-you have pointed `CLAUDE_TEXT_MODEL` / `CLAUDE_VISION_MODEL` at an older model
-that accepts sampling parameters.
+The effort levels are `low`, `medium`, `high`, `xhigh` and `max`. Models that don't accept effort (Haiku 4.5) never receive it.
+
+Claude Sonnet 5 and 5.5 reject a non-default `temperature` with a 400. The temperature settings are sent only to models whose `config/models.yaml` entry has `sampling: true`.
 
 ### Azure Authentication
 
@@ -124,26 +111,16 @@ pdf:
 
 ```yaml
 vision:
-  provider: "openai"
-  model_id: "gpt-5.4"
   max_images_per_request: 10
-  temperature: 0.1
-  seed: 42
-  max_completion_tokens: 1600
-  image_detail: "high"
   concurrent_requests: 12
   global_max_concurrent: 24
 ```
 
+The vision model and its token budget are env settings (`CLAUDE_VISION_MODEL`, `CLAUDE_VISION_MAX_TOKENS`).
+
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `provider` | string | `openai` | Default vision provider |
-| `model_id` | string | `gpt-5.4` | Default vision model |
 | `max_images_per_request` | int | `10` | Max images in a single LLM request |
-| `temperature` | float | `0.1` | LLM temperature (lower = more deterministic) |
-| `seed` | int | `42` | Seed for reproducible results |
-| `max_completion_tokens` | int | `1600` | Max tokens in LLM response |
-| `image_detail` | string | `high` | Image detail level (OpenAI-specific) |
 | `concurrent_requests` | int | `12` | Concurrent requests per rule |
 | `global_max_concurrent` | int | `24` | Global concurrency cap across all rules |
 
@@ -199,11 +176,11 @@ on:
   together cannot read each other's cache entries. Layout rules go first on their page,
   so the first call writes both entries.
 
-OpenAI caches long prefixes automatically and gets no markers; the content-first order is
-what lets it apply. Off sends no markers and starts every call at once; the prompt order
-stays content-first. Check the effect in the Token Usage tab (`VITE_SHOW_TOKEN_USAGE`):
-on Claude, cached input is 0 without caching. A prefix shorter than the model's minimum
-(1024 tokens on Claude Sonnet 5) is not cached even when marked.
+Off sends no markers and starts every call at once; the prompt order stays content-first.
+Check the effect in the Token Usage tab (`VITE_SHOW_TOKEN_USAGE`): cached input is 0
+without caching. A prefix shorter than the model's minimum (1024 tokens on Claude Sonnet
+5) is not cached even when marked. Caches are per model, so rules that a `model` or
+`effort` override sends elsewhere are grouped separately.
 
 ## Key Files
 

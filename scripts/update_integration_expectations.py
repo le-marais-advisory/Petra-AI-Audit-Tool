@@ -15,7 +15,7 @@ Workflow:
        expected entries and prints the actual verdicts.
     3. Review the output, paste the `expected` block into cases.yaml, commit.
 
-Requires a valid .env with API keys (OPENAI_API_KEY or ANTHROPIC_API_KEY).
+Requires a valid .env with ANTHROPIC_API_KEY.
 """
 from __future__ import annotations
 

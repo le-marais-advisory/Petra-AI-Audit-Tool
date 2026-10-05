@@ -18,8 +18,7 @@ def _has_provider_key() -> bool:
         settings = get_settings()
     except Exception:
         return False
-    keys = [getattr(settings, name, None) for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")]
-    return any(keys) or any(os.getenv(n) for n in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"))
+    return bool(getattr(settings, "ANTHROPIC_API_KEY", None) or os.getenv("ANTHROPIC_API_KEY"))
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

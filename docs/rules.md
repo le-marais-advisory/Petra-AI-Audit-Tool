@@ -26,7 +26,7 @@ Each document type has its own rule pack (see [Document Types](document-types.md
 
 ### Text Rules (`analysis_type: "text"`)
 
-Text rules analyze extracted text and table data from each page. They are processed by the `TextRuleAnalyzer` using an LLM (OpenAI or Claude) with the extracted page content as input.
+Text rules analyze extracted text and table data from each page. They are processed by the `TextRuleAnalyzer` using Claude with the extracted page content as input.
 
 Examples:
 - **FMT-HEADINGS** - Heading alignment and integrity
@@ -70,6 +70,8 @@ Examples:
 | `required_roles` | string[] \| null | No | Workbook sheet roles the rule reads; if one is missing, the rule returns `needs_review` |
 | `evaluator` | `"llm"` \| `"deterministic"` \| `"hybrid"` | No | Workbooks: evaluated in code, or by the LLM with computed facts (default `"llm"`) |
 | `requires_documents` | string[] \| null | No | Reference inputs the rule needs (e.g. `fund_terms`); not yet supported, so such rules are kept in `rules/capital_event/deferred/` |
+| `model` | string | No | Model for this rule's LLM calls instead of the default; must be listed in `config/models.yaml`. See [AI Models](providers.md) |
+| `effort` | `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | No | Effort for this rule's LLM calls instead of the default; the model must accept effort (Haiku 4.5 does not) |
 
 ## Verdicts
 

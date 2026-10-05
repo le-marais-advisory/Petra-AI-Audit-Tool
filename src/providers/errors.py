@@ -17,11 +17,28 @@ class TruncatedResponseError(ValueError):
         self.during_thinking = during_thinking
 
 
+def _answer_blocks(response: Any) -> list[Any]:
+    """Content blocks of the final answer. After a refusal fallback the content can start with the
+    declining model's partial output, so only the blocks after the last ``fallback`` block count."""
+    blocks = list(getattr(response, "content", None) or [])
+    last = max((i for i, b in enumerate(blocks) if getattr(b, "type", None) == "fallback"), default=-1)
+    return blocks[last + 1:]
+
+
+def served_by_fallback(response: Any) -> str | None:
+    """The model that answered when a server-side refusal fallback took over, else None."""
+    blocks = getattr(response, "content", None) or []
+    if not any(getattr(b, "type", None) == "fallback" for b in blocks):
+        return None
+    model = getattr(response, "model", None)
+    return model if isinstance(model, str) and model else "a fallback model"
+
+
 def claude_response_text(response: Any, max_tokens: int, budget_setting: str) -> str:
     """The joined text blocks of a Claude response, or an error that names why there are none."""
     parts = [
         block.text.strip()
-        for block in getattr(response, "content", None) or []
+        for block in _answer_blocks(response)
         if getattr(block, "type", None) == "text" and getattr(block, "text", "").strip()
     ]
     if parts:

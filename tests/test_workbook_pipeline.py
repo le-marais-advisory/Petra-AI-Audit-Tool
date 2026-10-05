@@ -176,7 +176,7 @@ def test_validation_service_dispatches_by_document_type(capital_event_fixtures, 
 
     registry = importlib.import_module("src.document_types.registry")
     spec = registry.get_document_type("capital_event_workbook")
-    monkeypatch.setattr(spec, "pipeline_factory", lambda: Recorder())
+    monkeypatch.setattr(spec, "pipeline_factory", lambda **kwargs: Recorder())
     manifest = capital_event_fixtures.get()
     service_mod.ValidationService().validate_document(
         file_path=str(manifest.path), source_filename=manifest.path.name,

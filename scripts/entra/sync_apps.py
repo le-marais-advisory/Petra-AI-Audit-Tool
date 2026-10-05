@@ -340,8 +340,6 @@ def ensure_environment_defaults(current_values: dict[str, str]) -> dict[str, str
         "APP_NAME": "Petra Vision",
         "API_PREFIX": "/api/v1",
         "AUTH_ENABLED": "true",
-        "TEXT_PROVIDER": "openai",
-        "VISION_PROVIDER": "openai",
     }
 
     updated_values = dict(current_values)

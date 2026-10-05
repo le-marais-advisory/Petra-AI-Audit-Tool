@@ -9,12 +9,21 @@ from anthropic import Anthropic
 
 from src.core.llm_usage import record_anthropic_usage
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, text_rule_prompt
-from src.providers.errors import TruncatedResponseError, claude_response_text
+from src.providers.errors import TruncatedResponseError, claude_response_text, served_by_fallback
 from src.providers.text.base import TextAnalysisProvider
 
 logger = logging.getLogger("petra.providers.text.claude")
 
 _CACHE = {"type": "ephemeral"}  # 5-minute TTL: rules sharing a prefix start seconds apart
+# Server-side refusal fallback: a declined call is re-run on a fallback model inside the same request,
+# chosen by refusal category, instead of coming back as a refusal.
+REFUSAL_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+
+def salted_system_prompt(system_prompt: str, cache_salt: str) -> str:
+    """The system prompt with a per-run tag in front, so runs never share a cached prefix (used by the
+    model comparison tool, where a repeat would otherwise read the cache an earlier run wrote)."""
+    return f"[run {cache_salt}]\n{system_prompt}" if cache_salt and system_prompt.strip() else system_prompt
 
 
 class ClaudeTextAnalysisProvider(TextAnalysisProvider):
@@ -25,6 +34,8 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         temperature: float | None,
         max_tokens: int,
         structured_max_tokens: int | None = None,
+        refusal_fallback: bool = False,
+        cache_salt: str = "",
     ) -> None:
         # Explicit timeout and retry budget. The SDK defaults are a 600s timeout with
         # 2 retries, and timeouts are themselves retried, so an unresponsive call could
@@ -41,6 +52,12 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         # it thought past 24k without answering. These calls are streamed, so the 300s
         # timeout bounds the gap between chunks rather than the whole call.
         self._structured_max_tokens = structured_max_tokens or max_tokens
+        self._refusal_fallback = refusal_fallback
+        self._cache_salt = cache_salt
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     def _call_claude_with_retry(
         self,
@@ -53,7 +70,8 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         effort: str | None = None,
         stream: bool = False,
         budget_setting: str = "CLAUDE_TEXT_MAX_TOKENS",
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str | None]:
+        """The parsed JSON answer, and the model that served it when a refusal fallback took over."""
         max_tokens = max_tokens or self._max_tokens
         output_config: dict[str, Any] = {
             "format": {
@@ -69,6 +87,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             "messages": messages,
             "output_config": output_config,
         }
+        system_prompt = salted_system_prompt(system_prompt, self._cache_salt)
         if system_prompt.strip():
             # A one-block list either way, so the rendered prefix is the same whether or not it is
             # marked. Below the model's minimum cacheable length the marker is silently ignored.
@@ -79,12 +98,17 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         if self._temperature is not None:
             request_kwargs["temperature"] = self._temperature
 
+        messages_api = self._client.messages
+        if self._refusal_fallback:
+            messages_api = self._client.beta.messages
+            request_kwargs["betas"] = [REFUSAL_FALLBACK_BETA]
+            request_kwargs["fallbacks"] = "default"
         if stream:
-            with self._client.messages.stream(**request_kwargs) as response_stream:
+            with messages_api.stream(**request_kwargs) as response_stream:
                 response = response_stream.get_final_message()
         else:
-            response = self._client.messages.create(**request_kwargs)
-        record_anthropic_usage(response, self._model, "Text rules", rule_id)
+            response = messages_api.create(**request_kwargs)
+        record_anthropic_usage(response, self._model, "Text rules", rule_id, effort=effort)
         stop_reason = getattr(response, "stop_reason", "unknown")
         # Output tokens cover reasoning as well as the response and are what max_tokens
         # caps, so this is the number to look at when sizing CLAUDE_TEXT_MAX_TOKENS or
@@ -101,7 +125,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             )
         raw_text = claude_response_text(response, max_tokens, budget_setting)
         try:
-            return json.loads(raw_text)
+            return json.loads(raw_text), served_by_fallback(response)
         except json.JSONDecodeError as exc:
             logger.error(
                 "Claude text response JSON parse failed (stop_reason=%s, len=%d, max_tokens=%d): %s — raw: %.500s",
@@ -134,6 +158,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         cache_content: bool = False,
         shared_context: str = "",
         cache_shared_context: bool = False,
+        effort: str | None = None,
     ) -> dict[str, Any]:
         shared, subset, tail = text_rule_prompt(document_content, rule, rule_context, shared_context)
         # Separate blocks, so a rule that reads only the document content still finds the entry a
@@ -147,9 +172,13 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
                 blocks[-1]["cache_control"] = _CACHE
         blocks.append({"type": "text", "text": tail})
         messages: list[dict[str, Any]] = [{"role": "user", "content": blocks}]
-        return self._call_claude_with_retry(
-            messages, system_prompt, rule_id=rule.get("id"), cache_system=cache_content or cache_shared_context
+        result, served_by = self._call_claude_with_retry(
+            messages, system_prompt, rule_id=rule.get("id"), cache_system=cache_content or cache_shared_context,
+            effort=effort,
         )
+        if served_by:
+            result["served_by"] = served_by
+        return result
 
     def complete_structured(
         self,
@@ -160,7 +189,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         effort: str | None = None,
     ) -> dict[str, Any]:
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
-        return self._call_claude_with_retry(
+        result, _ = self._call_claude_with_retry(
             messages,
             system_prompt,
             schema=json_schema,
@@ -169,3 +198,4 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
             stream=True,
             budget_setting="CLAUDE_STRUCTURED_MAX_TOKENS",
         )
+        return result

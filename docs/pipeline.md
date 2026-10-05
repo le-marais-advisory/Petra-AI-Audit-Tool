@@ -96,7 +96,7 @@ Analyzes extracted text and tables against text-type rules using an LLM:
    (they carry their own `scope` and `matched_pages`) alongside one synthetic page result
    attributed to the first gathered page
 
-The LLM provider (OpenAI or Claude) is determined by the `TEXT_PROVIDER` environment variable.
+Each rule's model and effort come from the defaults (`CLAUDE_TEXT_MODEL`, `TEXT_RULE_EFFORT`) or the rule's own `model` / `effort` fields; see [AI Models](providers.md).
 Provider clients are configured with a 180s timeout and 2 SDK retries; the SDK's own
 429/5xx handling (which honours `retry-after`) is the rate-limit defence.
 
@@ -129,7 +129,7 @@ Analyzes rendered page images against vision-type rules using an LLM with vision
 4. Supports concurrent requests (configurable via `concurrent_requests` and `global_max_concurrent` in `app.yaml`)
 5. The LLM evaluates visual elements and returns structured verdicts
 
-The vision provider is determined by the `VISION_PROVIDER` environment variable.
+Each rule's model and effort come from the defaults (`CLAUDE_VISION_MODEL`, `VISION_RULE_EFFORT`) or the rule's own `model` / `effort` fields; see [AI Models](providers.md).
 
 **Output:** Same structure as text analysis — `rule_results` and `page_results`.
 

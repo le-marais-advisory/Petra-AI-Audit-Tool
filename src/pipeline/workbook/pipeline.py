@@ -53,8 +53,13 @@ def _timestamp_id() -> str:
 class WorkbookPipeline:
     def __init__(self, text_provider=None, role_assigner=None, layout_mapper: LayoutMapper | None = None,
                  layout_concurrency: int | None = None, hybrid_concurrency: int | None = None,
-                 prompt_cache: bool | None = None) -> None:
-        self._provider = text_provider
+                 prompt_cache: bool | None = None, router=None) -> None:
+        """``router`` decides each LLM call's model and effort; ``text_provider`` (tests) receives every call."""
+        if router is None and text_provider is not None:
+            from src.providers.router import FixedProviderRouter
+
+            router = FixedProviderRouter(text_provider=text_provider)
+        self._router = router
         self._role_assigner = role_assigner
         self._layout_mapper = layout_mapper
         app_cfg = None
@@ -70,22 +75,27 @@ class WorkbookPipeline:
         self.hybrid_concurrency = hybrid_concurrency or (workbook_cfg.hybrid_concurrency if workbook_cfg else 6)
         self.prompt_cache = prompt_cache if prompt_cache is not None else (
             app_cfg.pipeline.prompt_cache if app_cfg else True)
+        if router is not None:
+            self.prompt_cache = router.prompt_cache(self.prompt_cache)
 
     # -- collaborators -------------------------------------------------------------------------
 
     @property
-    def provider(self):
-        if self._provider is None:
-            from src.core.config import get_settings
-            from src.providers.text.factory import build_text_provider
+    def router(self):
+        if self._router is None:
+            from src.providers.router import LlmRouter
 
-            self._provider = build_text_provider(get_settings())
-        return self._provider
+            self._router = LlmRouter()
+        return self._router
 
     def _assign_roles(self, model: WorkbookModel) -> dict[str, str]:
         inventory = build_inventory(model)
         proposed = propose_roles(inventory)
-        assigner = self._role_assigner or llm_role_assigner(self.provider)
+        if self._role_assigner is not None:
+            assigner = self._role_assigner
+        else:
+            target = self.router.stage_target("roles")
+            assigner = llm_role_assigner(self.router.text_provider(target.model), effort=target.effort)
         try:
             with usage_stage("Sheet roles"):
                 return assigner(model, inventory, proposed)
@@ -96,8 +106,11 @@ class WorkbookPipeline:
     def _map_layout(self, model: WorkbookModel, sheet: str, role: str, event_type: str | None) -> BaseModel | None:
         if self._layout_mapper is not None:
             return self._layout_mapper(model, sheet, role)
+        target = self.router.stage_target("layout")
         with usage_stage("Layout mapping"):
-            layout, _ = map_sheet_layout(model, sheet, role, provider=self.provider, event_type=event_type)
+            # "" rather than None: the router has already applied LAYOUT_MAPPING_EFFORT
+            layout, _ = map_sheet_layout(model, sheet, role, provider=self.router.text_provider(target.model),
+                                         event_type=event_type, effort=target.effort or "")
         return layout
 
     # -- run ------------------------------------------------------------------------------------
@@ -157,8 +170,10 @@ class WorkbookPipeline:
                 durations[rule["id"]] = (time.perf_counter() - started) * 1000 / max(1, len(deterministic))
         done = 2 + len(results)
         progress("Evaluating LLM-judged rules", done, total_steps)
+        served_by: dict[str, str] = {}  # rule id -> fallback model, plus "" for every rule sent to the LLM
         if llm_rules and not cancelled():
-            for rule_id, result, elapsed in self._run_hybrid(model, data, llm_rules, options, roles, cancelled):
+            for rule_id, result, elapsed in self._run_hybrid(model, data, llm_rules, options, roles, cancelled,
+                                                              served_by):
                 results[rule_id] = result
                 durations[rule_id] = elapsed
                 done += 1
@@ -168,7 +183,7 @@ class WorkbookPipeline:
         logger.info("Workbook pipeline complete: file=%s sheets=%d rules=%d elapsed=%s", source_filename,
                     len(selected), len(rules), timedelta(seconds=elapsed))
         return self._build_result(model, roles, selected, data.reference_sheets, rules, results, durations, options,
-                                  source_filename, elapsed, cancelled())
+                                  source_filename, elapsed, cancelled(), served_by)
 
     def _prior_data(self, path: str, source_filename: str | None) -> WorkbookData | None:
         """Data from the prior event's workbook: only the sheets the cross-event rules compare."""
@@ -230,8 +245,11 @@ class WorkbookPipeline:
                          f"{build_skeleton(sheet)}</sheet>")
         return "\n".join(parts), render_facts(rule["id"], facts)
 
-    def _run_hybrid(self, model, data, rules, options, roles, cancelled):
+    def _run_hybrid(self, model, data, rules, options, roles, cancelled, served_by: dict[str, str] | None = None):
+        """Yields (rule_id, result, elapsed_ms). Rules a refusal fallback answered are noted in ``served_by``."""
+        served_by = served_by if served_by is not None else {}
         system_prompt = _PROMPT_PATH.read_text(encoding="utf-8")
+        targets = {rule["id"]: self.router.rule_target(rule, "hybrid_rule") for rule in rules}
         runnable, blocked = [], []
         for rule in rules:
             missing = [r for r in rule.get("required_roles") or [] if not _role_present(data, r)]
@@ -243,17 +261,23 @@ class WorkbookPipeline:
                                       f"The {labels} sheet layout could not be mapped or validated, so this rule "
                                       "could not be evaluated.", reasons), 0.0
 
-        def sheet_set(rule) -> tuple[str, ...]:
-            return tuple(sorted(rule.get("required_roles") or []))
+        def sheet_set(rule) -> tuple:
+            # caches are per model, so rules share the excerpts' cache entry only on the same target
+            return tuple(sorted(rule.get("required_roles") or [])), targets[rule["id"]]
 
         shared = Counter(sheet_set(rule) for rule, _ in runnable) if self.prompt_cache else Counter()
 
         def evaluate(rule):
             started = time.perf_counter()
             sheets, facts = self._rule_content(model, data, rule, options, roles)
+            target = targets[rule["id"]]
+            served_by.setdefault(rule["id"], "")
             with usage_stage("Hybrid rules"):
-                raw = self.provider.evaluate_rule(sheets, rule, system_prompt, rule_context=facts,
-                                                  cache_content=shared[sheet_set(rule)] > 1)
+                raw = self.router.text_provider(target.model).evaluate_rule(
+                    sheets, rule, system_prompt, rule_context=facts, cache_content=shared[sheet_set(rule)] > 1,
+                    effort=target.effort)
+            if raw.get("served_by"):
+                served_by[rule["id"]] = raw["served_by"]
             try:
                 parsed = AnalysisRuleResult(**{**raw, "rule_id": rule["id"], "rule_name": rule.get("name", rule["id"])})
             except ValidationError as exc:
@@ -277,7 +301,8 @@ class WorkbookPipeline:
     # -- result ------------------------------------------------------------------------------------
 
     def _build_result(self, model, roles, selected, reference_sheets, rules, results, durations, options,
-                      source_filename, elapsed, cancelled) -> dict:
+                      source_filename, elapsed, cancelled, served_by: dict[str, str] | None = None) -> dict:
+        served_by = served_by or {}
         pages = []
         units = [(name, roles.get(name, "other")) for name in selected]
         units += [(name, "reference") for name in reference_sheets if name not in selected]
@@ -310,9 +335,14 @@ class WorkbookPipeline:
                 "reasoning": result.reasoning,
                 "findings": result.findings,
                 "citations": citations,
-                "notes": [f"Evaluated {'in code' if rule.get('evaluator') == 'deterministic' else 'by the LLM with computed facts'}."],
+                "notes": [f"Evaluated {'in code' if rule.get('evaluator') == 'deterministic' else 'by the LLM with computed facts'}."]
+                + ([f"Answered by {served_by[rule['id']]} after the configured model declined (refusal fallback)."]
+                   if served_by.get(rule["id"]) else []),
                 "duration_ms": round(durations.get(rule["id"], 0.0), 1),
             }
+            if rule["id"] in served_by:  # the rule was sent to the LLM
+                target = self.router.rule_target(rule, "hybrid_rule")
+                base["llm_model"], base["llm_effort"] = target.model, target.effort
             assessments.append({**base, "matched_pages": matched})
             page = matched[0] if matched else default_page
             label = next((p["label"] for p in pages if p["page"] == page), None)

@@ -24,14 +24,9 @@ retrieval:
   top_k: 6
   metric: "cosine"
 
+# The vision model and its token budget are env settings (CLAUDE_VISION_MODEL, CLAUDE_VISION_MAX_TOKENS).
 vision:
-  provider: "openai"
-  model_id: "gpt-5.4"
   max_images_per_request: 10
-  temperature: 0.1
-  seed: 42
-  max_completion_tokens: 1600
-  image_detail: "high"
   concurrent_requests: 12
   global_max_concurrent: 24
 
