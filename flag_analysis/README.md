@@ -6,7 +6,7 @@ suggest areas of improvement. It auto-detects two input shapes:
 | Input | Source | "Errors" mean |
 |---|---|---|
 | `feedback.json` | `/app/data/feedback.json` (written by `src/api/routers/feedback.py`) | User-marked `assessment == "incorrect"` |
-| Validation report | `python -m src.main validate --out report.json` | Rules with verdict `fail` / `needs_review` |
+| Validation report | `python -m src.main --file <document> --out report.json` | Rules with verdict `fail` / `needs_review` |
 
 ## Conventions
 

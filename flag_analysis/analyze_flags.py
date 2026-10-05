@@ -11,7 +11,7 @@ Auto-detects the input shape:
   output as `incorrect`. The summary covers model accuracy and which rules
   most often produce wrong verdicts.
 * **validation report** — a DocumentValidationResponse-shaped dict (output of
-  `python -m src.main validate --out report.json`). "Errors" = rules with
+  `python -m src.main --file <document> --out report.json`). "Errors" = rules with
   verdict `fail` or `needs_review`.
 
 Usage:

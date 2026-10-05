@@ -57,7 +57,7 @@ The supported UI now lives in the separate React app under `frontend/`.
 - use the standalone frontend service for operator workflows
 
 2. **Run CLI (one-off PDF validation)**
-   python -m src.main validate --pdf ./tests/sample.pdf --out ./data/reports/report.json
+   python -m src.main --file ./tests/sample.pdf --out ./data/reports/report.json
 3. **Run API**
    python -m uvicorn src.main:app --reload --port 8000
    Then use the versioned API under `/api/v1`.

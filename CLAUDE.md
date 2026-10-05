@@ -40,8 +40,8 @@ pytest -k "test_name"
 pytest tests/smoke_test.py
 
 # Run CLI validation (one-off, no server)
-python -m src.main validate --file ./tests/sample.pdf --out ./data/reports/report.json
-python -m src.main validate --file ./workbook.xlsx --document-type capital_event_workbook --event-type capital_call --out ./data/reports/ce.json
+python -m src.main --file ./tests/sample.pdf --out ./data/reports/report.json
+python -m src.main --file ./workbook.xlsx --document-type capital_event_workbook --event-type capital_call --out ./data/reports/ce.json
 ```
 
 Unit test files:
@@ -153,7 +153,7 @@ python flag_analysis/analyze_flags.py path/to/feedback.json --out analysis.md
 python flag_analysis/analyze_flags.py --skip-llm
 ```
 
-Auto-detects two input shapes: a `feedback.json` list (from the `/app/data/feedback.json` API output) or a `DocumentValidationResponse` report (from the `validate` CLI).
+Auto-detects two input shapes: a `feedback.json` list (from the `/app/data/feedback.json` API output) or a `DocumentValidationResponse` report (from the validation CLI, `python -m src.main`).
 
 ## Architecture
 
