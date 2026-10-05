@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
+from src.core.llm_usage import ContextThreadPoolExecutor, track_usage, usage_stage
 from src.pipeline.result_builder import build_document_result
 from src.pipeline.workbook.checks import run_deterministic_checks
 from src.pipeline.workbook.checks._common import ROLE_LABELS
@@ -81,7 +82,8 @@ class WorkbookPipeline:
         proposed = propose_roles(inventory)
         assigner = self._role_assigner or llm_role_assigner(self.provider)
         try:
-            return assigner(model, inventory, proposed)
+            with usage_stage("Sheet roles"):
+                return assigner(model, inventory, proposed)
         except Exception:
             logger.exception("Role assignment failed; using the heuristic proposal")
             return proposed
@@ -89,12 +91,19 @@ class WorkbookPipeline:
     def _map_layout(self, model: WorkbookModel, sheet: str, role: str, event_type: str | None) -> BaseModel | None:
         if self._layout_mapper is not None:
             return self._layout_mapper(model, sheet, role)
-        layout, _ = map_sheet_layout(model, sheet, role, provider=self.provider, event_type=event_type)
+        with usage_stage("Layout mapping"):
+            layout, _ = map_sheet_layout(model, sheet, role, provider=self.provider, event_type=event_type)
         return layout
 
     # -- run ------------------------------------------------------------------------------------
 
-    def run(
+    def run(self, file_path: str, *args, **kwargs) -> dict:
+        with track_usage() as meter:
+            response = self._run(file_path, *args, **kwargs)
+        response["llm_usage"] = meter.summary()
+        return response
+
+    def _run(
         self,
         file_path: str,
         rules: list[dict] | None = None,
@@ -160,9 +169,10 @@ class WorkbookPipeline:
         """Data from the prior event's workbook: only the sheets the cross-event rules compare."""
         try:
             model = load_workbook_model(path, file_name=source_filename or Path(path).name)
-            roles = self._assign_roles(model)
-            wanted = [s for s, r in roles.items() if r in PRIOR_ROLES]
-            layouts, errors = self._map_layouts(model, roles, wanted, None)
+            with usage_stage("Prior workbook"):
+                roles = self._assign_roles(model)
+                wanted = [s for s, r in roles.items() if r in PRIOR_ROLES]
+                layouts, errors = self._map_layouts(model, roles, wanted, None)
             data = extract_workbook_data(model, layouts)
             data.extraction_errors.update(_errors_by_role(errors, roles))
             return data
@@ -176,7 +186,7 @@ class WorkbookPipeline:
         mappable = [s for s in selected if roles.get(s, "other") != "other"]
         layouts: dict[str, BaseModel] = {}
         errors: dict[str, str] = {}
-        with ThreadPoolExecutor(max_workers=max(1, min(self.layout_concurrency, len(mappable) or 1))) as pool:
+        with ContextThreadPoolExecutor(max_workers=max(1, min(self.layout_concurrency, len(mappable) or 1))) as pool:
             futures = {pool.submit(self._map_layout, model, s, roles[s], event_type): s for s in mappable}
             for future in as_completed(futures):
                 sheet = futures[future]
@@ -228,14 +238,15 @@ class WorkbookPipeline:
         def evaluate(rule):
             started = time.perf_counter()
             content = self._rule_content(model, data, rule, options, roles)
-            raw = self.provider.evaluate_rule(content, rule, system_prompt)
+            with usage_stage("Hybrid rules"):
+                raw = self.provider.evaluate_rule(content, rule, system_prompt)
             try:
                 parsed = AnalysisRuleResult(**{**raw, "rule_id": rule["id"], "rule_name": rule.get("name", rule["id"])})
             except ValidationError as exc:
                 parsed = _result(rule, "needs_review", "The model returned an invalid result.", [str(exc)[:300]])
             return parsed, (time.perf_counter() - started) * 1000
 
-        with ThreadPoolExecutor(max_workers=max(1, min(self.hybrid_concurrency, len(runnable) or 1))) as pool:
+        with ContextThreadPoolExecutor(max_workers=max(1, min(self.hybrid_concurrency, len(runnable) or 1))) as pool:
             futures = {pool.submit(evaluate, rule): rule for rule, _ in runnable if not cancelled()}
             for future in as_completed(futures):
                 rule = futures[future]

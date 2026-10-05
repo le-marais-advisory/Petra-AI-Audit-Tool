@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
+from src.core.llm_usage import record_openai_chat_usage
 from src.providers.analysis_result import AnalysisRuleResult, compact_rule_payload
 from src.providers.text.base import TextAnalysisProvider
 
@@ -29,7 +30,7 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         self._temperature = temperature
         self._max_tokens = max_completion_tokens
 
-    def _call_openai_with_retry(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def _call_openai_with_retry(self, messages: list[dict[str, Any]], rule_id: str | None = None) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
@@ -43,6 +44,7 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         response = self._client.beta.chat.completions.parse(
             **request_kwargs,
         )
+        record_openai_chat_usage(response, self._model, "Text rules", rule_id)
         message = response.choices[0].message
         if message.parsed is not None:
             return message.parsed.model_dump()
@@ -66,7 +68,7 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
                 ),
             }
         )
-        return self._call_openai_with_retry(messages)
+        return self._call_openai_with_retry(messages, rule_id=rule.get("id"))
 
     def complete_structured(
         self,
@@ -93,6 +95,7 @@ class OpenAITextAnalysisProvider(TextAnalysisProvider):
         if self._temperature is not None:
             request_kwargs["temperature"] = self._temperature
         response = self._client.chat.completions.create(**request_kwargs)
+        record_openai_chat_usage(response, self._model, "Text rules")
         message = response.choices[0].message
         if getattr(message, "refusal", None):
             raise ValueError(f"Model refused to answer: {message.refusal}")

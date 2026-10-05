@@ -113,6 +113,7 @@ The UI has four main views accessible via tabs:
 | `VITE_API_PREFIX` | API path prefix | `/api/v1` |
 | `VITE_AUTH_ENABLED` | Enable authentication gate | `false` |
 | `VITE_SHOW_RULES_SIDEBAR` | Show the Validation Rules sidebar | `false` |
+| `VITE_SHOW_TOKEN_USAGE` | Show the Token Usage tab | `false` |
 
 See [Authentication](authentication.md) for auth-specific variables.
 

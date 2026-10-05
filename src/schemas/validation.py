@@ -96,6 +96,27 @@ class DocumentAnalysisSchema(BaseModel):
     page_observations: list[PageAnalysisSchema] = Field(default_factory=list)
 
 
+class LlmUsageRowSchema(BaseModel):
+    label: str
+    calls: int = 0
+    input_tokens: int = Field(default=0, description="All prompt tokens billed, cached or not.")
+    cache_read_tokens: int = Field(default=0, description="Prompt tokens served from the cache (part of input_tokens).")
+    cache_creation_tokens: int = Field(
+        default=0, description="Prompt tokens written to the cache (part of input_tokens; Anthropic only)."
+    )
+    output_tokens: int = Field(default=0, description="All generated tokens, reasoning included.")
+    reasoning_tokens: int = Field(
+        default=0, description="Reasoning share of output_tokens (OpenAI only; Claude does not report it separately)."
+    )
+
+
+class LlmUsageSchema(BaseModel):
+    totals: LlmUsageRowSchema = Field(default_factory=lambda: LlmUsageRowSchema(label="All calls"))
+    by_stage: list[LlmUsageRowSchema] = Field(default_factory=list)
+    by_model: list[LlmUsageRowSchema] = Field(default_factory=list)
+    by_rule: list[LlmUsageRowSchema] = Field(default_factory=list)
+
+
 class DocumentValidationResponse(BaseModel):
     document_id: str
     document_type: str = Field(default="financial_statements", description="Document type selected for the run.")
@@ -104,6 +125,9 @@ class DocumentValidationResponse(BaseModel):
     source_filename: Optional[str] = None
     analysis: DocumentAnalysisSchema = Field(default_factory=DocumentAnalysisSchema)
     pages: list[PageExtractionSchema] = Field(default_factory=list)
+    llm_usage: Optional[LlmUsageSchema] = Field(
+        default=None, description="LLM token consumption for the run; set once the run has finished."
+    )
 
 
 class ValidationJobResponse(BaseModel):

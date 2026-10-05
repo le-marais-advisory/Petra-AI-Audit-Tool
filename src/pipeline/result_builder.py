@@ -188,6 +188,7 @@ def build_document_result(
     text_page_results: list[dict] | None = None,
     visual_page_results: list[dict] | None = None,
     elapsed_seconds: float | None = None,
+    llm_usage: dict | None = None,
 ) -> dict:
     return DocumentValidationResponse(
         document_id=document_id,
@@ -202,4 +203,5 @@ def build_document_result(
             elapsed_seconds=elapsed_seconds,
         ),
         pages=pages,
+        llm_usage=llm_usage,
     ).model_dump()

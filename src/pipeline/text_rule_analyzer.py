@@ -6,12 +6,13 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Literal
 
 from src.core.config import AppYaml, Settings
+from src.core.llm_usage import ContextThreadPoolExecutor
 from src.core.prompting import load_prompt
 from src.pipeline.page_classifier import rule_applies_to_page, SECTION_TO_KEY
 from src.providers.text.base import TextAnalysisProvider
@@ -618,7 +619,7 @@ class TextRuleAnalyzer:
                 return self._evaluate_broad_scope_rule(item, provider)
             return None, [self._evaluate_page_scope_rule(item, provider)]
 
-        with ThreadPoolExecutor(max_workers=self._max_workers()) as executor:
+        with ContextThreadPoolExecutor(max_workers=self._max_workers()) as executor:
             future_to_item = {executor.submit(_run, item): item for item in work_items}
             for future in as_completed(future_to_item):
                 if is_cancelled and is_cancelled():

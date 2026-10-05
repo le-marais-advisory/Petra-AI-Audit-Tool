@@ -37,6 +37,7 @@ services:
       VITE_API_PREFIX: /api/v1
       VITE_AUTH_ENABLED: "false"
       VITE_SHOW_RULES_SIDEBAR: "true"
+      VITE_SHOW_TOKEN_USAGE: "true"
     depends_on:
       - petra_vision_api
     restart: unless-stopped

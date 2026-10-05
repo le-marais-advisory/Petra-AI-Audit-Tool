@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 from anthropic import Anthropic
 
+from src.core.llm_usage import record_anthropic_usage
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, build_vector_data_text, compact_rule_payload
 from src.providers.errors import claude_response_text
 from src.providers.vision.base import VisionProvider
@@ -65,7 +66,9 @@ class ClaudeVisionProvider(VisionProvider):
         self._max_tokens = max_tokens
         self._semaphore = get_global_semaphore(max_concurrent)
 
-    def _call_claude_with_retry(self, messages: list[dict[str, Any]], system_prompt: str) -> dict[str, Any]:
+    def _call_claude_with_retry(
+        self, messages: list[dict[str, Any]], system_prompt: str, rule_id: str | None = None
+    ) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
@@ -84,6 +87,7 @@ class ClaudeVisionProvider(VisionProvider):
 
         with self._semaphore:
             response = self._client.messages.create(**request_kwargs)
+        record_anthropic_usage(response, self._model, "Vision rules", rule_id)
         return json.loads(claude_response_text(response, self._max_tokens, "CLAUDE_VISION_MAX_TOKENS"))
 
     def evaluate_rule(self, page_image: dict[str, Any], rule: dict, system_prompt: str) -> dict[str, Any]:
@@ -111,7 +115,7 @@ class ClaudeVisionProvider(VisionProvider):
         ]
 
         try:
-            return self._call_claude_with_retry(messages, system_prompt)
+            return self._call_claude_with_retry(messages, system_prompt, rule_id=rule.get("id"))
         except Exception as exc:
             return {
                 "rule_id": rule.get("id", ""),

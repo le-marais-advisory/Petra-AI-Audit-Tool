@@ -45,6 +45,7 @@ petra_vision_frontend:
     VITE_API_PREFIX: /api/v1
     VITE_AUTH_ENABLED: "false"
     VITE_SHOW_RULES_SIDEBAR: "true"
+    VITE_SHOW_TOKEN_USAGE: "true"
 ```
 
 ### Rules sidebar visibility
@@ -66,6 +67,10 @@ az containerapp update -n <frontend-app> -g <resource-group> \
 
 Note that with the sidebar hidden, per-rule `bypassable` toggles are unavailable,
 so no rule is bypassed.
+
+The Token Usage tab follows the same pattern: `VITE_SHOW_TOKEN_USAGE` is `true` in
+local dev and the `showTokenUsage` Bicep param defaults to `false`. Hiding the tab does
+not change the API, which still returns `llm_usage` with every finished run.
 
 ## Azure Container Apps
 

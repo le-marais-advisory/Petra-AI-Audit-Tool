@@ -8,6 +8,7 @@ from pathlib import Path
 logger = logging.getLogger("petra.pipeline")
 
 from src.core.config import AppYaml, Settings
+from src.core.llm_usage import track_usage
 from src.pipeline.pdf_extractor import PdfExtractor
 from src.pipeline.text_rule_analyzer import TextRuleAnalyzer
 from src.pipeline.vision_rule_analyzer import VisionRuleAnalyzer
@@ -118,15 +119,16 @@ class ValidationPipeline:
             len(selected_rules),
         )
         pages = self.extractor.extract(pdf_path=pdf_path)
-        text_analysis_results = self.text_rule_analyzer.analyze(pages=pages, rules=selected_rules)
-        text_rule_results = text_analysis_results.get("rule_results", {})
-        text_page_results = text_analysis_results.get("page_results", [])
-        page_types_by_number = {int(p.get("page", 0)): (p.get("page_type") or []) for p in pages}
-        vision_analysis_results = self.vision_rule_analyzer.analyze(
-            pdf_path=pdf_path,
-            rules=selected_rules,
-            page_types_by_number=page_types_by_number,
-        )
+        with track_usage() as meter:
+            text_analysis_results = self.text_rule_analyzer.analyze(pages=pages, rules=selected_rules)
+            text_rule_results = text_analysis_results.get("rule_results", {})
+            text_page_results = text_analysis_results.get("page_results", [])
+            page_types_by_number = {int(p.get("page", 0)): (p.get("page_type") or []) for p in pages}
+            vision_analysis_results = self.vision_rule_analyzer.analyze(
+                pdf_path=pdf_path,
+                rules=selected_rules,
+                page_types_by_number=page_types_by_number,
+            )
         vision_rule_results = vision_analysis_results.get("rule_results", {})
         visual_page_results = vision_analysis_results.get("page_results", [])
         rule_assessments = self.build_rule_assessments(
@@ -151,4 +153,5 @@ class ValidationPipeline:
             text_page_results=text_page_results,
             visual_page_results=visual_page_results,
             elapsed_seconds=elapsed_seconds,
+            llm_usage=meter.summary(),
         )

@@ -75,6 +75,8 @@ def test_response_shape(run_pipeline):
     assert response.document_type == "capital_event_workbook"
     assert response.options == {"event_type": "capital_call"}
     assert response.source_filename == manifest.path.name
+    # The fakes never call an API, so the meter is attached but empty.
+    assert response.llm_usage is not None and response.llm_usage.totals.calls == 0
 
 
 def test_only_relevant_sheets_are_mapped_and_emitted(run_pipeline):

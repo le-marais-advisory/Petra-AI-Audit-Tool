@@ -8,11 +8,12 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import timedelta
 from pathlib import Path
 
 from src.core.config import AppYaml, Settings
+from src.core.llm_usage import ContextThreadPoolExecutor
 from src.core.prompting import load_prompt
 from src.pipeline.page_classifier import rule_applies_to_page
 from src.pipeline.pdf_renderer import PdfRenderer
@@ -285,7 +286,7 @@ class VisionRuleAnalyzer:
                 }
 
         try:
-            with ThreadPoolExecutor(max_workers=self._max_workers()) as executor:
+            with ContextThreadPoolExecutor(max_workers=self._max_workers()) as executor:
                 future_to_rule = {executor.submit(_call, rule, pi): rule for rule, pi in applicable_pairs}
                 for future in as_completed(future_to_rule):
                     if is_cancelled and is_cancelled():

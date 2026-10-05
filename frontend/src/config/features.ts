@@ -7,3 +7,9 @@ import { readBooleanEnv } from "@/config/runtime";
  * frontend/.env (see .env.example) or docker-compose.yml.
  */
 export const showRulesSidebar = readBooleanEnv("VITE_SHOW_RULES_SIDEBAR", false);
+
+/**
+ * The Token Usage tab is a development affordance too, for sizing LLM cost; hidden
+ * by default on the same terms as the rules sidebar.
+ */
+export const showTokenUsage = readBooleanEnv("VITE_SHOW_TOKEN_USAGE", false);

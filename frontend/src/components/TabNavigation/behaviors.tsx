@@ -17,6 +17,7 @@ export const tabDefinitions: TabDefinition[] = [
   { key: "extracted", label: "Extracted Text" },
   { key: "text-analysis", label: "Text Analysis Result" },
   { key: "visual-analysis", label: "Visual Analysis Result" },
+  { key: "token-usage", label: "Token Usage" },
 ];
 
 /** Workbooks have no rendered pages, so there is no visual tab and the labels speak of sheets. */
@@ -24,4 +25,5 @@ export const workbookTabDefinitions: TabDefinition[] = [
   { key: "source", label: "Workbook Sheets" },
   { key: "extracted", label: "Sheet Content" },
   { key: "text-analysis", label: "Rule Results" },
+  { key: "token-usage", label: "Token Usage" },
 ];

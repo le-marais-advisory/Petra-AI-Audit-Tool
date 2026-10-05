@@ -12,12 +12,12 @@ import hashlib
 import json
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from src.core.llm_usage import ContextThreadPoolExecutor
 from src.pipeline.workbook.layout import from_llm_output, layout_json_schema, parse_layout
 from src.pipeline.workbook.layout_validator import LayoutIssue, validate_layout
 from src.pipeline.workbook.loader import WorkbookModel
@@ -149,7 +149,7 @@ def map_layouts_with_issues(
     mappable = {s: r for s, r in roles.items() if r != "other"}
     layouts: dict[str, BaseModel] = {}
     failures: dict[str, list[LayoutIssue]] = {}
-    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(mappable) or 1))) as pool:
+    with ContextThreadPoolExecutor(max_workers=max(1, min(max_workers, len(mappable) or 1))) as pool:
         futures = {s: pool.submit(map_sheet_layout, model, s, r, provider, event_type) for s, r in mappable.items()}
         for sheet, future in futures.items():
             try:

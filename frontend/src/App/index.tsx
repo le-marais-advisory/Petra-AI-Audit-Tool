@@ -1,7 +1,7 @@
 import { useMsal } from "@azure/msal-react";
 
 import { authEnabled, azurePostLogoutRedirectUri } from "@/auth/config";
-import { showRulesSidebar } from "@/config/features";
+import { showRulesSidebar, showTokenUsage } from "@/config/features";
 import { useState } from "react";
 
 import { AnalysisResults } from "@/components/AnalysisResults";
@@ -12,6 +12,7 @@ import { HeroBanner } from "@/components/HeroBanner";
 import { RulesSidebar } from "@/components/RulesSidebar";
 import { SourcePreview } from "@/components/SourcePreview";
 import { TabNavigation } from "@/components/TabNavigation";
+import { TokenUsage } from "@/components/TokenUsage";
 import { tabDefinitions, workbookTabDefinitions } from "@/components/TabNavigation/behaviors";
 import { UploadPanel } from "@/components/UploadPanel";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
@@ -70,6 +71,9 @@ export function App() {
 
   const [exportOpen, setExportOpen] = useState(false);
   const isWorkbook = result?.document_type ? result.document_type !== "financial_statements" : isWorkbookType(documentType);
+  const tabs = (isWorkbook ? workbookTabDefinitions : tabDefinitions).filter(
+    (tab) => showTokenUsage || tab.key !== "token-usage",
+  );
 
   return (
     <>
@@ -134,7 +138,7 @@ export function App() {
             <TabNavigation
               activeTab={activeTab}
               onTabChange={setNextTab}
-              tabs={isWorkbook ? workbookTabDefinitions : tabDefinitions}
+              tabs={tabs}
             />
 
             <div className="p-5">
@@ -194,6 +198,16 @@ export function App() {
                 ) : (
                   <EmptyState title="No visual analysis yet" description="Upload a document to inspect visual-rule status." />
                 )
+              ) : null}
+
+              {showTokenUsage && activeTab === "token-usage" ? (
+                <TokenUsage
+                  usage={result?.llm_usage}
+                  isBusy={isBusy}
+                  ruleNames={Object.fromEntries(
+                    (analysis?.rule_assessments || []).map((rule) => [rule.rule_id, rule.rule_name]),
+                  )}
+                />
               ) : null}
             </div>
           </section>

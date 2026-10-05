@@ -11,6 +11,7 @@ from typing import Any
 
 logger = logging.getLogger("petra.pipeline")
 
+from src.core.llm_usage import UsageMeter, track_usage
 from src.pipeline.page_classifier import rule_applies_to_page
 from src.pipeline.result_builder import build_document_result
 from src.services.validation_service import ValidationService
@@ -105,6 +106,7 @@ class ValidationJobService:
                 return
 
             t0 = time.perf_counter()
+            meter = UsageMeter()
             service = ValidationService()
             selected_rules = service.rule_service.load_rules(rules_json_str=rules_json_str)
             logger.info(
@@ -177,12 +179,13 @@ class ValidationJobService:
                         visual_page_results=[],
                     )
 
-            text_analysis_results = service.pipeline.text_rule_analyzer.analyze(
-                pages=pages,
-                rules=selected_rules,
-                on_page_result=on_page_result,
-                is_cancelled=lambda: bool(job.cancel_requested),
-            )
+            with track_usage(meter):
+                text_analysis_results = service.pipeline.text_rule_analyzer.analyze(
+                    pages=pages,
+                    rules=selected_rules,
+                    on_page_result=on_page_result,
+                    is_cancelled=lambda: bool(job.cancel_requested),
+                )
 
             text_rule_results = text_analysis_results.get("rule_results", {})
             text_page_results = text_analysis_results.get("page_results", [])
@@ -230,13 +233,14 @@ class ValidationJobService:
                     )
 
             page_types_by_number = {int(p.get("page", 0)): (p.get("page_type") or []) for p in pages}
-            vision_analysis_results = service.pipeline.vision_rule_analyzer.analyze(
-                pdf_path=pdf_path,
-                rules=selected_rules,
-                page_types_by_number=page_types_by_number,
-                on_page_result=on_vision_page_result,
-                is_cancelled=lambda: bool(job.cancel_requested),
-            )
+            with track_usage(meter):
+                vision_analysis_results = service.pipeline.vision_rule_analyzer.analyze(
+                    pdf_path=pdf_path,
+                    rules=selected_rules,
+                    page_types_by_number=page_types_by_number,
+                    on_page_result=on_vision_page_result,
+                    is_cancelled=lambda: bool(job.cancel_requested),
+                )
             vision_rule_results = vision_analysis_results.get("rule_results", {})
             visual_page_results = vision_analysis_results.get("page_results", [])
             final_status = "cancelled" if job.cancel_requested else "completed"
@@ -267,6 +271,7 @@ class ValidationJobService:
                     text_page_results=text_page_results,
                     visual_page_results=visual_page_results,
                     elapsed_seconds=elapsed_seconds,
+                    llm_usage=meter.summary(),
                 )
         except Exception as exc:
             with job.lock:

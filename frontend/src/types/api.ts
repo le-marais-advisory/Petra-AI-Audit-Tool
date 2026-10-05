@@ -1,6 +1,6 @@
 export type AnalysisType = "text" | "vision";
 
-export type WorkspaceTabKey = "source" | "extracted" | "text-analysis" | "visual-analysis";
+export type WorkspaceTabKey = "source" | "extracted" | "text-analysis" | "visual-analysis" | "token-usage";
 
 export type StatusTone = "neutral" | "working" | "success" | "error";
 /**
@@ -160,6 +160,24 @@ export interface DocumentAnalysis {
   page_observations: PageObservation[];
 }
 
+/** Token counts for a group of LLM calls. input_tokens includes the cached share and output_tokens the reasoning share. */
+export interface LlmUsageRow {
+  label: string;
+  calls: number;
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+}
+
+export interface LlmUsage {
+  totals: LlmUsageRow;
+  by_stage: LlmUsageRow[];
+  by_model: LlmUsageRow[];
+  by_rule: LlmUsageRow[];
+}
+
 export interface DocumentValidationResponse {
   document_id: string;
   document_type?: string;
@@ -168,6 +186,7 @@ export interface DocumentValidationResponse {
   source_filename?: string | null;
   analysis: DocumentAnalysis;
   pages: PageExtraction[];
+  llm_usage?: LlmUsage | null;
 }
 
 export interface ValidationJobResponse {

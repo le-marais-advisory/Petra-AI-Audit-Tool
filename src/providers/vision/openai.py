@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
+from src.core.llm_usage import record_openai_responses_usage
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, build_vector_data_text, compact_rule_payload
 from src.providers.vision.base import VisionProvider
 
@@ -48,7 +49,13 @@ class OpenAIVisionProvider(VisionProvider):
         self._detail = image_detail
         self._semaphore = get_global_semaphore(max_concurrent)
 
-    def _call_openai_with_retry(self, input_items: list[dict[str, Any]], schema: dict[str, Any], schema_name: str) -> str:
+    def _call_openai_with_retry(
+        self,
+        input_items: list[dict[str, Any]],
+        schema: dict[str, Any],
+        schema_name: str,
+        rule_id: str | None = None,
+    ) -> str:
         responses_api = getattr(self._client, "responses", None)
         if responses_api is None:
             raise RuntimeError(
@@ -75,6 +82,7 @@ class OpenAIVisionProvider(VisionProvider):
 
         with self._semaphore:
             response = responses_api.create(**request_kwargs)
+        record_openai_responses_usage(response, self._model, "Vision rules", rule_id)
         output_text = getattr(response, "output_text", "") or ""
         if output_text:
             return output_text
@@ -116,7 +124,9 @@ class OpenAIVisionProvider(VisionProvider):
         input_items.append({"role": "user", "content": content})
 
         try:
-            text = self._call_openai_with_retry(input_items, RULE_RESULT_JSON_SCHEMA, "vision_rule_result")
+            text = self._call_openai_with_retry(
+                input_items, RULE_RESULT_JSON_SCHEMA, "vision_rule_result", rule_id=rule.get("id")
+            )
             return json.loads(text)
         except Exception as exc:
             return {

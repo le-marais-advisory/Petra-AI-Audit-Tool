@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 from anthropic import Anthropic
 
+from src.core.llm_usage import record_anthropic_usage
 from src.providers.analysis_result import RULE_RESULT_JSON_SCHEMA, compact_rule_payload
 from src.providers.errors import TruncatedResponseError, claude_response_text
 from src.providers.text.base import TextAnalysisProvider
@@ -44,6 +45,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
         messages: list[dict[str, Any]],
         system_prompt: str,
         schema: dict[str, Any] | None = None,
+        rule_id: str | None = None,
         max_tokens: int | None = None,
         effort: str | None = None,
         stream: bool = False,
@@ -74,6 +76,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
                 response = response_stream.get_final_message()
         else:
             response = self._client.messages.create(**request_kwargs)
+        record_anthropic_usage(response, self._model, "Text rules", rule_id)
         stop_reason = getattr(response, "stop_reason", "unknown")
         # Output tokens cover reasoning as well as the response and are what max_tokens
         # caps, so this is the number to look at when sizing CLAUDE_TEXT_MAX_TOKENS or
@@ -126,7 +129,7 @@ class ClaudeTextAnalysisProvider(TextAnalysisProvider):
                 ),
             }
         ]
-        return self._call_claude_with_retry(messages, system_prompt)
+        return self._call_claude_with_retry(messages, system_prompt, rule_id=rule.get("id"))
 
     def complete_structured(
         self,
