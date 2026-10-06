@@ -109,10 +109,10 @@ export function UploadPanel(props: UploadPanelProps) {
             "mt-6 flex cursor-pointer flex-col items-center justify-center rounded-[1.75rem] border-2 border-dashed px-6 py-12 text-center transition",
             isDisabled ? "pointer-events-none cursor-not-allowed opacity-60" : "",
             isDragActive
-              ? "border-teal-500 bg-teal-50"
+              ? "border-blue-600 bg-blue-50"
               : isDisabled
                 ? "border-slate-200 bg-slate-50"
-                : "border-slate-300 bg-slate-50 hover:border-teal-500 hover:bg-teal-50",
+                : "border-slate-300 bg-slate-50 hover:border-blue-600 hover:bg-blue-50",
           )}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -130,7 +130,7 @@ export function UploadPanel(props: UploadPanelProps) {
           />
 
           <div className="rounded-full bg-white p-4 shadow-sm">
-            <svg className="h-8 w-8 text-teal-700" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+            <svg className="h-8 w-8 text-blue-700" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M5 16v1a3 3 0 003 3h8a3 3 0 003-3v-1" />
             </svg>
           </div>

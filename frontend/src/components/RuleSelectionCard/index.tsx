@@ -17,7 +17,7 @@ export function RuleSelectionCard({ checked, bypassed, rule, onToggle, onBypassT
               type="checkbox"
               onChange={() => onToggle(rule.id)}
             />
-            <span className="flex h-5 w-5 items-center justify-center rounded-md border-2 border-slate-300 bg-white text-white transition peer-checked:border-teal-600 peer-checked:bg-teal-600 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-500/30">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md border-2 border-slate-300 bg-white text-white transition peer-checked:border-blue-600 peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/30">
               <svg
                 aria-hidden="true"
                 className="h-3.5 w-3.5 opacity-0 transition peer-checked:opacity-100"

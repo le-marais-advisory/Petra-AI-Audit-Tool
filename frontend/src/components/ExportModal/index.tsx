@@ -22,7 +22,7 @@ export function ExportModal(props: ExportModalProps) {
           <textarea
             id="cover-text"
             rows={6}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             placeholder="e.g. FMT-HEADINGS fail is expected — this is a client style preference. The RND-GLOBAL needs_review was manually verified as correct."
             value={coverText}
             onChange={(e) => setCoverText(e.target.value)}

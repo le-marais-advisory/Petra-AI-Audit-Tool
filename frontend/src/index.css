@@ -3,7 +3,7 @@
 @layer base {
   :root {
     color: #0f172a;
-    background: #f4f7fb;
+    background: #ffffff;
     font-family: "Sora", "Avenir Next", "Segoe UI", sans-serif;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -14,10 +14,7 @@
     margin: 0;
     min-width: 320px;
     min-height: 100vh;
-    background:
-      radial-gradient(circle at top left, rgba(45, 212, 191, 0.14), transparent 30%),
-      radial-gradient(circle at right 10%, rgba(56, 189, 248, 0.12), transparent 24%),
-      linear-gradient(180deg, #eef4fa 0%, #f4f7fb 38%, #f8fafc 100%);
+    background: #ffffff;
   }
 
   * {
@@ -50,22 +47,22 @@
   }
 
   .shadow-glow {
-    box-shadow: 0 24px 64px rgba(13, 148, 136, 0.16);
+    box-shadow: 0 24px 64px rgba(0, 0, 86, 0.16);
   }
 
   .bg-aurora {
     background:
-      radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 32%),
-      radial-gradient(circle at top right, rgba(20, 184, 166, 0.2), transparent 28%),
-      linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 118, 110, 0.94));
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 32%),
+      radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 28%),
+      linear-gradient(135deg, #000056, #1e3a8a);
   }
 
   .bg-accentSoft {
-    background: #d6fbf6;
+    background: #dbeafe;
   }
 
   .text-accent {
-    color: #0f766e;
+    color: #1d4ed8;
   }
 
   .glass-panel {
