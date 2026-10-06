@@ -112,6 +112,36 @@ def propose_roles(model_or_inventory: WorkbookModel | list[SheetInventoryEntry])
     return roles
 
 
+def demote_empty_merge_tabs(model: WorkbookModel, roles: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """A hidden Merge-named tab with no investor rows (or mostly error cells) that nothing references is a
+    leftover template, not notice data: it becomes 'other'. A referenced tab full of errors stays (a finding).
+    Returns the updated roles and one note per demoted sheet."""
+    from src.pipeline.workbook.extract import _sheet_refs
+
+    notes: list[str] = []
+    referenced: set[str] = set()
+    for sheet in model.sheets:
+        referenced |= _sheet_refs(model, sheet.name)
+    for name, role in list(roles.items()):
+        if role != "merge" or not model.has_sheet(name):
+            continue
+        sheet = model.sheet(name)
+        if sheet.is_visible or name in referenced:
+            continue
+        cells = [c for c in sheet.cells.values() if c.value not in (None, "")]
+        errors = sum(1 for c in cells if c.is_error)
+        text_rows = {c.row for c in cells if isinstance(c.value, str) and not c.is_error and c.value.strip()}
+        data_rows = len(text_rows) - 1 if text_rows else 0  # rows beyond the header row holding any text
+        if not cells or errors * 2 > len(cells) or data_rows <= 0:
+            roles[name] = "other"
+            notes.append(f"Hidden sheet '{name}' is laid out like a Merge tab but holds no investor rows "
+                         f"({errors} of {len(cells)} cells are errors) and no formula references it; it was not "
+                         "processed as notice data.")
+            logger.info("Demoted hidden Merge-like sheet %s to 'other': %d/%d error cells, %d data rows", name,
+                        errors, len(cells), data_rows)
+    return roles, notes
+
+
 RoleAssigner = Callable[[WorkbookModel, list[SheetInventoryEntry], dict[str, str]], dict[str, str]]
 
 _ROLE_SYSTEM_PROMPT = """You classify the sheets of a private-fund capital-event workbook by role.
@@ -194,7 +224,8 @@ def assign_roles(model: WorkbookModel, assigner: RoleAssigner | None = None) -> 
     proposed = propose_roles(inventory)
     assigner = assigner or llm_role_assigner()
     try:
-        return assigner(model, inventory, proposed)
+        roles = assigner(model, inventory, proposed)
     except Exception:
         logger.exception("Role confirmation failed; falling back to the heuristic proposal")
-        return proposed
+        roles = proposed
+    return demote_empty_merge_tabs(model, roles)[0]

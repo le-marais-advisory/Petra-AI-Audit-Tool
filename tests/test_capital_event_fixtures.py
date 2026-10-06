@@ -187,7 +187,8 @@ def test_golden_layout_headers_point_at_labels(capital_event_fixtures, event_typ
     for comp in alloc["components"]:
         assert ws[f"{comp['column']}{header}"].value == comp["header"]
     for key, col in alloc["roll_forward"].items():
-        assert ws[f"{col}{header}"].value, key
+        for column in (col if isinstance(col, list) else [col]):
+            assert ws[f"{column}{header}"].value, key
     itd = next(lay for lay in manifest.layouts.values() if lay["role"] == "itd")
     wi = wv[itd["sheet"]]
     for block in itd["event_blocks"]:

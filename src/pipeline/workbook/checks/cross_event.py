@@ -34,27 +34,49 @@ def _prior(ctx: CheckContext, out: Outcome, roles: tuple[str, ...]) -> WorkbookD
     return prior
 
 
+
+def _pair_block_columns(before, now) -> list[tuple[str, str, str]]:
+    """(prior column, current column, component type) pairs of a block in the two workbooks: by column
+    letter when the block sits in the same place, else by position."""
+    if before.first_column == now.first_column:
+        current_cols = {c.column: c for c in now.components}
+        pairs = [(c.column, c.column, current_cols[c.column].component_type) for c in before.components
+                 if c.column in current_cols]
+        if pairs:
+            return pairs
+    return [(old.column, new.column, new.component_type) for old, new in zip(before.components, now.components)]
+
+
 @check("CE-XEV-HISTORY-UNCHANGED", needs=("itd",))
 def history_unchanged(ctx: CheckContext, out: Outcome) -> str:
     prior = _prior(ctx, out, ("itd",))
     if prior is None:
         return ""
     current_itd, prior_itd = ctx.data.itd, prior.itd
-    current_blocks = {b.label: b for b in current_itd.event_blocks}
+    by_label = {b.label: b for b in current_itd.event_blocks}
+    by_column = {b.first_column: b for b in current_itd.event_blocks}
     matcher = Matcher(prior_itd.vehicles, current_itd.vehicles)  # (vehicle, name): an LP may sit in two vehicles
     compared = 0
+    changed: dict[str, list[tuple]] = {}
     for block in prior_itd.event_blocks:
         if block.event_type == "transfer":
             continue
-        target = current_blocks.get(block.label)
         cell = f"{block.first_column}{prior_itd.layout.event_header_row}"
+        target = by_label.get(block.label)
+        if target is None:
+            # The block may have been relabelled (e.g. a template label replaced by the real one).
+            target = by_column.get(block.first_column)
+            if target is not None and target.label != block.label:
+                out.review(f"Prior event '{block.label}' (column {block.first_column}) is now labelled "
+                           f"'{target.label}'; confirm the relabel.", current_itd.sheet,
+                           f"{target.first_column}{current_itd.layout.event_header_row}")
         if target is None:
             out.fail(f"Prior event '{block.label}' is missing from the current ITD sheet.", prior_itd.sheet, cell)
             continue
         if target.is_current:
             out.fail(f"'{block.label}' is still marked as the current event in the new workbook.", current_itd.sheet,
                      f"{target.first_column}{current_itd.layout.event_header_row}")
-        pairs = list(zip(block.components, target.components))
+        pairs = _pair_block_columns(block, target)
         if len(block.components) != len(target.components):
             out.fail(f"'{block.label}' has {len(target.components)} component column(s) now but had "
                      f"{len(block.components)} in the prior workbook.", current_itd.sheet,
@@ -62,17 +84,25 @@ def history_unchanged(ctx: CheckContext, out: Outcome) -> str:
         for ordinal, investor in matcher.pairs():
             now = matcher.find(ordinal, investor.name)
             label = matcher.label(ordinal, investor.name)
-            for old_comp, new_comp in pairs:
-                before = investor.values.get(old_comp.column, ZERO)
-                after = now.values.get(new_comp.column, ZERO) if now else ZERO
+            for old_col, new_col, component_type in pairs:
+                before = investor.values.get(old_col, ZERO)
+                after = now.values.get(new_col, ZERO) if now else ZERO
                 compared += 1
                 if now is None and before:
                     out.fail(f"{label} ({money(before)} in '{block.label}') is missing from the current ITD "
-                             "sheet.", prior_itd.sheet, f"{old_comp.column}{investor.row}")
+                             "sheet.", prior_itd.sheet, f"{old_col}{investor.row}")
                 elif now is not None and abs(after - before) > PENNY:
-                    out.fail(f"{label}: '{block.label}' {new_comp.component_type} changed from "
-                             f"{money(before)} to {money(after)} since the prior workbook.", current_itd.sheet,
-                             f"{new_comp.column}{now.row}")
+                    changed.setdefault(label, []).append((block.label, component_type, new_col, before, after, now.row))
+    # One line per investor: a transfer or re-allocation rewrites that investor's whole history.
+    for label, cells in changed.items():
+        block_label, component_type, column, before, after, row = cells[0]
+        example = f"'{block_label}' {component_type} ({column}{row}) {money(before)} -> {money(after)}"
+        if len(cells) == 1:
+            out.fail(f"{label}: {example} changed since the prior workbook.", current_itd.sheet, f"{column}{row}")
+        else:
+            blocks_hit = len({c[0] for c in cells})
+            out.fail(f"{label}: {len(cells)} prior-event cells across {blocks_hit} block(s) changed since the prior "
+                     f"workbook (e.g. {example}).", current_itd.sheet, f"{column}{row}")
     return f"Every prior event block reappears unchanged in the current ITD sheet ({compared} cells compared)."
 
 
@@ -138,8 +168,10 @@ def itd_roll_forward(ctx: CheckContext, out: Outcome) -> str:
         out.review("The current ITD event block could not be identified, so the roll-forward could not be checked.")
         return ""
     prior_labels = {b.label for b in before_itd.event_blocks}
+    prior_columns = {b.first_column for b in before_itd.event_blocks}
     for other in itd.prior_blocks:
-        if other.event_type != "transfer" and other.label not in prior_labels:
+        if other.event_type != "transfer" and other.label not in prior_labels \
+                and other.first_column not in prior_columns:
             out.fail(f"'{other.label}' is in the current ITD sheet but not in the prior workbook: either the prior "
                      "workbook uploaded is not the most recent one, or the event was entered twice.", itd.sheet,
                      f"{other.first_column}{itd.layout.event_header_row}")
@@ -177,13 +209,27 @@ def itd_roll_forward(ctx: CheckContext, out: Outcome) -> str:
         flipped = sum(1 for d, m in moved if abs(d + m) <= CENT)
         signs[category] = -1 if flipped > same else 1
     checked = 0
+    by_investor: dict[str, list[tuple]] = {}
     for inv, label, category, delta, movement, was, now in rows:
         checked += 1
         expected = movement * signs[category]
         if abs(delta - expected) > CENT:
-            out.fail(f"{label}: {_label(category)} went from {money(was)} to {money(now)} ({money(delta)}), but "
-                     f"the current event ('{block.label}') moves it by {money(expected)}; {money(delta - expected)} is "
-                     "double counted or entered wrong.", itd.sheet, f"{cum[category]}{inv.row}")
+            by_investor.setdefault(label, []).append((inv, category, delta, expected, was, now))
+    for label, items in by_investor.items():
+        inv, category, delta, expected, was, now = items[0]
+        if len(items) < 3:
+            for inv, category, delta, expected, was, now in items:
+                out.fail(f"{label}: {_label(category)} went from {money(was)} to {money(now)} ({money(delta)}), but "
+                         f"the current event ('{block.label}') moves it by {money(expected)}; "
+                         f"{money(delta - expected)} is double counted or entered wrong.", itd.sheet,
+                         f"{cum[category]}{inv.row}")
+            continue
+        # Several balances of one investor moved without a current-event movement: one line (a transfer
+        # or re-allocation of the investor's history, not a stray entry).
+        moves = "; ".join(f"{_label(c).replace('ITD ', '')} {money(w)} -> {money(n)} (event: {money(e)})"
+                          for _, c, _, e, w, n in items)
+        out.fail(f"{label}: {len(items)} ITD balances changed beyond the current event ('{block.label}'): {moves}.",
+                 itd.sheet, f"{cum[category]}{inv.row}")
     return (f"Every ITD balance equals the prior workbook's balance plus the current event ({checked} investor "
             "balances checked).")
 

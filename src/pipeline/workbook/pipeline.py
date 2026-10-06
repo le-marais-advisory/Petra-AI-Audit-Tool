@@ -24,14 +24,14 @@ from pydantic import BaseModel, ValidationError
 from src.core.llm_usage import ContextThreadPoolExecutor, run_cache_primed, track_usage, usage_stage
 from src.pipeline.result_builder import build_document_result
 from src.pipeline.workbook.checks import run_deterministic_checks
-from src.pipeline.workbook.checks._common import ROLE_LABELS
+from src.pipeline.workbook.checks._common import missing_role_outcome
 from src.pipeline.workbook.extract import WorkbookData, extract_workbook_data
 from src.pipeline.workbook.facts import build_facts, render_facts
 from src.pipeline.workbook.inventory import build_inventory
 from src.pipeline.workbook.layout_mapper import map_sheet_layout
-from src.pipeline.workbook.layout_validator import validate_layout
+from src.pipeline.workbook.layout_validator import blocking_issues, validate_layout
 from src.pipeline.workbook.loader import WorkbookModel, load_workbook_model
-from src.pipeline.workbook.roles import llm_role_assigner, propose_roles
+from src.pipeline.workbook.roles import demote_empty_merge_tabs, llm_role_assigner, propose_roles
 from src.pipeline.workbook.selection import relevant_sheets
 from src.pipeline.workbook.skeleton import build_skeleton
 from src.providers.analysis_result import AnalysisRuleResult
@@ -62,6 +62,7 @@ class WorkbookPipeline:
         self._router = router
         self._role_assigner = role_assigner
         self._layout_mapper = layout_mapper
+        self._role_notes: list[str] = []
         app_cfg = None
         if layout_concurrency is None or hybrid_concurrency is None or prompt_cache is None:
             try:
@@ -98,10 +99,13 @@ class WorkbookPipeline:
             assigner = llm_role_assigner(self.router.text_provider(target.model), effort=target.effort)
         try:
             with usage_stage("Sheet roles"):
-                return assigner(model, inventory, proposed)
+                roles = assigner(model, inventory, proposed)
         except Exception:
             logger.exception("Role assignment failed; using the heuristic proposal")
-            return proposed
+            roles = proposed
+        roles, notes = demote_empty_merge_tabs(model, roles)
+        self._role_notes = notes
+        return roles
 
     def _map_layout(self, model: WorkbookModel, sheet: str, role: str, event_type: str | None) -> BaseModel | None:
         if self._layout_mapper is not None:
@@ -154,6 +158,7 @@ class WorkbookPipeline:
             progress("Reading the prior event's workbook", 1, total_steps)
             prior = self._prior_data(prior_file_path, prior_source_filename)
         data = extract_workbook_data(model, layouts, prior=prior)
+        data.role_notes = list(self._role_notes)
         for role, reason in _errors_by_role(layout_errors, roles).items():
             data.extraction_errors.setdefault(role, reason)
         if model.formulas_missing_cache:
@@ -219,7 +224,7 @@ class WorkbookPipeline:
                 if layout is None:
                     errors[sheet] = f"The layout of '{sheet}' could not be mapped and validated."
                     continue
-                issues = validate_layout(model, layout)
+                issues = blocking_issues(validate_layout(model, layout))
                 if issues:
                     errors[sheet] = (f"The layout of '{sheet}' was rejected by the validator: "
                                      + "; ".join(f"{i.code}: {i.message}" for i in issues[:3]))
@@ -255,11 +260,8 @@ class WorkbookPipeline:
             missing = [r for r in rule.get("required_roles") or [] if not _role_present(data, r)]
             (blocked if missing else runnable).append((rule, missing))
         for rule, missing in blocked:
-            labels = ", ".join(ROLE_LABELS.get(r, r) for r in missing)
-            reasons = [data.extraction_errors[r] for r in missing if r in data.extraction_errors]
-            yield rule["id"], _result(rule, "needs_review",
-                                      f"The {labels} sheet layout could not be mapped or validated, so this rule "
-                                      "could not be evaluated.", reasons), 0.0
+            verdict, summary, reasons = missing_role_outcome(data, missing)
+            yield rule["id"], _result(rule, verdict, summary, reasons), 0.0
 
         def sheet_set(rule) -> tuple:
             # caches are per model, so rules share the excerpts' cache entry only on the same target

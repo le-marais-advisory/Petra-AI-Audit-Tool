@@ -6,7 +6,9 @@ from decimal import Decimal
 
 from openpyxl.utils.cell import range_boundaries
 
-from src.pipeline.workbook.cells import sum_range_rows, PENNY, col_idx
+from collections import Counter
+
+from src.pipeline.workbook.cells import CENT, sum_range_rows, PENNY, col_idx, col_letter, is_text, to_money
 from src.pipeline.workbook.checks._common import (
     CheckContext,
     NotApplicable,
@@ -17,7 +19,7 @@ from src.pipeline.workbook.checks._common import (
     money,
     round_digits,
 )
-from src.pipeline.workbook.extract import AllocationData, AllocationVehicle
+from src.pipeline.workbook.extract import AllocationData, AllocationVehicle, _dominant_formula, roll_forward_columns
 
 ZERO = Decimal("0")
 PARITY_TOLERANCE = Decimal("2.00")
@@ -34,24 +36,44 @@ def _active_in_vehicle(alloc: AllocationData, vehicle: AllocationVehicle):
             yield comp
 
 
+def _blank_driver(sheet, column: str, row: int) -> bool:
+    cell = sheet.cell(f"{column}{row}")
+    return cell is None or cell.value in (None, "") or to_money(cell.value) == ZERO
+
+
 @check("CE-ALLOC-PER-LP-FORMULAS", needs=("allocation",))
 def per_lp_formulas(ctx: CheckContext, out: Outcome) -> str:
     alloc = ctx.data.allocation
     sheet = alloc.sheet
     for vehicle in alloc.vehicles:
         for comp in alloc.active_components:
-            if vehicle.driver.get(comp.column, ZERO) == ZERO:
-                continue
+            amounts = {i.row: i.amounts.get(comp.column, ZERO) for i in vehicle.investors}
+            blank_driver = _blank_driver(sheet, comp.column, vehicle.driver_row)
+            if blank_driver and not any(amounts.values()):
+                continue  # nothing allocated to this vehicle
+            # A component nobody in the GP rows receives (e.g. carry paid to the LPs only).
+            lp_only = all(amounts[i.row] == ZERO for i in vehicle.investors if i.is_gp)
             driver_ref = _driver_ref_re(comp.column, vehicle.driver_row)
+            label = comp.header or comp.component_type
             for inv in vehicle.investors:
                 cell = inv.cells.get(comp.column)
                 coord = f"{comp.column}{inv.row}"
                 if cell is None or cell.value is None:
                     continue
                 if cell.formula is None:
-                    out.fail(f"{coord} ({inv.name}, {comp.header or comp.component_type}) holds a typed value "
-                             f"{money(cell.value)} instead of a driver formula.", sheet, coord)
-                elif "!" not in cell.formula and not driver_ref.search(cell.formula.replace("$", "")):
+                    value = to_money(cell.value)
+                    if value == ZERO and inv.is_gp and lp_only:
+                        out.notes.append(f"{coord} ({inv.name}) holds a typed 0 on the GP row of {label}, which the "
+                                         "GP does not receive.")
+                    elif value != ZERO and blank_driver:
+                        out.fail(f"{coord} ({inv.name}, {label}) holds a typed value {money(value)} that acts as the "
+                                 f"driver of this component: the vehicle driver cell {comp.column}{vehicle.driver_row} "
+                                 "is blank and the per-LP formulas divide this cell instead.", sheet, coord)
+                    else:
+                        out.fail(f"{coord} ({inv.name}, {label}) holds a typed value {money(value)} instead of a "
+                                 "driver formula.", sheet, coord)
+                elif not blank_driver and "!" not in cell.formula \
+                        and not driver_ref.search(cell.formula.replace("$", "")):
                     out.fail(f"{coord} ({inv.name}) formula {cell.formula} does not reference the vehicle driver "
                              f"{comp.column}{vehicle.driver_row} or a source tab.", sheet, coord)
     return "Every per-LP cell in an active component column is a formula derived from the vehicle driver or fee tab."
@@ -136,9 +158,11 @@ def _numeric_columns(alloc: AllocationData) -> list[tuple[str, Decimal]]:
     cols = [(layout.columns.commitment, PENNY), (layout.columns.commitment_pct, pct_tol)]
     cols += [(c.column, PENNY) for c in alloc.components]
     cols += [(t.column, PENNY) for t in layout.event_total_columns]
-    cols += [(c, PENNY) for c in layout.roll_forward.model_dump().values() if c]
+    cols += [(c, PENNY) for c in roll_forward_columns(layout).values()]
     if layout.columns.cash_due:
         cols.append((layout.columns.cash_due, PENNY))
+    if layout.columns.tax_withholding:
+        cols.append((layout.columns.tax_withholding, PENNY))
     if layout.columns.distribution_basis:
         cols.append((layout.columns.distribution_basis, PENNY))
     if layout.columns.distribution_basis_pct:
@@ -152,8 +176,6 @@ def _numeric_columns(alloc: AllocationData) -> list[tuple[str, Decimal]]:
 
 
 def _value(alloc: AllocationData, column: str, row: int) -> Decimal:
-    from src.pipeline.workbook.cells import to_money
-
     return to_money(alloc.sheet.value(f"{column}{row}"))
 
 
@@ -273,6 +295,7 @@ def pro_rata_parity(ctx: CheckContext, out: Outcome) -> str:
     worst = ZERO
     checked, skipped = set(), set()
     for vehicle in alloc.vehicles:
+        no_basis: list[tuple[str, str]] = []
         for comp in _active_in_vehicle(alloc, vehicle):
             label = f"{vehicle.name} / {comp.header or comp.component_type}"
             if not _is_pro_rata(vehicle, comp):
@@ -281,8 +304,8 @@ def pro_rata_parity(ctx: CheckContext, out: Outcome) -> str:
             checked.add(comp.header or comp.component_type)
             rows = _parity_rows(alloc, vehicle, comp)
             if rows is None:
-                out.review(f"{label}: no allocation basis column (contributed capital) is shown for this "
-                           "distribution component, so parity cannot be measured.")
+                shape, _ = _dominant_formula(sheet, comp.column, [i.row for i in vehicle.limited_partners])
+                no_basis.append((comp.header or comp.component_type, shape or "typed"))
                 continue
             pool = sum((amount for _, _, amount in rows), ZERO)
             basis_total = sum((basis for _, basis, _ in rows), ZERO)
@@ -299,6 +322,13 @@ def pro_rata_parity(ctx: CheckContext, out: Outcome) -> str:
                 detail = "; ".join(f"{inv.name} {money(res)}" for res, inv in residuals[:6])
                 out.fail(f"{label}: {len(residuals)} investor(s) deviate from pure pro-rata by more than $2 "
                          f"({detail}).", sheet, f"{comp.column}{residuals[0][1].row}")
+        if no_basis:
+            # FA question outstanding: distributions allocated on commitment rather than contributed capital.
+            shown = "; ".join(f"{name} ({shape[:70]})" for name, shape in no_basis[:4])
+            out.review(f"{vehicle.name}: no allocation basis column (contributed capital) is mapped for "
+                       f"{len(no_basis)} distribution component(s), so parity cannot be measured against the "
+                       f"contributed-capital basis. The per-LP formulas seen: {shown}. Confirm the LPA basis for "
+                       "distributions.", sheet, f"{alloc.layout.columns.commitment}{alloc.layout.header_row}")
     if skipped:
         out.notes.append(f"Not pro-rata, so not checked: {', '.join(sorted(skipped))}.")
     if not checked:
@@ -336,18 +366,30 @@ def plug_eligibility(alloc: AllocationData):
     return eligible
 
 
+def rounding_unit(vehicle: AllocationVehicle, column: str) -> Decimal:
+    """The unit the component's per-LP formulas round to: 10^-digits of their dominant ROUND(...)
+    (whole dollars -> 1, cents -> 0.01); cents when no formula rounds."""
+    digits = Counter(round_digits(inv.formulas.get(column)) for inv in vehicle.investors
+                     if inv.formulas.get(column))
+    digits.pop(None, None)
+    if not digits:
+        return Decimal("0.01")
+    return Decimal(10) ** -digits.most_common(1)[0][0]
+
+
 @check("CE-ALLOC-PLUG-DISCIPLINE", needs=("allocation",))
 def plug_discipline(ctx: CheckContext, out: Outcome) -> str:
     """FA calibration: the residual may sit on one LP or be spread, but only over the largest
-    eligible LPs and within the rounding ceiling in total."""
+    eligible LPs and within the rounding ceiling (one rounding unit per LP) in total."""
     alloc = ctx.data.allocation
     sheet = alloc.sheet
     active_cols = {c.column for c in alloc.active_components}
     eligible = plug_eligibility(alloc)
     for vehicle in alloc.vehicles:
         lps = vehicle.limited_partners
-        ceiling = max(Decimal("0.50"), Decimal(len(lps)) * Decimal("0.01"))
-        ranked = sorted((i.commitment for i in lps if eligible(i)), reverse=True)
+        # Eligibility unknown (no affiliate flag, no fee) still ranks the LP: a plug belongs on the largest.
+        ranked = sorted((i.commitment for i in lps if eligible(i) is not False), reverse=True)
+        unknown: list[str] = []
         for comp in alloc.components:
             plugs = list(_plugs(alloc, vehicle, comp.column))
             label = f"{vehicle.name} / {comp.header or comp.component_type}"
@@ -358,11 +400,13 @@ def plug_discipline(ctx: CheckContext, out: Outcome) -> str:
                     out.fail(f"{label}: stale plug {offset:+} left on an inactive component ({inv.name}).",
                              sheet, f"{comp.column}{inv.row}")
                 continue
+            unit = rounding_unit(vehicle, comp.column)
+            ceiling = Decimal(len(lps)) * unit
             total = sum((abs(offset) for _, offset in plugs), ZERO)
             if total > ceiling:
                 names = ", ".join(f"{inv.name} {offset:+}" for inv, offset in plugs)
-                out.fail(f"{label}: plugs total {total} ({names}), above the rounding ceiling {ceiling}.", sheet,
-                         f"{comp.column}{plugs[0][0].row}")
+                out.fail(f"{label}: plugs total {total} ({names}), above the rounding ceiling {ceiling} "
+                         f"({len(lps)} LPs x {unit}).", sheet, f"{comp.column}{plugs[0][0].row}")
             threshold = ranked[min(len(plugs), len(ranked)) - 1] if ranked else None
             for inv, offset in plugs:
                 status = eligible(inv)
@@ -370,13 +414,18 @@ def plug_discipline(ctx: CheckContext, out: Outcome) -> str:
                 if status is False:
                     out.fail(f"{label}: plug {offset:+} sits on {inv.name}, which is a GP, affiliate or fee-exempt "
                              "investor.", sheet, coord)
-                elif status is None:
-                    out.review(f"{label}: cannot tell whether {inv.name} (plugged {offset:+}) is an eligible LP.",
-                               sheet, coord)
-                elif threshold is not None and inv.commitment < threshold:
+                    continue
+                if status is None and inv.name not in unknown:
+                    unknown.append(inv.name)
+                if threshold is not None and inv.commitment < threshold:
                     out.fail(f"{label}: plug {offset:+} on {inv.name}, but {len(plugs)} plug(s) belong on the "
                              f"{len(plugs)} largest eligible LP(s) (commitment {money(threshold)} or more).", sheet,
                              coord)
+        if unknown:
+            shown = ", ".join(unknown[:5]) + (f" and {len(unknown) - 5} more" if len(unknown) > 5 else "")
+            out.review(f"{vehicle.name}: the sheet has no affiliate flag and this event has no management-fee "
+                       f"component, so plug eligibility cannot be confirmed for {len(unknown)} plugged LP(s) "
+                       f"({shown}); the plugs do sit on the largest LPs.", sheet, None)
     return "Plugs sit only on the largest eligible LPs and stay within the rounding ceiling."
 
 
@@ -438,19 +487,25 @@ def _too_precise(value: Decimal) -> bool:
 @check("CE-ALLOC-ROUNDING", needs=("allocation",))
 def rounding(ctx: CheckContext, out: Outcome) -> str:
     """FA calibration: each component keeps one rounding basis; components may differ
-    (e.g. fees in whole dollars, investment in cents)."""
+    (e.g. fees in whole dollars, investment in cents). Roll-forward columns are checked for
+    sub-cent precision too."""
     alloc = ctx.data.allocation
     sheet = alloc.sheet
+    header_row = alloc.layout.header_row
     active = {c.column for c in alloc.active_components}
+    scanned = [(c.column, c.header or c.component_type) for c in alloc.components]
+    for name, column in roll_forward_columns(alloc.layout).items():
+        header = sheet.value(f"{column}{header_row}")
+        scanned.append((column, str(header).strip() if header else name.replace("_", " ")))
+    for column, label in scanned:
+        precise = [(inv, _value(alloc, column, inv.row)) for inv in alloc.investors
+                   if _too_precise(_value(alloc, column, inv.row))]
+        if precise:
+            inv, amount = precise[0]
+            out.fail(f"{column} ({label}): {len(precise)} cell(s) carry more than two decimals "
+                     f"(e.g. {column}{inv.row} {inv.name} = {amount}).", sheet, f"{column}{inv.row}")
     for comp in alloc.components:
-        values = []
-        for inv in alloc.investors:
-            amount = inv.amounts.get(comp.column, ZERO)
-            if _too_precise(amount):
-                out.fail(f"{comp.column}{inv.row} ({inv.name}) carries more than two decimals ({amount}).", sheet,
-                         f"{comp.column}{inv.row}")
-            if amount:
-                values.append((inv, amount))
+        values = [(inv, inv.amounts.get(comp.column, ZERO)) for inv in alloc.investors if inv.amounts.get(comp.column)]
         if comp.column not in active or not values:
             continue
         label = comp.header or comp.component_type

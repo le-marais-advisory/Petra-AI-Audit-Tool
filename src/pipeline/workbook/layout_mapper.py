@@ -19,7 +19,7 @@ from pydantic import BaseModel, ValidationError
 
 from src.core.llm_usage import ContextThreadPoolExecutor
 from src.pipeline.workbook.layout import from_llm_output, layout_json_schema, parse_layout
-from src.pipeline.workbook.layout_validator import LayoutIssue, validate_layout
+from src.pipeline.workbook.layout_validator import LayoutIssue, blocking_issues, validate_layout
 from src.pipeline.workbook.loader import WorkbookModel
 from src.pipeline.workbook.skeleton import build_skeleton
 from src.providers.errors import TruncatedResponseError
@@ -128,13 +128,16 @@ def map_sheet_layout(
             prompt = _retry_prompt(first, raw, [issues[0].message])
             continue
         issues = validate_layout(model, layout)
-        if not issues:
+        # Warnings ask for one improved answer; a layout whose only issues are warnings is accepted.
+        if not blocking_issues(issues) and (not issues or attempt >= max_attempts):
+            if issues:
+                logger.info("Layout for %s accepted with warnings: %s", sheet_name, [i.code for i in issues])
             if use_cache:
                 with _CACHE_LOCK:
                     if len(_CACHE) >= _CACHE_LIMIT:
                         _CACHE.pop(next(iter(_CACHE)))
                     _CACHE[key] = layout
-            return layout, []
+            return layout, issues
         logger.info("Layout for %s rejected (attempt %d): %s", sheet_name, attempt, [i.code for i in issues])
         prompt = _retry_prompt(first, layout.model_dump(mode="json"), [f"{i.code}: {i.message}" for i in issues])
     return None, issues
@@ -161,7 +164,7 @@ def map_layouts_with_issues(
             if layout is not None:
                 layouts[sheet] = layout
             else:
-                failures[sheet] = issues
+                failures[sheet] = blocking_issues(issues) or issues
     return layouts, failures
 
 

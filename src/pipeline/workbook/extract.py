@@ -8,26 +8,32 @@ it return needs_review.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from openpyxl.utils.cell import range_boundaries
 from pydantic import BaseModel
 
 from src.pipeline.workbook.cells import (
+    col_idx,
+    col_letter,
     is_text,
     local_cell_refs,
     norm_text,
     rows_between,
     sheet_cell_refs,
+    sheet_column_refs,
     to_date,
     to_decimal,
     to_money,
 )
 from src.pipeline.workbook.layout import (
     AllocationLayout,
+    BlockComponent,
     ComponentColumn,
     EventBlock,
     HolidayCalendarLayout,
@@ -38,6 +44,8 @@ from src.pipeline.workbook.layout import (
     SummaryLayout,
 )
 from src.pipeline.workbook.loader import CellModel, SheetModel, WorkbookModel
+
+logger = logging.getLogger("petra.pipeline")
 
 # --- Allocation --------------------------------------------------------------------------
 
@@ -70,6 +78,7 @@ class AllocationInvestor:
     distribution_basis: Decimal | None = None
     received: Any = None
     received_date: Any = None
+    tax_withholding: Decimal | None = None
     cells: dict[str, CellModel | None] = field(default_factory=dict)  # component column -> cell
 
 
@@ -124,9 +133,15 @@ class AllocationData:
 
     @property
     def active_components(self) -> list[ComponentColumn]:
+        """Components used in this event: the mapper's ``active`` flag, else a non-zero driver. A column
+        flagged active that carries no driver and no amount on any investor row is not active, whatever
+        the flag says (a stale header on an unused column)."""
         out = []
         for comp in self.components:
             active = comp.active if comp.active is not None else bool(self.fund_drivers.get(comp.column))
+            if active and not self.fund_drivers.get(comp.column) \
+                    and not any(inv.amounts.get(comp.column) for v in self.vehicles for inv in v.investors):
+                active = False
             if active:
                 out.append(comp)
         return out
@@ -154,12 +169,20 @@ def _row_values(sheet: SheetModel, row: int | None, columns: list[str]) -> dict[
     return {col: to_money(sheet.value(f"{col}{row}")) for col in columns}
 
 
+def roll_forward_columns(layout: AllocationLayout) -> dict[str, str]:
+    """name -> column of every mapped roll-forward column; adjustment columns are keyed 'adjustment:<col>'."""
+    out = {name: col for name, col in layout.roll_forward.model_dump().items() if isinstance(col, str) and col}
+    for column in layout.roll_forward.adjustments:
+        out[f"adjustment:{column}"] = column
+    return out
+
+
 def _numeric_columns(layout: AllocationLayout) -> list[str]:
     cols = [layout.columns.commitment, layout.columns.commitment_pct]
     cols += [c.column for c in layout.components] + [t.column for t in layout.event_total_columns]
-    cols += [c for c in layout.roll_forward.model_dump().values() if c]
+    cols += list(roll_forward_columns(layout).values())
     for extra in (layout.columns.cash_due, layout.columns.late_interest, layout.columns.distribution_basis,
-                  layout.columns.distribution_basis_pct):
+                  layout.columns.distribution_basis_pct, layout.columns.tax_withholding):
         if extra:
             cols.append(extra)
     return list(dict.fromkeys(cols))
@@ -204,8 +227,10 @@ def extract_allocation(model: WorkbookModel, layout: AllocationLayout) -> Alloca
         rows += sorted(gp_rows)
         investors = []
         for row in rows:
-            rf = {name: (to_decimal(sheet.value(f"{col}{row}")) if col else None)
-                  for name, col in layout.roll_forward.model_dump().items()}
+            rf = {name: to_decimal(sheet.value(f"{col}{row}")) for name, col in roll_forward_columns(layout).items()}
+            for name in ("commitment", "prior_contributions", "prior_recallable", "current_call",
+                         "current_recallable", "remaining_commitment"):
+                rf.setdefault(name, None)
             call_col = layout_total(layout, "call")
             dist_col = layout_total(layout, "distribution")
             investors.append(AllocationInvestor(
@@ -223,6 +248,8 @@ def extract_allocation(model: WorkbookModel, layout: AllocationLayout) -> Alloca
                 roll_forward=rf,
                 distribution_basis=to_decimal(sheet.value(f"{cols.distribution_basis}{row}"))
                 if cols.distribution_basis else None,
+                tax_withholding=to_decimal(sheet.value(f"{cols.tax_withholding}{row}"))
+                if cols.tax_withholding else None,
                 received=sheet.value(f"{cols.received}{row}") if cols.received else None,
                 received_date=sheet.value(f"{cols.received_date}{row}") if cols.received_date else None,
                 cells={c: sheet.cell(f"{c}{row}") for c in comp_cols},
@@ -343,6 +370,11 @@ class ItdData:
     # cumulative key -> 'accumulator' (sums the marked event columns), 'derived' (computed from
     # other figures, e.g. a recycling cap) or 'value' (typed numbers)
     cumulative_kinds: dict[str, str] = field(default_factory=dict)
+    # Notes from the deterministic block enumeration (e.g. a block whose side could not be read),
+    # rows inside the investor span that were not treated as investors, and check columns.
+    notes: list[str] = field(default_factory=list)
+    excluded_rows: list[tuple[int, str]] = field(default_factory=list)
+    check_columns: list[str] = field(default_factory=list)
 
     @property
     def derived_cumulatives(self) -> set[str]:
@@ -369,10 +401,233 @@ def _is_mark(value: Any) -> bool:
     return isinstance(value, str) and value.strip().upper() == "X"
 
 
-def extract_itd(model: WorkbookModel, layout: ItdLayout) -> ItdData:
+# --- ITD event-block enumeration ------------------------------------------------------------
+#
+# The event header row is read in code: every text label right of the cumulative columns starts
+# a block, whose span comes from the label's merged range (else it runs to the column before the
+# next label). The LLM's blocks refine what the enumeration finds (event type, number, date,
+# the current block, component types); they are never the only source of blocks.
+
+_BLOCK_QUALIFIER_RE = re.compile(r"\bnon[\s-]*recallable\b|\brecallable\b", re.I)
+_BLOCK_TYPE_WORDS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\btransfer"), "other"),
+    (re.compile(r"\b(gains?|realized|realised)\b"), "realized_gain"),
+    (re.compile(r"\b(dividends?|interest income|income)\b"), "dividend_income"),
+    (re.compile(r"\b(mgmt|management)\b"), "mgmt_fee"),
+    (re.compile(r"\bplacement\b"), "placement_fee"),
+    (re.compile(r"\blate interest\b"), "late_interest"),
+    (re.compile(r"\bcarr(y|ied)\b"), "carry"),
+    (re.compile(r"\btax distribution"), "tax_distribution"),
+    (re.compile(r"\b(withholding|tax wh|wh|tax)\b"), "tax_withholding"),
+    (re.compile(r"\b(pref|preferred)\b"), "pref"),
+    (re.compile(r"\bcatch"), "catch_up"),
+    (re.compile(r"\b(roc|return of capital)\b"), "return_of_capital"),
+    (re.compile(r"\b(expenses?|org|organizational|organisational|partnership|costs?)\b"), "org_expense"),
+    (re.compile(r"\b(investments?|call|deemed|working capital|follow[\s-]*on|contribution)\b"), "investment"),
+]
+_CALL_TYPES = {"investment", "org_expense", "mgmt_fee", "placement_fee", "late_interest"}
+_CALL_CATEGORIES = {"investment_contributions", "cost_contributions"}
+_DIST_CATEGORIES = {"recallable_distributions", "non_recallable_distributions", "tax_withholding"}
+_LABEL_DATE_RE = re.compile(r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})")
+
+
+def component_type_from_header(header: Any) -> str:
+    """Component type read from an ITD sub-header ('Vagaro A-2 Non-Recallable Realized Gain' ->
+    realized_gain, 'Egress (Escrow) Recallable' -> return_of_capital); 'other' when nothing matches."""
+    text = norm_text(header)
+    stripped = _BLOCK_QUALIFIER_RE.sub(" ", text)
+    for pattern, kind in _BLOCK_TYPE_WORDS:
+        if pattern.search(stripped):
+            return kind
+    if text != stripped.strip() or "roc" in text:
+        return "return_of_capital"
+    return "other"
+
+
+def _label_event_type(label: str) -> str:
+    text = norm_text(label)
+    if "transfer" in text:
+        return "transfer"
+    call = re.search(r"\b(call|contribution)", text) is not None
+    dist = re.search(r"\bdist", text) is not None
+    if call and dist:
+        return "net_event"
+    if call:
+        return "capital_call"
+    if dist:
+        return "distribution"
+    return "other"
+
+
+def _label_date(label: str) -> str | None:
+    match = _LABEL_DATE_RE.search(label)
+    if not match:
+        return None
+    day = to_date(match.group(1).replace("-", ".").replace("/", "."))
+    return day.isoformat() if day else None
+
+
+def _event_number(label: str) -> int | None:
+    match = re.search(r"#\s*(\d+)", label)
+    return int(match.group(1)) if match else None
+
+
+def _header_merges(sheet: SheetModel, header_row: int) -> dict[int, int]:
+    """first column index -> last column index of every merged range on the header row."""
+    spans: dict[int, int] = {}
+    for rng in sheet.merged_ranges:
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(rng)
+        except ValueError:
+            continue
+        if min_row <= header_row <= max_row and max_col > min_col:
+            spans[min_col] = max_col
+    return spans
+
+
+def itd_header_labels(sheet: SheetModel, layout: ItdLayout) -> list[tuple[int, str]]:
+    """(column index, label) of every event block label on the event header row, left to right."""
+    cum = [c for c in layout.cumulative_columns.model_dump().values() if c]
+    start = max([col_idx(layout.investor_column)] + [col_idx(c) for c in cum])
+    spans = _header_merges(sheet, layout.event_header_row)
+    labels: list[tuple[int, str]] = []
+    covered_until = 0
+    for cell in sheet.row_cells(layout.event_header_row):
+        if cell.column_index <= start or not is_text(cell.value) or cell.is_error:
+            continue
+        if cell.column_index <= covered_until:
+            continue  # text inside another label's merged range
+        labels.append((cell.column_index, str(cell.value).strip()))
+        covered_until = spans.get(cell.column_index, cell.column_index)
+    return labels
+
+
+def _investor_span_rows(layout: ItdLayout) -> list[int]:
+    rows: list[int] = []
+    for vehicle in layout.vehicles:
+        if len(vehicle.investor_rows) == 2:
+            rows += list(rows_between(vehicle.investor_rows))
+        rows += list(vehicle.gp_rows)
+    return rows
+
+
+def _has_values(sheet: SheetModel, column: str, rows: list[int]) -> bool:
+    return any(to_decimal(sheet.value(f"{column}{r}")) for r in rows)
+
+
+def _links_other_sheet(sheet: SheetModel, column: str, rows: list[int], sheets: list[str] | None) -> bool:
+    for row in rows:
+        cell = sheet.cell(f"{column}{row}")
+        if cell is None or not cell.formula or "!" not in cell.formula:
+            continue
+        if not sheets:
+            return True
+        refs = {s for s, _, _ in sheet_cell_refs(cell.formula)} | {s for s, _ in sheet_column_refs(cell.formula)}
+        if refs & set(sheets):
+            return True
+    return False
+
+
+def enumerate_itd_blocks(sheet: SheetModel, layout: ItdLayout,
+                         allocation_sheets: list[str] | None = None) -> tuple[list[EventBlock], list[str]]:
+    """Event blocks read from the sheet's structure, refined by the LLM's ``layout.event_blocks``.
+
+    Returns the blocks and notes about what could not be read (a block whose side had to be
+    assumed from the sign of its values). When the header row carries no labels at all, the
+    LLM's blocks are returned unchanged.
+    """
+    notes: list[str] = []
+    labels = itd_header_labels(sheet, layout)
+    if not labels:
+        notes.append("no event labels were found on the event header row; the mapped blocks were used as given")
+        return list(layout.event_blocks), notes
+    spans = _header_merges(sheet, layout.event_header_row)
+    rows = _investor_span_rows(layout)
+    sub_row = layout.subheader_row
+    class_rows = {cat: row for cat, row in layout.classification_rows.model_dump().items() if row}
+    mapped_by_col = {col_idx(b.first_column): b for b in layout.event_blocks}
+    mapped_by_label = {b.label: b for b in layout.event_blocks}
+    max_col = max(sheet.max_column, max(c.column_index for c in sheet.cells.values()) if sheet.cells else 1)
+    blocks: list[EventBlock] = []
+    for position, (first, label) in enumerate(labels):
+        next_first = labels[position + 1][0] if position + 1 < len(labels) else max_col + 1
+        if first in spans:
+            last = min(spans[first], next_first - 1)
+        else:
+            last = next_first - 1
+            while last > first and not is_text(sheet.value(f"{col_letter(last)}{sub_row}")) \
+                    and not _has_values(sheet, col_letter(last), rows):
+                last -= 1
+        mapped = mapped_by_col.get(first) or mapped_by_label.get(label) or next(
+            (b for b in layout.event_blocks if first < col_idx(b.first_column) <= last), None)
+        mapped_components = {c.column: c for c in mapped.components} if mapped else {}
+        total_column = None
+        components: list[BlockComponent] = []
+        for index in range(first, last + 1):
+            column = col_letter(index)
+            header = sheet.value(f"{column}{sub_row}")
+            has_header = is_text(header)
+            if has_header and norm_text(header).startswith("total") and total_column is None:
+                total_column = column
+                continue
+            if not has_header and not _has_values(sheet, column, rows):
+                continue
+            marks = {cat for cat, row in class_rows.items() if _is_mark(sheet.value(f"{column}{row}"))}
+            given = mapped_components.get(column)
+            kind = given.component_type if given else component_type_from_header(header if has_header else "")
+            if marks & _CALL_CATEGORIES and not marks & _DIST_CATEGORIES:
+                side = "call"
+            elif marks & _DIST_CATEGORIES and not marks & _CALL_CATEGORIES:
+                side = "distribution"
+            elif given is not None:
+                side = given.side
+            elif kind != "other":
+                side = "call" if kind in _CALL_TYPES else "distribution"
+            else:
+                values = [to_decimal(sheet.value(f"{column}{r}")) for r in rows]
+                negatives = sum(1 for v in values if v is not None and v < 0)
+                positives = sum(1 for v in values if v is not None and v > 0)
+                side = "distribution" if negatives > positives else "call"
+                notes.append(f"block '{label}': the side of column {column} ({header if has_header else 'no sub-header'})"
+                             f" could not be read from its X marks or sub-header; assumed {side} from the sign of "
+                             "its values")
+            components.append(BlockComponent(column=column, component_type=kind, side=side))
+        if not components and total_column is None:
+            continue  # a stray label over empty columns
+        last_component = components[-1].column if components else total_column
+        if mapped is not None:
+            event_type, number, date, is_current = (mapped.event_type, mapped.number or _event_number(label),
+                                                   mapped.date or _label_date(label), mapped.is_current)
+        else:
+            event_type, number, date, is_current = (_label_event_type(label), _event_number(label),
+                                                   _label_date(label), False)
+        blocks.append(EventBlock(label=label, event_type=event_type, number=number, date=date,
+                                 first_column=col_letter(first), last_column=last_component,
+                                 total_column=total_column, is_current=is_current, components=components))
+    if not blocks:
+        notes.append("the event header labels did not yield any block; the mapped blocks were used as given")
+        return list(layout.event_blocks), notes
+    current = [b for b in blocks if b.is_current]
+    if len(current) != 1:
+        for block in blocks:
+            block.is_current = False
+        linked = [b for b in blocks
+                  if any(_links_other_sheet(sheet, c.column, rows, allocation_sheets) for c in b.components)]
+        if linked:
+            linked[-1].is_current = True
+            if not current:
+                notes.append(f"no mapped block is marked current; '{linked[-1].label}' was taken as the current "
+                             "block because its cells link to the Allocation sheet")
+        else:
+            notes.append("no block links to the Allocation sheet, so the current block could not be identified")
+    return blocks, notes
+
+
+def extract_itd(model: WorkbookModel, layout: ItdLayout, allocation_sheets: list[str] | None = None) -> ItdData:
     sheet = model.sheet(layout.sheet)
-    block_cols = [c.column for b in layout.event_blocks for c in b.components]
-    totals_cols = [b.total_column for b in layout.event_blocks if b.total_column]
+    event_blocks, notes = enumerate_itd_blocks(sheet, layout, allocation_sheets)
+    block_cols = [c.column for b in event_blocks for c in b.components]
+    totals_cols = [b.total_column for b in event_blocks if b.total_column]
     marks: dict[str, list[str]] = {}
     for column in block_cols:
         marks[column] = [cat for cat, row in layout.classification_rows.model_dump().items()
@@ -381,10 +636,32 @@ def extract_itd(model: WorkbookModel, layout: ItdLayout) -> ItdData:
                      for column in block_cols}
     cum_cols = layout.cumulative_columns.model_dump()
     all_cols = block_cols + totals_cols
+    value_cols = all_cols + [c for c in cum_cols.values() if c]
+    commitment_col = cum_cols.get("commitment")
+    excluded: list[tuple[int, str]] = []
+
+    def is_investor_row(row: int) -> bool:
+        """A named row with a numeric commitment, or (a transferred-out investor) with any amount."""
+        name = sheet.value(f"{layout.investor_column}{row}")
+        if not is_text(name):
+            return False
+        if commitment_col:
+            commitment = sheet.value(f"{commitment_col}{row}")
+            if isinstance(commitment, (int, float)) and not isinstance(commitment, bool):
+                return True
+            if to_decimal(commitment) is not None:
+                return True
+        else:
+            return True
+        if any(to_decimal(sheet.value(f"{c}{row}")) for c in value_cols):
+            return True
+        excluded.append((row, str(name).strip()))
+        return False
+
     vehicles = []
     for vrows in layout.vehicles:
         gp_rows = set(vrows.gp_rows)
-        rows = [r for r in rows_between(vrows.investor_rows) if is_text(sheet.value(f"{layout.investor_column}{r}"))]
+        rows = [r for r in rows_between(vrows.investor_rows) if is_investor_row(r)]
         rows += sorted(gp_rows)
         investors = []
         for row in rows:
@@ -405,8 +682,20 @@ def extract_itd(model: WorkbookModel, layout: ItdLayout) -> ItdData:
         ))
     investor_rows = [inv.row for v in vehicles for inv in v.investors if not inv.is_gp]
     kinds = _cumulative_kinds(sheet, cum_cols, set(block_cols) | set(totals_cols), investor_rows)
-    return ItdData(sheet=sheet, layout=layout, event_blocks=list(layout.event_blocks), vehicles=vehicles,
-                   marks=marks, overlay_marks=overlay_marks, cumulative_kinds=kinds)
+    if excluded:
+        logger.info("ITD %s: %d named row(s) inside the investor span carry no commitment or amount and were not "
+                    "treated as investors: %s", sheet.name,
+                    len(excluded), ", ".join(f"{r} {n[:40]}" for r, n in excluded[:8]))
+    check_columns = list(layout.check_columns)
+    block_set = set(all_cols)
+    for cell in sheet.row_cells(layout.subheader_row):
+        if cell.column in check_columns or cell.column in block_set:
+            continue
+        if is_text(cell.value) and re.search(r"\b(check|difference|variance)\b", norm_text(cell.value)):
+            check_columns.append(cell.column)
+    return ItdData(sheet=sheet, layout=layout, event_blocks=event_blocks, vehicles=vehicles,
+                   marks=marks, overlay_marks=overlay_marks, cumulative_kinds=kinds, notes=notes,
+                   excluded_rows=excluded, check_columns=check_columns)
 
 
 _CUMULATIVE_ORDER = ("investment_contributions", "cost_contributions", "recallable_distributions",
@@ -421,6 +710,8 @@ def _dominant_formula(sheet: SheetModel, column: str, rows: list[int]) -> tuple[
         cell = sheet.cell(f"{column}{row}")
         formula = cell.formula if cell is not None else None
         shape = re.sub(r"(?<=[A-Z])\$?" + str(row) + r"(?!\d)", "{r}", formula) if formula else ""
+        # Bare row references such as SUMIF($2:$2,"X",12:12) address the whole row.
+        shape = re.sub(r"(?<![A-Za-z0-9])\$?" + str(row) + r":\$?" + str(row) + r"(?!\d)", "{r}:{r}", shape)
         count = shapes.get(shape, (formula, 0))[1] + 1
         shapes[shape] = (formula, count)
     if not shapes:
@@ -548,12 +839,19 @@ def extract_summary(model: WorkbookModel, layout: SummaryLayout) -> SummaryData:
         )
         for section in layout.sections
     ]
+    notice_cell, due_cell = layout.notice_date_cell, layout.due_date_cell
+    if notice_cell and due_cell and notice_cell.replace("$", "").upper() == due_cell.replace("$", "").upper():
+        # One cell mapped as both dates: keep it as the due date when its text says so, else as neither.
+        text = norm_text(sheet.value(due_cell))
+        notice_cell = None
+        if not re.search(r"\b(due|payable|payment|wire)\b", text):
+            due_cell = None
     return SummaryData(
         sheet=sheet,
         layout=layout,
         title=str(sheet.value(layout.title_cell)) if layout.title_cell and sheet.value(layout.title_cell) else None,
-        notice_date=to_date(sheet.value(layout.notice_date_cell), allow_serial=True) if layout.notice_date_cell else None,
-        due_date=to_date(sheet.value(layout.due_date_cell), allow_serial=True) if layout.due_date_cell else None,
+        notice_date=to_date(sheet.value(notice_cell), allow_serial=True) if notice_cell else None,
+        due_date=to_date(sheet.value(due_cell), allow_serial=True) if due_cell else None,
         fund_commitment=to_decimal(sheet.value(layout.fund_commitment_cell)) if layout.fund_commitment_cell else None,
         lines=lines,
         event_total=to_money(sheet.value(layout.event_total_cell)),
@@ -619,10 +917,15 @@ def extract_merge(model: WorkbookModel, layout: MergeLayout) -> MergeData:
             refs = [(s_, c_, r_) for s_, c_, r_ in sheet_cell_refs(cell.formula) if s_ != sheet.name]
             for ref_sheet, _, ref_row in refs:
                 source_rows.setdefault(row, Counter())[(ref_sheet, ref_row)] += 1
-            # A column "pulls" a source column only through a plain link (=Allocation!Q7); a check
-            # formula such as =Allocation!AI7-Q4 references the source but is not a pull of it.
+            # A column "pulls" a source column through a plain link (=Allocation!Q7) or a per-row lookup
+            # keyed by the row's own cell (SUMIF(Allocation!$D:$D,$E4,Allocation!AE:AE)); a check formula
+            # such as =Allocation!AI7-Q4 references the source but is not a pull of it.
             if len(refs) == 1 and _PURE_LINK_RE.match(cell.formula or ""):
                 per_column.setdefault(cell.column, Counter())[refs[0][:2]] += 1
+            else:
+                pulled = pull_lookup(cell.formula, row, sheet.name)
+                if pulled is not None:
+                    per_column.setdefault(cell.column, Counter())[pulled] += 1
     sheet_votes = Counter(ref_sheet for counts in per_column.values() for (ref_sheet, _), n in counts.items()
                           for _ in range(n))
     source_sheet = sheet_votes.most_common(1)[0][0] if sheet_votes else None
@@ -684,6 +987,22 @@ def extract_merge(model: WorkbookModel, layout: MergeLayout) -> MergeData:
 
 
 _PURE_LINK_RE = re.compile(r"^=\s*[+]?(?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!\$?[A-Z]{1,3}\$?\d+\s*$")
+
+
+def pull_lookup(formula: str | None, row: int, home: str) -> tuple[str, str] | None:
+    """(source sheet, source column) when ``formula`` is one per-row lookup (SUMIF / SUMIFS / INDEX-MATCH /
+    VLOOKUP) into another sheet keyed by a cell of the formula's own row, and nothing else."""
+    if not formula or "!" not in formula:
+        return None
+    from src.pipeline.workbook.checks.support import parse_lookup, split_terms
+
+    body = formula[1:] if formula.startswith("=") else formula
+    if len(split_terms(formula)) != 1 or re.search(r"[*/]|\)\s*[-+]", body):
+        return None
+    lookup = parse_lookup(formula, row, home)
+    if lookup is None or lookup.sheet == home or not any(kind == "row" for _, kind, _ in lookup.keys):
+        return None
+    return lookup.sheet, lookup.value_column
 
 
 def _merge_check_rows(sheet: SheetModel, layout: MergeLayout, source_sheet: str | None) -> list[int]:
@@ -840,6 +1159,7 @@ class WorkbookData:
     # Sheets outside the processed set that the processed sheets' formulas reference (e.g. an
     # investment tracker, or a hidden working sheet). They are scanned by sheet-wide rules.
     reference_sheets: list[str] = field(default_factory=list)
+    role_notes: list[str] = field(default_factory=list)  # e.g. a hidden empty Merge-like tab left unprocessed
     prior: "WorkbookData | None" = None  # the prior event's workbook, when supplied
 
     @property
@@ -890,12 +1210,13 @@ def extract_workbook_data(model: WorkbookModel, layouts: dict[str, BaseModel],
     data = WorkbookData(model=model, layouts=dict(layouts), prior=prior)
     hubs = [n for n, layout in layouts.items() if isinstance(layout, (AllocationLayout, SummaryLayout))]
     data.reference_sheets = referenced_sheets(model, list(layouts), hubs)
+    allocation_sheets = [n for n, layout in layouts.items() if isinstance(layout, AllocationLayout)]
     for name, layout in layouts.items():
         try:
             if isinstance(layout, AllocationLayout):
                 data.allocation = extract_allocation(model, layout)
             elif isinstance(layout, ItdLayout):
-                data.itd = extract_itd(model, layout)
+                data.itd = extract_itd(model, layout, allocation_sheets)
             elif isinstance(layout, SummaryLayout):
                 data.summary = extract_summary(model, layout)
             elif isinstance(layout, MergeLayout):

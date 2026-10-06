@@ -15,6 +15,14 @@ hidden Merge tabs and a GP look-through block) runs with:
     CAPITAL_EVENT_NET_SAMPLE_PATH=".../BPCP IV - Capital Call #19 - 08.04.2026.xlsm" \\
     CAPITAL_EVENT_NET_PRIOR_PATH=".../BPCP IV - Distribution #8 - 12.11.2025 V4.xlsm" \\
         pytest tests/evals/test_real_sample_eval.py -m eval -k net
+
+A third, single-vehicle distribution with its prior capital call (whole-dollar rounding, a
+28-block ITD history in collapsed outline groups, SUMIF pulls, a GP waiver column, tax
+withholding, a leftover hidden Merge template) runs with:
+
+    CAPITAL_EVENT_DIST_SAMPLE_PATH=".../FTV V, L.P. - Distribution #14 - Due 07 17, 2026 v6 ILPA.xlsx" \\
+    CAPITAL_EVENT_DIST_PRIOR_PATH=".../FTV V, L.P. - Capital Call #18 - Due 06 01, 2026 v6 - For Merge Master.xlsx" \\
+        pytest tests/evals/test_real_sample_eval.py -m eval -k dist
 """
 from __future__ import annotations
 
@@ -30,6 +38,8 @@ pytestmark = pytest.mark.eval
 SAMPLE = os.getenv("CAPITAL_EVENT_SAMPLE_PATH")
 NET_SAMPLE = os.getenv("CAPITAL_EVENT_NET_SAMPLE_PATH")
 NET_PRIOR = os.getenv("CAPITAL_EVENT_NET_PRIOR_PATH")
+DIST_SAMPLE = os.getenv("CAPITAL_EVENT_DIST_SAMPLE_PATH")
+DIST_PRIOR = os.getenv("CAPITAL_EVENT_DIST_PRIOR_PATH")
 
 EXPECTED_PROCESSED = {
     "Summary", "Allocation", "ITD Capital Activity", "Sallyport Partners Fund", "DX Investor Data",
@@ -127,9 +137,12 @@ NET_EXPECTED = {
     "CE-DATE-VALIDITY": "pass",
     "CE-DATE-ORDER": "pass",
     # Recycling fund: the recallable column is a cap formula and LPs have called above commitment.
-    "CE-ITD-CUMULATIVE": "needs_review",
     "CE-XEV-ITD-ROLL-FORWARD": "needs_review",
     "CE-RF-FOOTING": "needs_review",
+    # Besides the derived recallable column (review), the Executive Fund's ITD block Total columns have LP
+    # subtotals that sum 6 of the 25 rows (e.g. AR130 = SUM(AR124:AR129)): a real short range, found once
+    # every event block is enumerated in code rather than taken from the mapper.
+    "CE-ITD-CUMULATIVE": "fail",
     # Real findings in the sample.
     "CE-XEV-HISTORY-UNCHANGED": "fail",  # one Executive Fund investor's Capital Call #1 split edited by a penny
     "CE-TIE-MERGE": "fail",  # the hidden Merge tabs omit three of the four investment columns
@@ -184,3 +197,84 @@ def test_net_history_finding_names_the_edited_investor_only(net_result):
 def test_net_merge_finding_names_the_missing_columns(net_result):
     findings = _assessment(net_result, "CE-TIE-MERGE")["findings"]
     assert any("Water Lilies" in f and "VRC" in f and "TAS" in f for f in findings)
+
+
+# --- single-vehicle distribution with its prior capital call (whole-dollar client) ---------------
+
+DIST_EXPECTED = {
+    # Verified correct on the 2026-10-05 run and kept.
+    "CE-ALLOC-VEHICLE-TIE": "pass",
+    "CE-ALLOC-GROSS-TIE": "pass",
+    "CE-ALLOC-REFOOT": "pass",
+    "CE-ALLOC-COMMITMENTS": "pass",
+    "CE-ALLOC-MERGED-CELLS": "pass",
+    "CE-RF-CURRENT-CALL-LINK": "pass",
+    "CE-DATE-VALIDITY": "pass",
+    "CE-FMT-DATE-DISPLAY": "pass",
+    "CE-FMT-ACCOUNTING": "pass",
+    "CE-TIE-ITD-COMMITMENTS": "pass",
+    "CE-DIST-ROC-LIMIT": "pass",  # the recallable / non-recallable true-up pair nets to zero
+    "CE-XEV-PLUG-CONSISTENCY": "pass",
+    "CE-WB-PAGE-BREAK-VIEW": "fail",
+    "CE-FMT-NO-FORMULA-ERRORS": "fail",  # #REF! sub-headers in a prior ITD block, a Merge check cell
+    "CE-WB-NO-HIDDEN-DATA": "fail",  # collapsed outline groups, reported once per sheet (FA question open)
+    # False positives of the 2026-10-05 run, fixed.
+    "CE-TIE-ITD-ALLOCATION": "fail",  # the SUMIF pulls tie; the Tax Withholding column has no ITD column
+    "CE-TIE-MERGE": "pass",  # SUMIF pulls; the empty hidden 'FTV Management VII Merge' is demoted
+    "CE-DATE-ORDER": "pass",  # the Summary carries one text date, compared with the Allocation notice date
+    "CE-ALLOC-PLUG-DISCIPLINE": "needs_review",  # whole-dollar +/-1 plugs; no affiliate flag to confirm eligibility
+    "CE-RF-FOOTING": "needs_review",  # the waiver column foots once mapped; recycling reviews remain
+    "CE-ITD-CUMULATIVE": "fail",  # one finding: the HH151 total row skips the LP subtotal
+    "CE-ITD-EVENT-SEQUENCE": "needs_review",  # Distribution #14 continues #13; historical gaps reviewed once
+    # Real defects the 2026-10-05 run missed.
+    "CE-ALLOC-PER-LP-FORMULAS": "fail",  # AI126: the typed carry driver on the GP row
+    "CE-ITD-PRIOR-FROZEN": "fail",  # GB11:GH11 link live to the Allocation header row
+    "CE-SUM-CHECKS-ZERO": "fail",  # Summary!G28 = the withholding total; the ITD 'Distributions Check' column
+    "CE-ALLOC-ROUNDING": "fail",  # sub-cent values in the roll-forward columns
+    "CE-XEV-HISTORY-UNCHANGED": "fail",  # six transferred investors' history re-allocated; one block relabelled
+    "CE-XEV-ROLL-FORWARD": "fail",
+    "CE-XEV-ITD-ROLL-FORWARD": "fail",
+    # Open FA questions: no basis column (parity), client file naming.
+    "CE-ALLOC-PRO-RATA-PARITY": "needs_review",
+    "CE-WB-FILE-NAMING": "fail",
+    # No DX investor data tab, no fee component, no support-tab lookups.
+    "CE-ID-INVESTOR-KEYS": "not_applicable",
+    "CE-TIE-MGMT-FEE": "not_applicable",
+    "CE-TIE-SUPPORT-TABS": "not_applicable",
+}
+
+
+@pytest.fixture(scope="module")
+def dist_result():
+    if not DIST_SAMPLE or not DIST_PRIOR or not Path(DIST_SAMPLE).exists() or not Path(DIST_PRIOR).exists():
+        pytest.skip("set CAPITAL_EVENT_DIST_SAMPLE_PATH and CAPITAL_EVENT_DIST_PRIOR_PATH to the local distribution pair")
+    return ValidationService().validate_document(
+        file_path=DIST_SAMPLE,
+        source_filename=Path(DIST_SAMPLE).name,
+        document_type="capital_event_workbook",
+        options={"event_type": "distribution"},
+        prior_file_path=DIST_PRIOR,
+        prior_source_filename=Path(DIST_PRIOR).name,
+    )
+
+
+def test_dist_empty_hidden_merge_template_is_not_processed(dist_result):
+    processed = {page["label"] for page in dist_result["pages"] if page["page_type"] != ["reference"]}
+    assert "FTV V, L.P. Merge" in processed and "FTV Management VII Merge" not in processed
+
+
+@pytest.mark.parametrize("rule_id", sorted(DIST_EXPECTED))
+def test_dist_known_outcomes(dist_result, rule_id):
+    assessment = _assessment(dist_result, rule_id)
+    assert assessment["verdict"] == DIST_EXPECTED[rule_id], (assessment.get("summary"), assessment.get("findings"))
+
+
+def test_dist_findings_name_the_defects(dist_result):
+    assert any("AI126" in f for f in _assessment(dist_result, "CE-ALLOC-PER-LP-FORMULAS")["findings"])
+    assert any("GB11" in f for f in _assessment(dist_result, "CE-ITD-PRIOR-FROZEN")["findings"])
+    cumulative = _assessment(dist_result, "CE-ITD-CUMULATIVE")["findings"]
+    assert len(cumulative) == 1 and "HH151" in cumulative[0]
+    history = _assessment(dist_result, "CE-XEV-HISTORY-UNCHANGED")["findings"]
+    assert sum(1 for f in history if "changed since the prior workbook" in f) == 6
+    assert any("relabel" in f for f in history)
+    assert any("AL" in f and "Tax Withholding" in f for f in _assessment(dist_result, "CE-TIE-ITD-ALLOCATION")["findings"])

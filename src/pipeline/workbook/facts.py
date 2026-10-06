@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from src.pipeline.workbook.cells import is_text, to_date
 from src.pipeline.workbook.checks._common import event_number, event_numbers, quarter_key, quarter_range
-from src.pipeline.workbook.extract import WorkbookData
+from src.pipeline.workbook.extract import WorkbookData, roll_forward_columns
 from src.pipeline.workbook.keys import Matcher
 from src.pipeline.workbook.loader import WorkbookModel
 
@@ -152,7 +152,7 @@ def _reference_integrity(model, data, options):
     # "Q3 2025 - Q3 2026 Mgmt Fees" covering five quarters).
     current_periods = sorted({p for c in alloc.active_components if c.component_type == "mgmt_fee"
                               for p in quarter_range(c.header)})
-    roll_forward = {col: name for name, col in alloc.layout.roll_forward.model_dump().items() if col}
+    roll_forward = {col: name for name, col in roll_forward_columns(alloc.layout).items()}
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for cell in alloc.sheet.cells.values():
         for sheet_name, target in _external_refs(cell.formula):
@@ -236,6 +236,7 @@ def _sheets_present(model, data, options):
         "investor_data_tab_present": "investor_data" in roles.values(),
         "vehicle_count": len(data.allocation.vehicles) if data.allocation else None,
         "merge_tab_count": len(data.merges),
+        "sheets_not_processed_notes": list(data.role_notes),
     }
 
 
@@ -272,6 +273,7 @@ def _merge_tabs(model, data, options):
         "current_event_label": label,
         "current_event_references": _current_event_references(data),
         "merge_tabs": tabs,
+        "sheets_not_processed_notes": list(data.role_notes),
         "note": "DX Fund ID / DX Investor ID are the Fund ID / Investor ID. A file name must start with the row's own "
                 "Fund ID and Investor ID and reference the current event (its label or due date). Inactive investors "
                 "(no commitment and nothing in this event, e.g. transferred out) are excluded from every list above "
@@ -445,10 +447,13 @@ def _itd_block(model, data, options):
     from openpyxl.utils.cell import column_index_from_string as ci
 
     pairs = {}
+    absent: list[dict] = []
     if data.allocation is not None:
-        from src.pipeline.workbook.checks.ties import _pair_components
+        from src.pipeline.workbook.checks.ties import _pair_components, allocation_columns_absent_from_block
 
-        pairs = dict(_pair_components(itd, block, data.allocation)[0])
+        pair_list = _pair_components(itd, block, data.allocation)[0]
+        pairs = dict(pair_list)
+        absent = allocation_columns_absent_from_block(data.allocation, itd, pair_list)
     columns = []
     matcher = Matcher(data.allocation.vehicles, itd.vehicles) if data.allocation else None
     for comp in block.components:
@@ -482,11 +487,16 @@ def _itd_block(model, data, options):
         "label_is_unique": labels.count(block.label) == 1,
         "appended_after_prior_blocks": ci(block.first_column) > prior_last,
         "event_labels": labels,
+        "block_count": len(itd.event_blocks),
+        "allocation_columns_absent_from_block": absent,
+        "enumeration_notes": list(itd.notes),
         "overlay_rows": [o.name for o in itd.layout.overlay_rows],
         "note": "Participation differs by component (e.g. affiliates pay no management fee, never-funded investors "
                 "receive no return of capital). A column is fully populated when investors_missing_from_itd_block "
                 "is empty. Any column listed in columns_without_primary_x or columns_with_multiple_primary_x is a "
-                "FAIL.",
+                "FAIL. allocation_columns_absent_from_block lists Allocation columns carrying amounts in this "
+                "event (tax withholding included) that no column of the current block stands for: a FAIL when "
+                "tracked is true, otherwise needs_review.",
     }
 
 

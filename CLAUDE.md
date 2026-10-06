@@ -58,6 +58,7 @@ Capital-event workbook tests (TDD; written ahead of the implementation in `src/p
 - `tests/test_document_types.py`, `tests/test_capital_event_rule_pack.py` — document-type registry, upload API, rule pack filtering
 - `tests/test_workbook_{loader,layout,extract,checks,facts,pipeline}.py` — loader/inventory/roles/skeleton, layout validator, typed extraction, deterministic checks, hybrid facts, offline pipeline
 - `tests/test_workbook_keys.py`, `tests/test_event_labels.py` — (vehicle, name) investor matching across sheets; combined event labels and fee-quarter ranges
+- `tests/test_workbook_enumeration.py`, `tests/test_workbook_roles.py` — deterministic ITD block enumeration (the mapper's blocks only refine it), SUMIF pulls, a single Summary date cell, warning-only layout issues; demotion of empty hidden Merge-like tabs
 - Fixtures with `with_prior=True` also generate the prior-event workbook used by the cross-event (`CE-XEV-*`) rules
 - The `multi_vehicle` variant mirrors the multi-vehicle reference client: three vehicles plus a GP look-through block, no fund-level driver row, hidden Merge tabs, a combined prior-event label, two fee quarters billed at once and a Summary with one section per vehicle
 
@@ -70,6 +71,10 @@ CAPITAL_EVENT_SAMPLE_PATH=temp/capital-event-rules/sample-workbook.xlsx pytest t
 CAPITAL_EVENT_NET_SAMPLE_PATH="temp/bpcp-files/BPCP IV - Capital Call #19 - 08.04.2026.xlsm" \
 CAPITAL_EVENT_NET_PRIOR_PATH="temp/bpcp-files/BPCP IV - Distribution #8 - 12.11.2025 V4.xlsm" \
   pytest tests/evals/test_real_sample_eval.py -m eval -k net
+# single-vehicle distribution with its prior capital call (never commit the files)
+CAPITAL_EVENT_DIST_SAMPLE_PATH="temp/test-run-2026-10-05/FTV V, L.P. - Distribution #14 - Due 07 17, 2026 v6 ILPA.xlsx" \
+CAPITAL_EVENT_DIST_PRIOR_PATH="temp/test-run-2026-10-05/FTV V, L.P. - Capital Call #18 - Due 06 01, 2026 v6 - For Merge Master.xlsx" \
+  pytest tests/evals/test_real_sample_eval.py -m eval -k dist
 ```
 
 ### Comparing Models (live LLM)

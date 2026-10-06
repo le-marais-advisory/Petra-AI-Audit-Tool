@@ -6,43 +6,86 @@ from decimal import Decimal
 
 from src.pipeline.workbook.cells import to_date, to_decimal
 from src.pipeline.workbook.checks._common import CheckContext, NotApplicable, Outcome, check, event_number, money
+from src.pipeline.workbook.extract import roll_forward_columns
 from src.pipeline.workbook.layout import AllocationLayout, ItdLayout, MergeLayout, SummaryLayout
 from src.pipeline.workbook.loader import CellModel, SheetModel
 
 ZERO = Decimal("0")
 
 
-def _check_cells(ctx: CheckContext) -> list[tuple[SheetModel, str]]:
-    """Every check / control cell the layouts point at, on every processed sheet (FA calibration)."""
-    cells: list[tuple[SheetModel, str]] = []
+def _check_cells(ctx: CheckContext) -> list[tuple[SheetModel, str, str | None]]:
+    """Every check / control cell the layouts point at, on every processed sheet (FA calibration).
+
+    Each entry is (sheet, coord, group): cells of one check column share a group so a column that
+    is wrong on every row is reported once."""
+    cells: list[tuple[SheetModel, str, str | None]] = []
     data = ctx.data
     if data.summary is not None:
-        cells += [(data.summary.sheet, c) for c in data.summary.check_cells]
+        cells += [(data.summary.sheet, c, None) for c in data.summary.check_cells]
         for section in data.summary.sections:
-            cells += [(data.summary.sheet, c) for c in section.check_cells if (data.summary.sheet, c) not in cells]
+            cells += [(data.summary.sheet, c, None) for c in section.check_cells
+                      if (data.summary.sheet, c, None) not in cells]
 
     def numeric_cells_on(sheet: SheetModel, rows: list[int]) -> None:
         for row in rows:
             for cell in sheet.row_cells(row):
                 if cell.is_error or (isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool)):
-                    cells.append((sheet, cell.coord))
+                    cells.append((sheet, cell.coord, None))
 
     if data.allocation is not None:
         numeric_cells_on(data.allocation.sheet, data.allocation.layout.check_rows)
     if data.itd is not None:
-        numeric_cells_on(data.itd.sheet, data.itd.layout.check_rows)
+        itd = data.itd
+        numeric_cells_on(itd.sheet, itd.layout.check_rows)
+        rows = [inv.row for inv in itd.investors]
+        for vehicle in itd.vehicles:
+            rows += [r for r in vehicle.subtotal_rows.values() if r]
+        known = {coord for sheet, coord, _ in cells if sheet is itd.sheet}
+        for column in itd.check_columns:
+            header = itd.sheet.value(f"{column}{itd.layout.subheader_row}")
+            group = f"{itd.sheet.name} column {column} ({str(header).strip() if header else 'check'})"
+            for row in rows:
+                cell = itd.sheet.cell(f"{column}{row}")
+                if cell is not None and cell.coord not in known and (
+                        cell.is_error or (isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool))):
+                    cells.append((itd.sheet, cell.coord, group))
     if data.mgmt_fee is not None:
         numeric_cells_on(data.mgmt_fee.sheet, data.mgmt_fee.layout.check_rows)
     for merge in data.merges:
         numeric_cells_on(merge.sheet, merge.layout.check_rows)
         column = merge.layout.columns.check
         if column:
-            cells += [(merge.sheet, f"{column}{row.row}") for row in merge.rows
+            cells += [(merge.sheet, f"{column}{row.row}", f"{merge.sheet.name} column {column}") for row in merge.rows
                       if merge.sheet.value(f"{column}{row.row}") is not None]
         # Check rows the extractor found below the data (a formula comparing the tab with the Allocation).
-        known = {coord for sheet, coord in cells if sheet is merge.sheet}
-        cells += [(merge.sheet, coord) for coord, _ in merge.check_cells if coord not in known]
+        known = {coord for sheet, coord, _ in cells if sheet is merge.sheet}
+        cells += [(merge.sheet, coord, None) for coord, _ in merge.check_cells if coord not in known]
     return cells
+
+
+RESIDUE = Decimal("0.0005")  # below this a non-zero check value is floating-point residue, not a difference
+
+
+def _known_totals(ctx: CheckContext) -> list[tuple[Decimal, str]]:
+    """(amount, description) of every Allocation fund driver and the withholding total, so a check
+    value that equals one of them can say so."""
+    alloc = ctx.data.allocation
+    if alloc is None:
+        return []
+    sheet = alloc.sheet
+    header_row = alloc.layout.header_row
+    out = []
+    for column, amount in alloc.fund_drivers.items():
+        if amount:
+            header = sheet.value(f"{column}{header_row}")
+            out.append((amount, f"the {str(header).strip() if header else column} total ({column}{alloc.layout.fund_driver_row})"))
+    column = alloc.layout.columns.tax_withholding
+    if column:
+        total = sum((inv.tax_withholding or ZERO for inv in alloc.fund_investors), ZERO)
+        if total:
+            header = sheet.value(f"{column}{header_row}")
+            out.append((total, f"the {str(header).strip() if header else column} total (column {column})"))
+    return out
 
 
 @check("CE-SUM-CHECKS-ZERO", needs=("summary",))
@@ -51,15 +94,34 @@ def summary_checks_zero(ctx: CheckContext, out: Outcome) -> str:
     if not cells:
         out.review("No check / control cells were identified.")
         return ""
-    for sheet, coord in cells:
+    totals = _known_totals(ctx)
+    grouped: dict[str, list[str]] = {}
+    residue = 0
+    for sheet, coord, group in cells:
         model = sheet.cell(coord)
         if model is not None and model.is_error:
-            out.fail(f"Check cell {sheet.name}!{coord} shows {model.value}.", sheet, coord)
+            if group:
+                grouped.setdefault(group, []).append(f"{coord} {model.value}")
+            else:
+                out.fail(f"Check cell {sheet.name}!{coord} shows {model.value}.", sheet, coord)
             continue
         value = to_decimal(sheet.value(coord)) or ZERO
-        if abs(value) > Decimal("0.000001"):
-            out.fail(f"Check cell {sheet.name}!{coord} is {money(value)}, not 0.00.", sheet, coord)
-    sheets = sorted({sheet.name for sheet, _ in cells})
+        if abs(value) <= RESIDUE:
+            if value:
+                residue += 1
+            continue
+        if group:
+            grouped.setdefault(group, []).append(f"{coord} {money(value)}")
+            continue
+        explained = next((f"; it equals {what}" for amount, what in totals if abs(abs(value) - abs(amount)) <= RESIDUE), "")
+        out.fail(f"Check cell {sheet.name}!{coord} is {money(value)}, not 0.00{explained}.", sheet, coord)
+    for group, items in grouped.items():
+        sheet = next(s for s, c, g in cells if g == group)
+        first = items[0].split()[0]
+        out.fail(f"{group}: {len(items)} cell(s) are not zero (e.g. {', '.join(items[:3])}).", sheet, first)
+    if residue:
+        out.notes.append(f"{residue} check cell(s) hold floating-point residue below {RESIDUE} and count as zero.")
+    sheets = sorted({sheet.name for sheet, _, _ in cells})
     return f"All {len(cells)} check cell(s) equal 0.00 ({', '.join(sheets)})."
 
 
@@ -80,6 +142,12 @@ def _event_date_cells(ctx: CheckContext) -> list[tuple[SheetModel, str, str, Cel
                               if sheet.value(f"{column}{r}") is not None]
         else:
             continue
+        if isinstance(layout, SummaryLayout) and ctx.data.summary is not None:
+            # A single Summary date cell mapped as both dates counts once, as the date it names.
+            summary = ctx.data.summary
+            pairs = [(k, c) for k, c in pairs
+                     if not (k == "notice" and summary.notice_date is None and layout.notice_date_cell
+                             and layout.notice_date_cell == layout.due_date_cell)]
         for kind, coord in pairs:
             if coord:
                 out.append((sheet, coord, kind, sheet.cell(coord)))
@@ -119,6 +187,15 @@ def date_order(ctx: CheckContext, out: Outcome) -> str:
     summary = ctx.data.summary
     if summary and summary.notice_date and summary.due_date and summary.due_date <= summary.notice_date:
         out.fail("The Summary's due date is on or before its notice date.", summary.sheet, summary.layout.due_date_cell)
+    elif summary and summary.due_date and not summary.notice_date:
+        # The Summary carries one date (a title such as "Distribution Summary due July 17, 2026").
+        order = "in order" if summary.due_date > event.notice_date else "NOT in order"
+        message = (f"The Summary carries one date ({summary.layout.due_date_cell}, due {summary.due_date.isoformat()}); "
+                   f"compared with the Allocation notice date {event.notice_date.isoformat()}: {order}.")
+        if summary.due_date > event.notice_date:
+            out.notes.append(message)
+        else:
+            out.fail(message, summary.sheet, summary.layout.due_date_cell)
     itd = ctx.data.itd
     if itd is not None:
         from src.pipeline.workbook.checks.rollforward_itd import _DATE_IN_LABEL
@@ -190,10 +267,11 @@ def _money_cells(ctx: CheckContext) -> list[tuple[SheetModel, str, list[CellMode
             rows += [r for v in layout.vehicles for r in v.gp_rows] + [layout.fund_driver_row]
             rows += [r for v in layout.vehicles for r in v.subtotal_rows.model_dump().values() if r]
             columns = [c.column for c in layout.components] + [t.column for t in layout.event_total_columns]
-            columns += [c for c in layout.roll_forward.model_dump().values() if c]
+            columns += list(roll_forward_columns(layout).values())
         elif isinstance(layout, ItdLayout):
             rows = [r for v in layout.vehicles for r in range(v.investor_rows[0], v.investor_rows[-1] + 1)]
-            columns = [c.column for b in layout.event_blocks for c in b.components]
+            blocks = ctx.data.itd.event_blocks if ctx.data.itd is not None else layout.event_blocks
+            columns = [c.column for b in blocks for c in b.components]
         elif isinstance(layout, MergeLayout):
             rows = list(range(layout.first_data_row, layout.last_data_row + 1))
             columns = [c.column for c in layout.component_columns]
@@ -276,6 +354,21 @@ def no_formula_errors(ctx: CheckContext, out: Outcome) -> str:
     return f"No error values or '####' overflows on the processed and referenced sheets ({scanned})."
 
 
+def _column_ranges(columns: list[str]) -> str:
+    from src.pipeline.workbook.cells import col_idx, col_letter
+
+    indexes = sorted(col_idx(c) for c in columns)
+    parts, start, prev = [], indexes[0], indexes[0]
+    for index in indexes[1:]:
+        if index == prev + 1:
+            prev = index
+            continue
+        parts.append(col_letter(start) if start == prev else f"{col_letter(start)}-{col_letter(prev)}")
+        start = prev = index
+    parts.append(col_letter(start) if start == prev else f"{col_letter(start)}-{col_letter(prev)}")
+    return ", ".join(parts)
+
+
 @check("CE-WB-NO-HIDDEN-DATA", needs=("allocation", "itd"))
 def no_hidden_data(ctx: CheckContext, out: Outcome) -> str:
     targets = [ctx.data.allocation, ctx.data.itd]
@@ -289,12 +382,24 @@ def no_hidden_data(ctx: CheckContext, out: Outcome) -> str:
             if populated:
                 out.fail(f"{sheet.name} row {row} is hidden but holds investor data "
                          f"({populated[0].coord}={populated[0].value!r}).", sheet, f"A{row}")
-        for column in sorted(sheet.hidden_cols):
+        grouped: list[tuple[str, CellModel]] = []
+        for column in sorted(sheet.hidden_cols, key=lambda c: (len(c), c)):
             populated = [sheet.cell(f"{column}{r}") for r in sorted(investor_rows)]
             populated = [c for c in populated if c is not None and c.value not in (None, "", 0)]
-            if populated:
+            if not populated:
+                continue
+            if column in sheet.outlined_cols:
+                grouped.append((column, populated[0]))
+            else:
                 out.fail(f"{sheet.name} column {column} is hidden but holds populated investor values "
                          f"({populated[0].coord}={populated[0].value!r}).", sheet, populated[0].coord)
+        if grouped:
+            # Collapsed outline groups (prior-event columns folded away) are reported once per sheet.
+            # FA question outstanding: whether a collapsed group counts as hidden data; a failure until then.
+            columns = [c for c, _ in grouped]
+            out.fail(f"{sheet.name}: {len(columns)} column(s) in collapsed outline groups hold populated investor "
+                     f"values ({_column_ranges(columns)}, e.g. {grouped[0][1].coord}={grouped[0][1].value!r}).",
+                     sheet, grouped[0][1].coord)
     allocation_name = ctx.data.allocation.sheet.name
     mapped_merges = {m.sheet.name for m in ctx.data.merges}
     for sheet in ctx.model.sheets:
@@ -306,7 +411,7 @@ def no_hidden_data(ctx: CheckContext, out: Outcome) -> str:
                        "but a hidden notice tab is easy to leave stale.", sheet, None)
             continue
         linked = [c for c in sheet.cells.values() if c.formula and allocation_name.lower() in c.formula.lower()
-                  and c.value not in (None, 0, "")]
+                  and isinstance(c.value, (int, float)) and not isinstance(c.value, bool) and c.value != 0]
         if linked:
             out.review(f"Hidden sheet '{sheet.name}' pulls non-zero values from the Allocation sheet "
                        f"(e.g. {linked[0].coord}); confirm it holds no current-event data.", sheet, linked[0].coord)

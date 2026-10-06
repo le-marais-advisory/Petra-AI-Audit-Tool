@@ -55,6 +55,7 @@ class SheetModel:
     max_column: int
     hidden_rows: set[int] = field(default_factory=set)
     hidden_cols: set[str] = field(default_factory=set)
+    outlined_cols: set[str] = field(default_factory=set)  # columns inside an outline (grouped) range
     merged_ranges: list[str] = field(default_factory=list)
     print_area: str | None = None
     cells: dict[str, CellModel] = field(default_factory=dict)
@@ -113,16 +114,21 @@ class WorkbookModel:
         return self.formulas_without_cache / self.formula_count > _MISSING_CACHE_THRESHOLD
 
 
-def _hidden_columns(ws) -> set[str]:
+def _column_flags(ws) -> tuple[set[str], set[str]]:
+    """(hidden columns, outlined columns): a hidden column inside an outline group is a collapsed group."""
     hidden: set[str] = set()
+    outlined: set[str] = set()
     for key, dim in ws.column_dimensions.items():
-        if not dim.hidden:
+        if not dim.hidden and not dim.outlineLevel:
             continue
         start = dim.min or column_index_from_string(key)
         end = dim.max or start
         for index in range(start, end + 1):
-            hidden.add(get_column_letter(index))
-    return hidden
+            if dim.hidden:
+                hidden.add(get_column_letter(index))
+            if dim.outlineLevel:
+                outlined.add(get_column_letter(index))
+    return hidden, outlined
 
 
 def load_workbook_model(path: str | Path, file_name: str | None = None) -> WorkbookModel:
@@ -163,6 +169,7 @@ def load_workbook_model(path: str | Path, file_name: str | None = None) -> Workb
                     number_format=cell.number_format or "General",
                 )
         print_area = ws.print_area if isinstance(ws.print_area, str) else None
+        hidden_cols, outlined_cols = _column_flags(ws)
         sheets.append(
             SheetModel(
                 name=ws.title,
@@ -173,7 +180,8 @@ def load_workbook_model(path: str | Path, file_name: str | None = None) -> Workb
                 max_row=ws.max_row,
                 max_column=ws.max_column,
                 hidden_rows={r for r, dim in ws.row_dimensions.items() if dim.hidden},
-                hidden_cols=_hidden_columns(ws),
+                hidden_cols=hidden_cols,
+                outlined_cols=outlined_cols,
                 merged_ranges=sorted(str(rng) for rng in ws.merged_cells.ranges),
                 print_area=print_area,
                 cells=cells,

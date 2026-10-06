@@ -92,6 +92,29 @@ def _present(data: WorkbookData, role: str) -> bool:
     return getattr(data, role, None) is not None
 
 
+# Roles a workbook may legitimately lack; a check needing one of these is not applicable without it.
+OPTIONAL_ROLES = {"investor_data", "mgmt_fee", "holiday_calendar"}
+
+
+def missing_role_outcome(data: WorkbookData, missing: list[str]) -> tuple[str, str, list[str]]:
+    """(verdict, summary, findings) for a check whose required roles are not all present: a role whose
+    layout was rejected is a review item; a role with no sheet at all is named as such, and is
+    not applicable when the role is optional."""
+    rejected = [r for r in missing if r in data.extraction_errors]
+    absent = [r for r in missing if r not in data.extraction_errors]
+    parts, findings = [], []
+    for role in rejected:
+        parts.append(f"the {ROLE_LABELS.get(role, role)} sheet layout was rejected, so this check could not run")
+        findings.append(data.extraction_errors[role])
+    for role in absent:
+        parts.append(f"no sheet with the {ROLE_LABELS.get(role, role)} role was found in the workbook")
+    summary = "; ".join(parts)
+    summary = summary[:1].upper() + summary[1:] + "."
+    if absent and not rejected and all(r in OPTIONAL_ROLES for r in absent):
+        return "not_applicable", summary, findings
+    return "needs_review", summary, findings
+
+
 def _headline(messages: list[str], noun: str) -> str:
     """The rule's one-line summary: the first message, prefixed by the count when there are more.
 
@@ -125,11 +148,8 @@ def result(rule: dict, verdict: str, summary: str, findings: list[str] | None = 
 def run_check(spec: CheckSpec, ctx: CheckContext) -> AnalysisRuleResult:
     missing = [role for role in spec.needs if not _present(ctx.data, role)]
     if missing:
-        labels = ", ".join(ROLE_LABELS.get(r, r) for r in missing)
-        reasons = [ctx.data.extraction_errors[r] for r in missing if r in ctx.data.extraction_errors]
-        return result(ctx.rule, "needs_review",
-                      f"The {labels} sheet layout could not be mapped or validated, so this check could not run.",
-                      findings=reasons)
+        verdict, summary, reasons = missing_role_outcome(ctx.data, missing)
+        return result(ctx.rule, verdict, summary, findings=reasons)
     outcome = Outcome()
     try:
         pass_summary = spec.fn(ctx, outcome)

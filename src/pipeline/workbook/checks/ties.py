@@ -23,6 +23,7 @@ from src.pipeline.workbook.checks._common import (
     quarter_range,
 )
 from src.pipeline.workbook.checks.support import _criteria, _Lookup, _support_rows, parse_lookup, split_terms
+from src.pipeline.workbook.extract import pull_lookup
 from src.pipeline.workbook.keys import Matcher
 
 ZERO = Decimal("0")
@@ -218,17 +219,30 @@ def _pair_components(itd, block, alloc) -> tuple[list[tuple[str, list[str]]], li
     ITD column against all Allocation columns of that type, or one-to-one when the counts agree.
     """
     alloc_name = alloc.sheet.name
+    itd_name = itd.sheet.name
     component_cols = {c.column for c in alloc.active_components}
+    withholding_col = alloc.layout.columns.tax_withholding
+    if withholding_col:
+        component_cols.add(withholding_col)  # carried like a component, outside the event totals
+    # The Allocation's per-side total columns: an ITD column linking to one stands for that side's components.
+    side_totals = {t.column: [c.column for c in alloc.active_components if c.side == t.side]
+                   for t in alloc.layout.event_total_columns}
     pairs: list[tuple[str, list[str]]] = []
     unmapped: list[str] = []
     remaining = []
     for comp in block.components:
         votes: Counter = Counter()
         for inv in itd.investors:
-            cols = tuple(sorted({c for s, c, _ in sheet_cell_refs(inv.formulas.get(comp.column))
-                                 if s == alloc_name and c in component_cols}, key=col_idx))
+            formula = inv.formulas.get(comp.column)
+            refs = {c for s, c, _ in sheet_cell_refs(formula) if s == alloc_name}
+            pulled = pull_lookup(formula, inv.row, itd_name)
+            if pulled is not None and pulled[0] == alloc_name:
+                refs.add(pulled[1])
+            cols = {c for c in refs if c in component_cols}
+            for total_col in refs & set(side_totals):
+                cols |= set(side_totals[total_col])
             if cols:
-                votes[cols] += 1
+                votes[tuple(sorted(cols, key=col_idx))] += 1
         if votes and votes.most_common(1)[0][1] * 2 > len(itd.investors):
             pairs.append((comp.column, list(votes.most_common(1)[0][0])))
         else:
@@ -238,6 +252,8 @@ def _pair_components(itd, block, alloc) -> tuple[list[tuple[str, list[str]]], li
     for comp in alloc.active_components:
         if comp.column not in taken:
             pool.setdefault((comp.component_type, comp.side), []).append(comp.column)
+    if withholding_col and withholding_col not in taken:
+        pool.setdefault(("tax_withholding", "distribution"), []).append(withholding_col)
     by_type = Counter((c.component_type, c.side) for c in remaining)
     for comp in remaining:
         key = (comp.component_type, comp.side)
@@ -245,18 +261,65 @@ def _pair_components(itd, block, alloc) -> tuple[list[tuple[str, list[str]]], li
         if not candidates:
             unmapped.append(comp.column)
         elif by_type[key] == 1:
-            pairs.append((comp.column, list(candidates)))
+            pairs.append((comp.column, list(candidates)))  # one ITD column stands for every column of its type
             candidates.clear()
-        elif by_type[key] == len(candidates) + sum(1 for c, cols in pairs if c != comp.column and cols and
-                                                   (cols[0] in taken)) or len(candidates) >= by_type[key]:
-            pairs.append((comp.column, [candidates.pop(0)]))
         else:
-            unmapped.append(comp.column)
+            pairs.append((comp.column, [candidates.pop(0)]))  # one-to-one, in column order
     return pairs, unmapped
 
 
 def _describe(cols: list[str]) -> str:
     return "+".join(cols) if len(cols) > 1 else cols[0]
+
+
+def _alloc_amount(alloc, inv, column: str) -> Decimal:
+    """An investor's amount in an Allocation column: a component, or the tax withholding column."""
+    if column == alloc.layout.columns.tax_withholding:
+        return inv.tax_withholding or ZERO
+    return inv.amounts.get(column, ZERO)
+
+
+# Component types the ITD must track for a capital event; an unmapped column of any other type is a
+# question, not a failure (clients carry informational Allocation columns the ITD does not record).
+_TRACKED_TYPES = {"investment", "org_expense", "mgmt_fee", "placement_fee", "return_of_capital", "realized_gain",
+                  "dividend_income", "carry", "tax_withholding"}
+
+
+def allocation_columns_absent_from_block(alloc, itd, pairs: list[tuple[str, list[str]]]) -> list[dict]:
+    """Active Allocation columns with amounts (withholding included) that no current-block column stands for."""
+    mapped = {c for _, cols in pairs for c in cols}
+    header_row = alloc.layout.header_row
+    absent = []
+    candidates = [(c.column, c.component_type, c.header) for c in alloc.active_components]
+    if alloc.layout.columns.tax_withholding:
+        column = alloc.layout.columns.tax_withholding
+        candidates.append((column, "tax_withholding", alloc.sheet.value(f"{column}{header_row}")))
+    for column, component_type, header in candidates:
+        if column in mapped:
+            continue
+        if component_type == "tax_withholding":
+            total = sum((inv.tax_withholding or ZERO for inv in alloc.fund_investors), ZERO)
+        else:
+            total = sum((inv.amounts.get(column, ZERO) for inv in alloc.fund_investors), ZERO)
+        if not total:
+            continue
+        absent.append({"column": column, "header": str(header).strip() if header else None,
+                       "component_type": component_type, "total": float(total),
+                       "tracked": component_type in _TRACKED_TYPES})
+    return absent
+
+
+def _reverse_tie(ctx: CheckContext, out: Outcome, pairs: list[tuple[str, list[str]]]) -> None:
+    alloc, itd = ctx.data.allocation, ctx.data.itd
+    block = itd.current_block
+    for entry in allocation_columns_absent_from_block(alloc, itd, pairs):
+        message = (f"Allocation {entry['column']} ({entry['header'] or entry['component_type']}, "
+                   f"{money(entry['total'])}) has no column in the current ITD block ('{block.label}').")
+        cell = f"{entry['column']}{alloc.layout.header_row}"
+        if entry["tracked"]:
+            out.fail(message, alloc.sheet, cell)
+        else:
+            out.review(message + " Confirm whether the ITD should track it.", alloc.sheet, cell)
 
 
 @check("CE-TIE-ITD-ALLOCATION", needs=("allocation", "itd"))
@@ -267,29 +330,35 @@ def tie_itd_allocation(ctx: CheckContext, out: Outcome) -> str:
         out.review("The current ITD event block could not be identified.")
         return ""
     pairs, unmapped = _pair_components(itd, block, alloc)
+    # An unmapped ITD column that is $0 for every investor carries nothing to tie (an Allocation column
+    # with amounts and no ITD counterpart is reported by the reverse check below).
+    unmapped = [c for c in unmapped if any(inv.values.get(c, ZERO) for inv in itd.investors)]
     if unmapped:
         out.review(f"Current ITD block column(s) {', '.join(unmapped)} cannot be mapped to an Allocation component.")
     matcher = Matcher(alloc.vehicles, itd.vehicles)
     for ordinal, inv in matcher.pairs():
         target = matcher.find(ordinal, inv.name)
-        has_amount = any(inv.amounts.get(a, ZERO) for _, cols in pairs for a in cols)
+        has_amount = any(_alloc_amount(alloc, inv, a) for _, cols in pairs for a in cols)
         if target is None:
             if has_amount:
                 out.fail(f"{matcher.label(ordinal, inv.name)} has a current-event amount but is missing from the ITD "
                          "block.", alloc.sheet, f"{alloc.layout.columns.investor}{inv.row}")
             continue
         for itd_col, alloc_cols in pairs:
-            a = sum((inv.amounts.get(c, ZERO) for c in alloc_cols), ZERO)
+            a = sum((_alloc_amount(alloc, inv, c) for c in alloc_cols), ZERO)
             b = target.values.get(itd_col, ZERO)
             if differs(mag(a), mag(b), PENNY):
                 out.fail(f"{matcher.label(ordinal, inv.name)}: ITD {itd_col}{target.row} is {money(b)} but Allocation "
                          f"{_describe(alloc_cols)}{inv.row} is {money(a)}.", itd.sheet, f"{itd_col}{target.row}")
     for itd_col, alloc_cols in pairs:
         itd_total = sum((i.values.get(itd_col, ZERO) for i in itd.investors), ZERO)
-        alloc_total = sum((i.amounts.get(c, ZERO) for i in alloc.investors for c in alloc_cols), ZERO)
+        alloc_total = sum((_alloc_amount(alloc, i, c) for i in alloc.investors for c in alloc_cols), ZERO)
         if differs(mag(itd_total), mag(alloc_total), PENNY):
             out.fail(f"ITD column {itd_col} totals {money(itd_total)} vs Allocation {_describe(alloc_cols)} "
                      f"{money(alloc_total)}.", itd.sheet, f"{itd_col}{itd.layout.event_header_row}")
+    _reverse_tie(ctx, out, pairs)
+    for note in itd.notes:
+        out.review(f"ITD block enumeration: {note}.", itd.sheet, None)
     mapping = ", ".join(f"{i} = {_describe(a)}" for i, a in pairs)
     return f"The current ITD block ('{block.label}') equals the Allocation sheet per investor and component ({mapping})."
 
@@ -447,6 +516,7 @@ def tie_merge(ctx: CheckContext, out: Outcome) -> str:
             if mag(value) > PENNY:
                 out.fail(f"{msheet.name} check cell {coord} is {money(value)}, not zero.", msheet, coord)
         summary.append(f"{msheet.name} -> {vehicle_name} ({len(members)} investors)")
+    out.notes.extend(ctx.data.role_notes)
     if not summary:
         return ""
     return "Every Merge tab pulls all of its vehicle's current components and ties to the Allocation per investor: " \
@@ -541,7 +611,8 @@ def roc_limit(ctx: CheckContext, out: Outcome) -> str:
         roc = sum((mag(inv.amounts.get(c, ZERO)) for c in roc_cols), ZERO)
         target = matcher.find(ordinal, inv.name)
         contributed = mag(target.cumulative.get("total_contributions")) if target else ZERO
-        returned = sum((mag(target.values.get(c, ZERO)) for c in prior_roc_cols), ZERO) if target else ZERO
+        # Signed, then magnitude: a recallable / non-recallable true-up pair nets to zero.
+        returned = mag(sum((target.values.get(c, ZERO) for c in prior_roc_cols), ZERO)) if target else ZERO
         outstanding = contributed - returned
         outstanding_total += max(outstanding, ZERO)
         roc_total += roc

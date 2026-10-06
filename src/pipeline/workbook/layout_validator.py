@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from src.pipeline.workbook.cells import col_idx, is_text, norm_text, sum_range_rows, to_date, to_money
+from src.pipeline.workbook.cells import col_idx, col_letter, is_text, norm_text, sum_range_rows, to_date, to_money
+from src.pipeline.workbook.extract import _investor_span_rows, _links_other_sheet, itd_header_labels
 from src.pipeline.workbook.layout import (
     AllocationLayout,
     HolidayCalendarLayout,
@@ -44,6 +45,17 @@ class LayoutIssue:
     message: str
     sheet: str
     cell: str | None = None
+    # "error" rejects the layout; "warning" asks the mapper to improve it once but the layout is
+    # still accepted afterwards (code reads the structure itself, the mapper's answer refines it).
+    severity: str = "error"
+
+    @property
+    def blocking(self) -> bool:
+        return self.severity == "error"
+
+
+def blocking_issues(issues: list[LayoutIssue]) -> list[LayoutIssue]:
+    return [i for i in issues if i.blocking]
 
 
 class _Checker:
@@ -51,8 +63,9 @@ class _Checker:
         self.sheet = sheet
         self.issues: list[LayoutIssue] = []
 
-    def add(self, code: str, message: str, cell: str | None = None) -> None:
-        self.issues.append(LayoutIssue(code=code, message=message, sheet=self.sheet.name, cell=cell))
+    def add(self, code: str, message: str, cell: str | None = None, severity: str = "error") -> None:
+        self.issues.append(LayoutIssue(code=code, message=message, sheet=self.sheet.name, cell=cell,
+                                       severity=severity))
 
     def text(self, cell: str) -> str:
         value = self.sheet.value(cell)
@@ -186,7 +199,7 @@ def _validate_allocation(c: _Checker, layout: AllocationLayout) -> None:
     c.header_contains(cols.commitment, header, ("commit",), "columns.commitment")
     c.header_contains(cols.commitment_pct, header, ("%", "percent", "ratio"), "columns.commitment_pct")
     for name in ("affiliate_flag", "late_interest", "cash_due", "received", "received_date", "distribution_basis",
-                 "distribution_basis_pct", "mgmt_fee_rate"):
+                 "distribution_basis_pct", "mgmt_fee_rate", "tax_withholding"):
         column = getattr(cols, name)
         if column is not None:
             c.column_ok(column, f"columns.{name}")
@@ -195,12 +208,16 @@ def _validate_allocation(c: _Checker, layout: AllocationLayout) -> None:
     for total in layout.event_total_columns:
         c.header_equals(total.column, header, None, f"event total ({total.side})")
     for name, column in layout.roll_forward.model_dump().items():
-        if column is not None:
+        if name == "adjustments":
+            for adjustment in column:
+                c.header_equals(adjustment, header, None, "roll_forward.adjustments")
+        elif column is not None:
             c.header_equals(column, header, None, f"roll_forward.{name}")
     for name in ("label_cell", "carried_interest_rate_cell"):
         c.non_empty(getattr(layout.event, name), f"event.{name}")
     for name in ("notice_date_cell", "due_date_cell"):
         c.date_cell(getattr(layout.event, name), f"event.{name}")
+    _same_date_cell(c, layout.event.notice_date_cell, layout.event.due_date_cell)
     if not layout.vehicles:
         c.add("investor_range_mismatch", "no vehicle blocks")
     for vehicle in layout.vehicles:
@@ -248,8 +265,34 @@ def _validate_itd(c: _Checker, layout: ItdLayout) -> None:
     for name, column in layout.cumulative_columns.model_dump().items():
         if column is not None:
             c.header_equals(column, layout.subheader_row, None, f"cumulative_columns.{name}")
+    for column in layout.check_columns:
+        c.header_contains(column, layout.subheader_row, ("check", "difference", "variance"), "check column")
     sum_cols = [col for col in [layout.cumulative_columns.commitment] if col]
     c.vehicle_rows(layout.vehicles, layout.investor_column, sum_cols)
+    # Coverage: every label on the event header row should be inside a mapped block (warning: code
+    # enumerates the blocks itself and uses the mapped ones as a refinement).
+    covered: list[tuple[int, int]] = []
+    for block in blocks:
+        try:
+            end = max(col_idx(block.last_column), col_idx(block.total_column or block.last_column))
+            covered.append((col_idx(block.first_column), end))
+        except ValueError:
+            continue
+    uncovered = [(index, label) for index, label in itd_header_labels(c.sheet, layout)
+                 if not any(a <= index <= b for a, b in covered)]
+    if uncovered:
+        shown = ", ".join(f"{label!r} ({col_letter(index)})" for index, label in uncovered[:8])
+        more = f" and {len(uncovered) - 8} more" if len(uncovered) > 8 else ""
+        c.add("block_coverage", f"{len(uncovered)} event header label(s) are not covered by any event block: "
+                                f"{shown}{more}; list every block on the header row",
+              f"{col_letter(uncovered[0][0])}{layout.event_header_row}", severity="warning")
+    if len(current) == 1 and current[0].components:
+        rows = _investor_span_rows(layout)
+        if rows and not any(_links_other_sheet(c.sheet, comp.column, rows, None) for comp in current[0].components):
+            c.add("current_block_links", f"the block marked current ({current[0].label!r}) has no formulas linking "
+                                         "to another sheet in its investor rows; the current event block normally "
+                                         "links to the Allocation sheet",
+                  f"{current[0].first_column}{layout.event_header_row}", severity="warning")
 
 
 def _validate_summary(c: _Checker, layout: SummaryLayout) -> None:
@@ -257,6 +300,7 @@ def _validate_summary(c: _Checker, layout: SummaryLayout) -> None:
         c.non_empty(getattr(layout, name), name)
     for name in ("notice_date_cell", "due_date_cell"):
         c.date_cell(getattr(layout, name), name)
+    _same_date_cell(c, layout.notice_date_cell, layout.due_date_cell)
     for cell in layout.check_cells:
         c.non_empty(cell, "check cell")
     for line in layout.component_lines:
@@ -268,6 +312,13 @@ def _validate_summary(c: _Checker, layout: SummaryLayout) -> None:
             c.non_empty(cell, f"section {index} check cell")
         for line in section.component_lines:
             c.non_empty(line.amount_cell, f"section {index} component line {line.component_type}")
+
+
+def _same_date_cell(c: _Checker, notice: str | None, due: str | None) -> None:
+    if notice and due and notice.replace("$", "").upper() == due.replace("$", "").upper():
+        c.add("same_date_cell", f"notice_date_cell and due_date_cell both point at {due}; a sheet carrying one date "
+                                "should map it to the field it names (a 'due' / 'payment' date is the due date) and "
+                                "leave the other empty", due, severity="warning")
 
 
 def _validate_merge(c: _Checker, layout: MergeLayout) -> None:

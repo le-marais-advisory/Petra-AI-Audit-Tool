@@ -135,6 +135,26 @@ def sheet_cell_refs(formula: str | None) -> list[tuple[str, str, int]]:
     return out
 
 
+_SHEET_COLUMN_REF_RE = re.compile(
+    r"(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_.]*))!\$?([A-Z]{1,3}):\$?([A-Z]{1,3})(?![0-9])")
+
+
+def sheet_column_refs(formula: str | None) -> list[tuple[str, str]]:
+    """(sheet, column) for every sheet-qualified whole-column reference (``Allocation!AF:AF``,
+    ``Allocation!$D:$D``) in a formula; a multi-column range yields one entry per column."""
+    out: list[tuple[str, str]] = []
+    for quoted, bare, col, col2 in _SHEET_COLUMN_REF_RE.findall(formula or ""):
+        sheet = quoted.replace("''", "'") if quoted else bare
+        first, last = col_idx(col), col_idx(col2)
+        if last - first <= 64:
+            for index in range(first, last + 1):
+                out.append((sheet, col_letter(index)))
+        else:
+            out.append((sheet, col))
+            out.append((sheet, col2))
+    return out
+
+
 def local_cell_refs(formula: str | None) -> list[tuple[str, int]]:
     """(column, row) for every reference to the formula's own sheet (sheet-qualified ones excluded)."""
     if not formula:

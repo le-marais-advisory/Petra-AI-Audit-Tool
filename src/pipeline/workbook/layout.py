@@ -24,6 +24,7 @@ ComponentType = Literal[
     "catch_up",
     "carry",
     "tax_distribution",
+    "tax_withholding",
     "other",
 ]
 Side = Literal["call", "distribution"]
@@ -73,6 +74,8 @@ class AllocationColumns(_Base):
     distribution_basis: Optional[str] = None
     distribution_basis_pct: Optional[str] = None
     mgmt_fee_rate: Optional[str] = None
+    tax_withholding: Optional[str] = Field(default=None, description=(
+        "Per-investor tax withholding column, when the sheet has one; it is not a component column"))
 
 
 class ComponentColumn(_Base):
@@ -95,6 +98,9 @@ class RollForwardColumns(_Base):
     current_call: Optional[str] = None
     current_recallable: Optional[str] = None
     remaining_commitment: Optional[str] = None
+    adjustments: list[str] = Field(default_factory=list, description=(
+        "Other roll-forward columns between the commitment and the remaining commitment that the remaining "
+        "commitment adds, e.g. a waiver, adjustment or transfer column"))
 
 
 class AllocationLayout(_Base):
@@ -169,6 +175,9 @@ class ItdLayout(_Base):
     event_blocks: list[EventBlock]
     vehicles: list[VehicleRows]
     check_rows: list[int] = Field(default_factory=list)
+    check_columns: list[str] = Field(default_factory=list, description=(
+        "Columns whose sub-header says check / difference / variance (e.g. 'Distributions Check'); their "
+        "investor and subtotal cells should be zero"))
 
     @field_validator("overlay_rows", mode="before")
     @classmethod
