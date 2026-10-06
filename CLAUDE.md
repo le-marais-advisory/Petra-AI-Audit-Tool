@@ -67,8 +67,8 @@ Capital-event workbook tests (TDD; written ahead of the implementation in `src/p
 pytest tests/evals -m eval                                  # layout mapping, role assignment, hybrid rules
 CAPITAL_EVENT_SAMPLE_PATH=temp/capital-event-rules/sample-workbook.xlsx pytest tests/evals/test_real_sample_eval.py -m eval
 # multi-vehicle net event with its prior workbook (never commit the files)
-CAPITAL_EVENT_NET_SAMPLE_PATH="temp/test-run-2026-10-02/BPCP IV - Capital Call #19 - 08.04.2026.xlsm" \
-CAPITAL_EVENT_NET_PRIOR_PATH="temp/test-run-2026-10-02/BPCP IV - Distribution #8 - 12.11.2025 V4.xlsm" \
+CAPITAL_EVENT_NET_SAMPLE_PATH="temp/bpcp-files/BPCP IV - Capital Call #19 - 08.04.2026.xlsm" \
+CAPITAL_EVENT_NET_PRIOR_PATH="temp/bpcp-files/BPCP IV - Distribution #8 - 12.11.2025 V4.xlsm" \
   pytest tests/evals/test_real_sample_eval.py -m eval -k net
 ```
 
